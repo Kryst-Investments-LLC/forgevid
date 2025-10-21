@@ -1,0 +1,42 @@
+name: Quarterly Review Reminders
+on:
+  schedule:
+    # Runs at 00:00 on the first day of January, April, July, October (quarterly)
+    - cron: '0 0 1 1,4,7,10 *'
+jobs:
+  ux_ui_review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create UX/UI review reminder issue
+        uses: peter-evans/create-issue-from-file@v4
+        with:
+          title: 'Quarterly UX/UI Review Reminder'
+          content-filepath: .github/ux-ui-review-reminder.md
+          labels: 'ux, ui, review, reminder'
+  performance_reliability_review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create performance/reliability review reminder issue
+        uses: peter-evans/create-issue-from-file@v4
+        with:
+          title: 'Quarterly Performance & Reliability Review Reminder'
+          content-filepath: .github/performance-reliability-reminder.md
+          labels: 'performance, reliability, review, reminder'
+  marketing_support_review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create marketing/support review reminder issue
+        uses: peter-evans/create-issue-from-file@v4
+        with:
+          title: 'Quarterly Marketing & Support Review Reminder'
+          content-filepath: .github/marketing-support-reminder.md
+          labels: 'marketing, support, review, reminder'
+  feature_comparison_review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create feature comparison review reminder issue
+        uses: peter-evans/create-issue-from-file@v4
+        with:
+          title: 'Quarterly Feature Comparison Review Reminder'
+          content-filepath: .github/feature-comparison-reminder.md
+          labels: 'feature, comparison, review, reminder'

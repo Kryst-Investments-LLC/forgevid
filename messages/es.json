@@ -1,0 +1,355 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "create": "Crear",
+    "back": "Atrás",
+    "next": "Siguiente",
+    "previous": "Anterior",
+    "submit": "Enviar",
+    "close": "Cerrar",
+    "open": "Abrir",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "sort": "Ordenar",
+    "view": "Ver",
+    "download": "Descargar",
+    "upload": "Subir",
+    "share": "Compartir",
+    "copy": "Copiar",
+    "paste": "Pegar",
+    "cut": "Cortar",
+    "undo": "Deshacer",
+    "redo": "Rehacer",
+    "refresh": "Actualizar",
+    "settings": "Configuración",
+    "profile": "Perfil",
+    "logout": "Cerrar Sesión",
+    "login": "Iniciar Sesión",
+    "register": "Registrarse",
+    "signup": "Registrarse",
+    "signin": "Iniciar Sesión",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "rememberMe": "Recordarme",
+    "email": "Correo Electrónico",
+    "password": "Contraseña",
+    "confirmPassword": "Confirmar Contraseña",
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "address": "Dirección",
+    "city": "Ciudad",
+    "country": "País",
+    "zipCode": "Código Postal",
+    "website": "Sitio Web",
+    "description": "Descripción",
+    "title": "Título",
+    "name": "Nombre",
+    "date": "Fecha",
+    "time": "Hora",
+    "status": "Estado",
+    "type": "Tipo",
+    "category": "Categoría",
+    "tags": "Etiquetas",
+    "price": "Precio",
+    "currency": "Moneda",
+    "quantity": "Cantidad",
+    "total": "Total",
+    "subtotal": "Subtotal",
+    "tax": "Impuesto",
+    "discount": "Descuento",
+    "shipping": "Envío",
+    "payment": "Pago",
+    "billing": "Facturación",
+    "order": "Pedido",
+    "invoice": "Factura",
+    "receipt": "Recibo",
+    "refund": "Reembolso",
+    "return": "Devolución",
+    "exchange": "Intercambio",
+    "warranty": "Garantía",
+    "support": "Soporte",
+    "help": "Ayuda",
+    "faq": "Preguntas Frecuentes",
+    "contact": "Contacto",
+    "about": "Acerca de",
+    "privacy": "Privacidad",
+    "terms": "Términos",
+    "cookies": "Cookies",
+    "language": "Idioma",
+    "theme": "Tema",
+    "darkMode": "Modo Oscuro",
+    "lightMode": "Modo Claro",
+    "autoMode": "Modo Automático"
+  },
+  "navigation": {
+    "home": "Inicio",
+    "dashboard": "Panel de Control",
+    "videos": "Mis Videos",
+    "templates": "Plantillas",
+    "media": "Biblioteca de Medios",
+    "ai": "Estudio IA",
+    "collaborate": "Colaboración",
+    "analytics": "Analíticas",
+    "billing": "Facturación",
+    "settings": "Configuración",
+    "help": "Ayuda y Soporte"
+  },
+  "hero": {
+    "badge": "Creación de Videos con IA",
+    "title": "Transforma Ideas en",
+    "titleHighlight": "Videos Profesionales",
+    "subtitle": "Crea videos impresionantes en minutos con nuestra plataforma impulsada por IA. Desde la generación de guiones hasta la exportación final, ForgeVid maneja la complejidad para que puedas enfocarte en tu creatividad.",
+    "stats": {
+      "videosCreated": "50,000+ videos creados",
+      "rating": "Calificación 4.9/5",
+      "setupTime": "Configuración en 2 minutos"
+    },
+    "cta": {
+      "startCreating": "Comenzar a Crear Gratis",
+      "noCreditCard": "Sin Tarjeta de Crédito",
+      "watchDemo": "Ver Demo"
+    },
+    "demoPlaceholder": "Video Demo Próximamente"
+  },
+  "features": {
+    "title": "Todo lo que Necesitas para Crear",
+    "subtitle": "Herramientas de IA potentes y características profesionales en una plataforma integrada",
+    "aiVideoGenerator": {
+      "title": "Generador de Videos IA",
+      "description": "Transforma prompts de texto en videos profesionales con tecnología IA avanzada"
+    },
+    "stockAssets": {
+      "title": "8M+ Recursos de Stock",
+      "description": "Accede a millones de imágenes, videos y pistas de audio de alta calidad"
+    },
+    "collaboration": {
+      "title": "Colaboración en Tiempo Real",
+      "description": "Trabaja junto con tu equipo en tiempo real con edición en vivo y comentarios"
+    },
+    "emotionAI": {
+      "title": "IA Consciente de Emociones",
+      "description": "La IA analiza el sentimiento de tu contenido y sugiere efectos y transiciones perfectas"
+    },
+    "vrPreview": {
+      "title": "Modo de Vista Previa VR",
+      "description": "Vista previa de tus videos en VR inmersivo para creación de contenido de siguiente nivel"
+    },
+    "multilingual": {
+      "title": "Soporte Multiidioma",
+      "description": "Crea contenido en 50+ idiomas con voces IA y subtítulos"
+    },
+    "productPhotoTransform": {
+      "title": "Foto de Producto a Video",
+      "description": "Transforma fotos de productos en videos de alta conversión en minutos. Sube imágenes y obtén instantáneamente anuncios listos para TikTok e Instagram - sin estudio, sin estrés, solo contenido que detiene el scroll y vende."
+    }
+  },
+  "pricing": {
+    "title": "Elige tu Plan",
+    "subtitle": "Comienza gratis y escala mientras creces. Todos los planes incluyen nuestras características principales de IA.",
+    "billing": {
+      "monthly": "Mensual",
+      "annual": "Anual",
+      "save": "Ahorra 20%"
+    },
+    "plans": {
+      "free": {
+        "title": "Gratis",
+        "price": "$0",
+        "description": "Perfecto para comenzar",
+        "features": [
+          "12 minutos de video/semana",
+          "2 créditos IA/semana",
+          "5 exportaciones/semana (con marca de agua)",
+          "Plantillas básicas",
+          "Soporte comunitario"
+        ],
+        "button": "Comenzar"
+      },
+      "plus": {
+        "title": "Plus",
+        "price": "$25/mes",
+        "description": "Mejor para creadores de contenido",
+        "features": [
+          "60 minutos de video/mes",
+          "40 segundos de video generativo/mes",
+          "3 usuarios, 120GB almacenamiento",
+          "Exportaciones ilimitadas",
+          "Acceso a medios de stock",
+          "Soporte por email"
+        ],
+        "button": "Comenzar Prueba Gratis"
+      },
+      "max": {
+        "title": "Max",
+        "price": "$45/mes",
+        "description": "Mejor para profesionales",
+        "features": [
+          "220 minutos de video/mes",
+          "130 segundos de video generativo/mes",
+          "3 usuarios, 420GB almacenamiento",
+          "Exportaciones ilimitadas",
+          "Suite completa de IA + colaboración",
+          "Soporte prioritario"
+        ],
+        "button": "Comenzar Prueba Gratis"
+      },
+      "generative": {
+        "title": "Generativo",
+        "price": "$90/mes",
+        "description": "Mejor para creadores avanzados",
+        "features": [
+          "220 minutos de video/mes",
+          "320 segundos de video generativo/mes",
+          "3 usuarios, 420GB almacenamiento",
+          "Exportaciones ilimitadas",
+          "Analíticas avanzadas",
+          "Soporte prioritario"
+        ],
+        "button": "Comenzar Prueba Gratis"
+      },
+      "team": {
+        "title": "Equipo",
+        "price": "$850/mes",
+        "description": "Mejor para equipos y agencias",
+        "features": [
+          "2100 minutos de video/mes",
+          "55 minutos de video generativo/mes",
+          "1 asiento, 4.2TB almacenamiento",
+          "Exportaciones ilimitadas",
+          "Solución white-label",
+          "Gerente de cuenta dedicado",
+          "SLA + soporte telefónico"
+        ],
+        "button": "Contactar Ventas"
+      }
+    },
+    "credits": {
+      "title": "Cómo Funcionan los Créditos",
+      "description": [
+        "• 1 crédito = 1 minuto de contenido de video generado por IA",
+        "• El material de stock y las plantillas no consumen créditos",
+        "• Los créditos no utilizados se acumulan hasta 3 meses",
+        "• ¿Necesitas más? Compra paquetes de créditos adicionales en cualquier momento"
+      ]
+    }
+  },
+  "testimonials": {
+    "title": "Lo que Dicen Nuestros Clientes",
+    "subtitle": "Únete a miles de creadores que han transformado su producción de video",
+    "sarah": {
+      "quote": "ForgeVid redujo nuestro tiempo de producción de video en 80%. Lo que solía tomar días ahora toma minutos. La IA entiende exactamente lo que necesitamos.",
+      "name": "Sarah Martinez",
+      "position": "Directora de Marketing, TechCorp"
+    },
+    "michael": {
+      "quote": "Las características de colaboración son revolucionarias. Todo nuestro equipo puede trabajar en videos simultáneamente. Es como Google Docs para la creación de video.",
+      "name": "Michael Johnson",
+      "position": "Director Creativo, StartupXYZ"
+    },
+    "emily": {
+      "quote": "El ROI fue inmediato. Estamos creando 10x más contenido de video con el mismo presupuesto. Las sugerencias de IA son increíblemente inteligentes.",
+      "name": "Emily Chen",
+      "position": "CEO, MediaCo"
+    }
+  },
+  "faq": {
+    "title": "Preguntas Frecuentes",
+    "subtitle": "Todo lo que necesitas saber sobre ForgeVid",
+    "questions": {
+      "aiGeneration": {
+        "question": "¿Cómo funciona la generación de video IA?",
+        "answer": "Nuestra IA analiza tu prompt de texto y genera automáticamente videos profesionales usando modelos avanzados de aprendizaje automático. Selecciona visuales apropiados, agrega transiciones e incluso genera voces en off."
+      },
+      "commercialUse": {
+        "question": "¿Puedo usar los videos comercialmente?",
+        "answer": "¡Sí! Todos los videos creados con ForgeVid son tuyos para usar comercialmente. Proporcionamos derechos comerciales completos para todo el contenido generado y medios de stock incluidos en tu plan."
+      },
+      "satisfaction": {
+        "question": "¿Qué pasa si no estoy satisfecho?",
+        "answer": "Ofrecemos una prueba gratuita de 14 días y una garantía de devolución de dinero de 30 días. Si no estás completamente satisfecho, reembolsaremos tu suscripción, sin preguntas."
+      },
+      "security": {
+        "question": "¿Qué tan seguro es mi contenido?",
+        "answer": "Tu contenido está encriptado y almacenado de forma segura. Estamos certificados SOC 2 y cumplimos con GDPR. Tus videos y datos nunca se usan para entrenar nuestros modelos de IA sin consentimiento explícito."
+      }
+    }
+  },
+  "cta": {
+    "title": "¿Listo para Transformar tu Creación de Video?",
+    "subtitle": "Únete a 50,000+ creadores que ya han revolucionado su producción de video con ForgeVid",
+    "buttons": {
+      "startTrial": "Comenzar Prueba Gratis",
+      "scheduleDemo": "Programar Demo"
+    },
+    "guarantees": [
+      "Prueba gratuita de 14 días",
+      "No se requiere tarjeta de crédito",
+      "Cancela en cualquier momento"
+    ]
+  },
+  "footer": {
+    "description": "Transforma tus ideas en videos profesionales con IA.",
+    "product": {
+      "title": "Producto",
+      "links": {
+        "features": "Características",
+        "templates": "Plantillas",
+        "pricing": "Precios",
+        "api": "API"
+      }
+    },
+    "company": {
+      "title": "Empresa",
+      "links": {
+        "about": "Acerca de",
+        "blog": "Blog",
+        "careers": "Carreras",
+        "contact": "Contacto"
+      }
+    },
+    "legal": {
+      "title": "Legal",
+      "links": {
+        "help": "Centro de Ayuda",
+        "community": "Comunidad",
+        "privacy": "Privacidad",
+        "terms": "Términos"
+      }
+    },
+    "copyright": "© 2025 ForgeVid. Todos los derechos reservados. ForgeVid es propiedad y está operado por Kryst Investments LLC."
+  },
+  "trust": {
+    "title": "Confianza de empresas líderes en todo el mundo",
+    "companies": ["TechCorp", "StartupXYZ", "MediaCo", "CreativeInc"],
+    "certifications": {
+      "soc2": "Certificado SOC 2",
+      "gdpr": "Cumple con GDPR",
+      "uptime": "99.9% Tiempo de Actividad"
+    }
+  },
+  "examples": {
+    "title": "Ve ForgeVid en Acción",
+    "subtitle": "Ejemplos reales creados por nuestros usuarios en minutos, no horas",
+    "productLaunch": {
+      "title": "Video de Lanzamiento de Producto",
+      "description": "Creado en 3 minutos desde un simple prompt de texto",
+      "category": "Marketing"
+    },
+    "socialAd": {
+      "title": "Anuncio de Redes Sociales",
+      "description": "Optimizado por IA para máximo engagement",
+      "category": "Redes Sociales"
+    },
+    "training": {
+      "title": "Tutorial de Entrenamiento",
+      "description": "Calidad profesional con subtítulos generados automáticamente",
+      "category": "Educación"
+    },
+    "viewMore": "Ver Más Ejemplos"
+  }
+}

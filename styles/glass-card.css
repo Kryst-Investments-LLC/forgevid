@@ -1,0 +1,17 @@
+/* glass-card utility */
+.glass-card {
+  @apply bg-black/30 backdrop-blur-md;
+}
+
+/* nav item */
+.nav-item {
+  @apply text-left w-full px-3 py-2 rounded-lg hover:bg-white/3 text-gray-300;
+}
+.nav-item.active {
+  @apply bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white shadow-md;
+}
+
+/* small tweaks for images */
+img {
+  @apply block;
+}

@@ -1,0 +1,49 @@
+{
+  "dashboard": {
+    "welcome": "Welcome back, {{name}}!",
+    "searchPlaceholder": "Search your videos...",
+    "filter": "Filter",
+    "newVideo": "New Video",
+    "settings": "Settings",
+    "logout": "Logout"
+  },
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "templates": "Templates",
+    "analytics": "Analytics",
+    "settings": "Settings",
+    "help": "Help",
+    "profile": "Profile"
+  },
+  "login": {
+    "title": "Sign in to ForgeVid",
+    "email": "Email",
+    "emailPlaceholder": "Enter your email",
+    "password": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "forgotPassword": "Forgot password?",
+    "loginButton": "Sign In",
+    "noAccount": "Don't have an account?",
+    "signup": "Sign Up"
+  },
+  "pricing": {
+    "title": "Choose your plan",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "free": "Free",
+    "pro": "Pro",
+    "enterprise": "Enterprise",
+    "videoLimit": "Up to {{minutes}} minutes per video",
+    "featureList": "Features",
+    "selectPlan": "Select Plan"
+  },
+  "languageSwitcher": {
+    "label": "Language",
+    "english": "English",
+    "spanish": "Spanish"
+  },
+  "darkMode": {
+    "toggle": "Toggle dark mode"
+  }
+}

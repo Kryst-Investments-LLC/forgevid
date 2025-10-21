@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ForgeVid - AI Video Generation Platform (Fixed)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': '#8B5CF6',
+                        'secondary': '#EC4899',
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: #000000;
+            color: white;
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .video-card {
+            background: rgba(30, 30, 30, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+        .video-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(139, 92, 246, 0.5);
+            box-shadow: 0 20px 40px rgba(139, 92, 246, 0.2);
+        }
+        .hero-gradient {
+            background: linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%);
+        }
+        .debug-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.9);
+            color: lime;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 1000;
+            max-width: 400px;
+            border: 1px solid lime;
+        }
+        .debug-line {
+            margin: 3px 0;
+            padding: 2px 0;
+        }
+    </style>
+</head>
+<body class="bg-black min-h-screen">
+    <!-- Debug Info Panel -->
+    <div class="debug-info" id="debug-info">
+        <div class="debug-line">🔧 <strong>ForgeVid Debug Console</strong></div>
+        <div class="debug-line" id="debug-status">Status: Initializing...</div>
+        <div class="debug-line" id="debug-scripts">Scripts: Loading...</div>
+        <div class="debug-line" id="debug-videos">Videos: Not loaded</div>
+        <div class="debug-line" id="debug-events">Events: Not attached</div>
+        <div class="debug-line" id="debug-render">Render: Waiting...</div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="border-b border-gray-800 px-6 py-4">
+        <div class="container mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-8">
+                <h1 class="text-2xl font-bold gradient-text">ForgeVid</h1>
+                <div class="hidden md:flex items-center space-x-6">
+                    <button class="text-gray-300 hover:text-white transition-colors" data-nav="explore">
+                        <i class="fas fa-search mr-2"></i>Explore
+                    </button>
+                    <button class="text-gray-300 hover:text-white transition-colors" data-nav="filter">
+                        <i class="fas fa-filter mr-2"></i>Filter
+                    </button>
+                    <button class="text-gray-300 hover:text-white transition-colors" data-nav="grid">
+                        <i class="fas fa-th mr-2"></i>Grid
+                    </button>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors" data-action="create">
+                    <i class="fas fa-plus mr-2"></i>Create
+                </button>
+                <button class="text-gray-300 hover:text-white">
+                    <i class="fas fa-user-circle text-2xl"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-gradient py-16 px-6">
+        <div class="container mx-auto text-center">
+            <h1 class="text-5xl font-bold mb-6 text-white">
+                AI-Powered Video Generation
+            </h1>
+            <p class="text-xl text-gray-200 max-w-3xl mx-auto mb-8">
+                Create stunning professional videos with cutting-edge artificial intelligence. 
+                Transform your ideas into captivating visual stories in minutes.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button class="bg-white text-purple-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors" data-action="start-creating">
+                    <i class="fas fa-play mr-2"></i>Start Creating
+                </button>
+                <button class="border border-white text-white px-8 py-3 rounded-lg font-semibold hover:bg-white hover:text-purple-600 transition-colors" data-action="watch-demo">
+                    <i class="fas fa-video mr-2"></i>Watch Demo
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Video Gallery -->
+    <section class="container mx-auto py-24 px-6">
+        <div class="text-center mb-16">
+            <h2 class="text-4xl font-bold mb-4 gradient-text">Featured AI Videos</h2>
+            <p class="text-lg text-gray-400 max-w-2xl mx-auto">
+                Explore amazing videos created by our AI. From cinematic scenes to product demos.
+            </p>
+        </div>
+
+        <!-- Search and Filter Bar -->
+        <div class="flex flex-col md:flex-row gap-4 mb-12">
+            <div class="flex-1 relative">
+                <i class="fas fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                <input type="text" placeholder="Search videos..." 
+                       class="w-full bg-gray-900 border border-gray-700 rounded-lg pl-12 pr-4 py-3 text-white placeholder-gray-400 focus:border-purple-500 focus:outline-none"
+                       id="search-input">
+            </div>
+            <div class="flex gap-2" id="filter-container">
+                <button class="bg-purple-600 text-white px-4 py-3 rounded-lg border border-purple-600 hover:bg-purple-700 transition-colors" data-filter="all">
+                    <i class="fas fa-filter mr-2"></i>All
+                </button>
+                <button class="bg-gray-800 hover:bg-gray-700 px-4 py-3 rounded-lg border border-gray-700 text-gray-300 hover:text-white transition-colors" data-filter="cinematic">
+                    <i class="fas fa-video mr-2"></i>Cinematic
+                </button>
+                <button class="bg-gray-800 hover:bg-gray-700 px-4 py-3 rounded-lg border border-gray-700 text-gray-300 hover:text-white transition-colors" data-filter="3d">
+                    <i class="fas fa-cube mr-2"></i>3D
+                </button>
+                <button class="bg-gray-800 hover:bg-gray-700 px-4 py-3 rounded-lg border border-gray-700 text-gray-300 hover:text-white transition-colors" data-filter="abstract">
+                    <i class="fas fa-magic mr-2"></i>Abstract
+                </button>
+            </div>
+        </div>
+
+        <!-- Video Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" id="video-grid">
+            <!-- This will be populated by JavaScript -->
+        </div>
+
+        <!-- Load More Button -->
+        <div class="text-center mt-12">
+            <button class="bg-purple-600 hover:bg-purple-700 px-8 py-3 rounded-lg font-semibold transition-colors" data-action="load-more">
+                <i class="fas fa-plus mr-2"></i>Load More Videos
+            </button>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="container mx-auto py-24 px-6">
+        <div class="text-center mb-16">
+            <h2 class="text-4xl font-bold mb-4 gradient-text">Powerful AI Features</h2>
+            <p class="text-lg text-gray-400 max-w-2xl mx-auto">
+                Create professional videos with cutting-edge AI technology
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div class="bg-gray-900 p-8 rounded-xl border border-gray-800">
+                <div class="text-purple-400 text-3xl mb-4">
+                    <i class="fas fa-magic"></i>
+                </div>
+                <h3 class="text-xl font-semibold mb-4">AI Video Generation</h3>
+                <p class="text-gray-400">Generate stunning videos from text prompts using advanced AI models.</p>
+            </div>
+
+            <div class="bg-gray-900 p-8 rounded-xl border border-gray-800">
+                <div class="text-purple-400 text-3xl mb-4">
+                    <i class="fas fa-palette"></i>
+                </div>
+                <h3 class="text-xl font-semibold mb-4">Style Transfer</h3>
+                <p class="text-gray-400">Apply artistic styles and filters to transform your video content.</p>
+            </div>
+
+            <div class="bg-gray-900 p-8 rounded-xl border border-gray-800">
+                <div class="text-purple-400 text-3xl mb-4">
+                    <i class="fas fa-edit"></i>
+                </div>
+                <h3 class="text-xl font-semibold mb-4">Smart Editing</h3>
+                <p class="text-gray-400">Automated editing with scene detection and intelligent transitions.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="border-t border-gray-800 py-12">
+        <div class="container mx-auto px-6">
+            <div class="text-center text-gray-400">
+                <p>© 2024 ForgeVid. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Debug logging function
+        function debugLog(message, category = 'status') {
+            console.log(`[ForgeVid] ${message}`);
+            const debugElement = document.getElementById('debug-' + category);
+            if (debugElement) {
+                debugElement.innerHTML = `${category.charAt(0).toUpperCase() + category.slice(1)}: ${message}`;
+            }
+        }
+
+        // Sample video data - ensure it's available globally
+        const videosData = [
+            {
+                id: 1,
+                title: "Cyberpunk City Night",
+                description: "Futuristic cityscape with neon lights and flying cars",
+                category: "cinematic",
+                duration: "2:15",
+                likes: 1200,
+                views: 12500,
+                thumbnail: "from-purple-900 to-pink-900",
+                prompt: "A futuristic cyberpunk city at night, neon lights reflecting on wet streets, flying cars in the sky, 4K cinematic"
+            },
+            {
+                id: 2,
+                title: "Ocean Wave Cinematic",
+                description: "Dramatic ocean waves in slow motion",
+                category: "cinematic",
+                duration: "1:30",
+                likes: 856,
+                views: 8900,
+                thumbnail: "from-blue-900 to-teal-900",
+                prompt: "Massive ocean waves crashing in slow motion, dramatic lighting, stormy weather, cinematic composition"
+            },
+            {
+                id: 3,
+                title: "Abstract Geometry",
+                description: "Morphing geometric shapes with vibrant colors",
+                category: "abstract",
+                duration: "0:45",
+                likes: 2100,
+                views: 15300,
+                thumbnail: "from-green-900 to-yellow-900",
+                prompt: "Abstract geometric shapes morphing and transforming, vibrant colors, fluid motion, modern art style"
+            },
+            {
+                id: 4,
+                title: "Space Journey",
+                description: "Travel through galaxies and nebulas",
+                category: "cinematic",
+                duration: "3:20",
+                likes: 3400,
+                views: 22700,
+                thumbnail: "from-red-900 to-orange-900",
+                prompt: "Journey through space, galaxies, nebulas, stars, cosmic dust, epic space travel sequence"
+            },
+            {
+                id: 5,
+                title: "AI Portrait",
+                description: "Dynamic AI-generated character animation",
+                category: "3d",
+                duration: "1:45",
+                likes: 1800,
+                views: 11200,
+                thumbnail: "from-indigo-900 to-purple-900",
+                prompt: "AI-generated character portrait, dynamic facial expressions, realistic rendering, digital art"
+            },
+            {
+                id: 6,
+                title: "Product Showcase",
+                description: "Professional product demonstration video",
+                category: "3d",
+                duration: "2:30",
+                likes: 967,
+                views: 7400,
+                thumbnail: "from-pink-900 to-rose-900",
+                prompt: "Professional product showcase, 360-degree rotation, studio lighting, commercial quality"
+            }
+        ];
+
+        debugLog(`Video data loaded: ${videosData.length} videos`, 'videos');
+
+        // Global state
+        let currentFilter = 'all';
+        let bookmarkedVideos = new Set();
+        let likedVideos = new Set();
+
+        // Force render videos function
+        function forceRenderVideos() {
+            debugLog('Starting forced video render...', 'render');
+            
+            const gridContainer = document.getElementById('video-grid');
+            if (!gridContainer) {
+                debugLog('ERROR: Grid container not found!', 'render');
+                return false;
+            }
+
+            // Clear the grid
+            gridContainer.innerHTML = '';
+            debugLog('Grid cleared', 'render');
+
+            // Create each video card manually
+            videosData.forEach((video, index) => {
+                debugLog(`Creating card ${index + 1}: ${video.title}`, 'render');
+                
+                const cardElement = document.createElement('div');
+                cardElement.className = 'video-card rounded-xl overflow-hidden';
+                cardElement.innerHTML = `
+                    <div class="aspect-video bg-gradient-to-br ${video.thumbnail} relative group cursor-pointer" data-video-id="${video.id}">
+                        <div class="absolute inset-0 flex items-center justify-center">
+                            <i class="fas fa-play text-4xl text-white opacity-80 group-hover:opacity-100 transition-opacity"></i>
+                        </div>
+                        <div class="absolute top-4 right-4">
+                            <span class="bg-black bg-opacity-50 px-2 py-1 rounded text-sm">${video.duration}</span>
+                        </div>
+                    </div>
+                    <div class="p-6">
+                        <h3 class="text-lg font-semibold mb-2">${video.title}</h3>
+                        <p class="text-gray-400 text-sm mb-4">${video.description}</p>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-4 text-sm text-gray-400">
+                                <button class="like-btn hover:text-red-400 transition-colors" data-video-id="${video.id}">
+                                    <i class="fas fa-heart mr-1"></i><span>${video.likes}</span>
+                                </button>
+                                <span><i class="fas fa-eye mr-1"></i>${formatNumber(video.views)}</span>
+                            </div>
+                            <button class="bookmark-btn text-gray-400 hover:text-purple-300 transition-colors" data-video-id="${video.id}">
+                                <i class="fas fa-bookmark"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                gridContainer.appendChild(cardElement);
+                debugLog(`Card ${index + 1} added to DOM`, 'render');
+            });
+
+            debugLog(`ALL ${videosData.length} videos rendered successfully!`, 'videos');
+            debugLog('Video rendering complete!', 'render');
+            
+            // Add click handlers
+            addVideoClickHandlers();
+            
+            return true;
+        }
+
+        function addVideoClickHandlers() {
+            // Add click handlers to video cards
+            document.querySelectorAll('[data-video-id].aspect-video').forEach(element => {
+                element.addEventListener('click', (e) => {
+                    const videoId = parseInt(e.currentTarget.dataset.videoId);
+                    const video = videosData.find(v => v.id === videoId);
+                    showNotification(`▶️ Playing "${video.title}"`);
+                    debugLog(`Video clicked: ${video.title}`, 'events');
+                });
+            });
+
+            // Add like button handlers
+            document.querySelectorAll('.like-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const videoId = parseInt(button.dataset.videoId);
+                    const video = videosData.find(v => v.id === videoId);
+                    showNotification(`❤️ Liked "${video.title}"`);
+                    debugLog(`Video liked: ${video.title}`, 'events');
+                });
+            });
+
+            debugLog('Click handlers added to all video cards', 'events');
+        }
+
+        function setupOtherEventListeners() {
+            // Search functionality
+            const searchInput = document.getElementById('search-input');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    const searchTerm = e.target.value.toLowerCase();
+                    showNotification(`🔍 Searching for "${searchTerm}"`);
+                    debugLog(`Search: "${searchTerm}"`, 'events');
+                });
+            }
+
+            // Filter buttons
+            document.querySelectorAll('[data-filter]').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const filter = e.target.dataset.filter || e.target.closest('[data-filter]').dataset.filter;
+                    showNotification(`🔧 Filter: ${filter}`);
+                    debugLog(`Filter selected: ${filter}`, 'events');
+                });
+            });
+
+            // Create button
+            const createBtn = document.querySelector('[data-action="create"]');
+            if (createBtn) {
+                createBtn.addEventListener('click', () => {
+                    showNotification('🎬 Opening video creator...');
+                    debugLog('Create button clicked', 'events');
+                });
+            }
+
+            // Navigation buttons
+            const navButtons = document.querySelectorAll('[data-nav]');
+            navButtons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const nav = e.target.dataset.nav;
+                    showNotification(`📍 Navigate to ${nav}`);
+                    debugLog(`Navigation: ${nav}`, 'events');
+                });
+            });
+
+            debugLog(`Event listeners attached: ${navButtons.length} nav buttons`, 'events');
+        }
+
+        function formatNumber(num) {
+            if (num >= 1000) {
+                return (num / 1000).toFixed(1) + 'K';
+            }
+            return num.toString();
+        }
+
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-4 right-4 bg-purple-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transform translate-x-full transition-transform duration-300';
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.classList.remove('translate-x-full');
+            }, 100);
+            
+            setTimeout(() => {
+                notification.classList.add('translate-x-full');
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.remove();
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // Initialize everything when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            debugLog('DOM loaded successfully', 'status');
+            debugLog('Initializing application...', 'status');
+            
+            // Force render videos immediately
+            setTimeout(() => {
+                debugLog('Starting video render...', 'status');
+                const success = forceRenderVideos();
+                if (success) {
+                    debugLog('✅ Videos rendered successfully!', 'status');
+                } else {
+                    debugLog('❌ Video rendering failed!', 'status');
+                }
+            }, 100);
+
+            // Setup other event listeners
+            setTimeout(() => {
+                setupOtherEventListeners();
+                debugLog('✅ All event listeners ready!', 'events');
+            }, 200);
+
+            // Show success notification
+            setTimeout(() => {
+                showNotification('🎉 ForgeVid loaded successfully!');
+                debugLog('✅ Application ready!', 'scripts');
+            }, 500);
+        });
+
+        // Global error handler
+        window.addEventListener('error', function(e) {
+            debugLog(`❌ Error: ${e.message}`, 'status');
+            console.error('Error:', e);
+        });
+    </script>
+</body>
+</html>

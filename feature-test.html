@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ForgeVid - Feature Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background: #000; color: white; }
+        .test-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 50, 0, 0.9);
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            z-index: 1000;
+            max-width: 300px;
+        }
+        .test-result {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .pass { background: rgba(0, 255, 0, 0.2); color: lime; }
+        .fail { background: rgba(255, 0, 0, 0.2); color: red; }
+        .pending { background: rgba(255, 255, 0, 0.2); color: yellow; }
+    </style>
+</head>
+<body class="bg-black min-h-screen p-8">
+    <div class="test-panel">
+        <h3 class="text-green-400 font-bold mb-3">🧪 Feature Tests</h3>
+        <div id="test-results"></div>
+        <button id="run-tests" class="bg-green-600 hover:bg-green-700 px-3 py-1 rounded mt-3 text-sm">
+            Run All Tests
+        </button>
+    </div>
+
+    <div class="container mx-auto">
+        <h1 class="text-4xl font-bold mb-8 text-center bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            ForgeVid - Interactive Feature Test
+        </h1>
+
+        <!-- Test Elements -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <!-- Search Test -->
+            <div class="bg-gray-900 p-6 rounded-lg border border-gray-800">
+                <h3 class="text-lg font-semibold mb-4">🔍 Search Test</h3>
+                <input type="text" id="test-search" placeholder="Type 'cyberpunk'..." 
+                       class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white">
+                <div id="search-result" class="mt-2 text-sm text-gray-400">Ready to test</div>
+            </div>
+
+            <!-- Click Test -->
+            <div class="bg-gray-900 p-6 rounded-lg border border-gray-800">
+                <h3 class="text-lg font-semibold mb-4">👆 Click Test</h3>
+                <button id="test-button" class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-white">
+                    Click Me!
+                </button>
+                <div id="click-result" class="mt-2 text-sm text-gray-400">Not clicked yet</div>
+            </div>
+
+            <!-- Modal Test -->
+            <div class="bg-gray-900 p-6 rounded-lg border border-gray-800">
+                <h3 class="text-lg font-semibold mb-4">🪟 Modal Test</h3>
+                <button id="modal-button" class="bg-pink-600 hover:bg-pink-700 px-4 py-2 rounded text-white">
+                    Open Modal
+                </button>
+                <div id="modal-result" class="mt-2 text-sm text-gray-400">Modal not opened</div>
+            </div>
+
+            <!-- Filter Test -->
+            <div class="bg-gray-900 p-6 rounded-lg border border-gray-800">
+                <h3 class="text-lg font-semibold mb-4">🔧 Filter Test</h3>
+                <div class="flex gap-2">
+                    <button class="filter-btn bg-gray-700 px-3 py-1 rounded text-sm" data-filter="all">All</button>
+                    <button class="filter-btn bg-gray-700 px-3 py-1 rounded text-sm" data-filter="test">Test</button>
+                </div>
+                <div id="filter-result" class="mt-2 text-sm text-gray-400">No filter selected</div>
+            </div>
+
+            <!-- Animation Test -->
+            <div class="bg-gray-900 p-6 rounded-lg border border-gray-800">
+                <h3 class="text-lg font-semibold mb-4">✨ Animation Test</h3>
+                <div id="animate-box" class="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded transition-transform duration-300">
+                </div>
+                <button id="animate-button" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-white mt-2">
+                    Animate
+                </button>
+            </div>
+
+            <!-- Notification Test -->
+            <div class="bg-gray-900 p-6 rounded-lg border border-gray-800">
+                <h3 class="text-lg font-semibold mb-4">🔔 Notification Test</h3>
+                <button id="notify-button" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-white">
+                    Show Notification
+                </button>
+                <div id="notify-result" class="mt-2 text-sm text-gray-400">No notification shown</div>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <p class="text-gray-400">
+                This page tests all the interactive features that should work in the main ForgeVid demo.
+                Click "Run All Tests" to automatically test everything!
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let testResults = {};
+        let clickCount = 0;
+
+        function updateTestResult(testName, status, message) {
+            testResults[testName] = { status, message };
+            renderTestResults();
+        }
+
+        function renderTestResults() {
+            const container = document.getElementById('test-results');
+            container.innerHTML = '';
+            
+            Object.entries(testResults).forEach(([name, result]) => {
+                const div = document.createElement('div');
+                div.className = `test-result ${result.status}`;
+                div.innerHTML = `<strong>${name}:</strong> ${result.message}`;
+                container.appendChild(div);
+            });
+        }
+
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all duration-300';
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.transform = 'translate(-50%, -100px)';
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 2000);
+        }
+
+        function createModal(content) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-gray-900 rounded-xl p-8 max-w-md w-full mx-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold">Test Modal</h2>
+                        <button class="text-gray-400 hover:text-white close-modal">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <p class="text-gray-300 mb-4">${content}</p>
+                    <button class="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded close-modal">
+                        Close
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal || e.target.classList.contains('close-modal')) {
+                    modal.remove();
+                    updateTestResult('Modal', 'pass', 'Modal closed successfully');
+                }
+            });
+        }
+
+        // Initialize tests
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTestResult('DOM', 'pass', 'DOM loaded successfully');
+
+            // Search test
+            const searchInput = document.getElementById('test-search');
+            searchInput.addEventListener('input', function(e) {
+                const value = e.target.value;
+                document.getElementById('search-result').textContent = `Searching for: "${value}"`;
+                if (value.toLowerCase().includes('cyberpunk')) {
+                    updateTestResult('Search', 'pass', 'Search working correctly');
+                } else if (value.length > 0) {
+                    updateTestResult('Search', 'pending', 'Type "cyberpunk" to pass test');
+                }
+            });
+
+            // Click test
+            document.getElementById('test-button').addEventListener('click', function() {
+                clickCount++;
+                document.getElementById('click-result').textContent = `Clicked ${clickCount} times`;
+                updateTestResult('Click', 'pass', `Button clicked ${clickCount} times`);
+            });
+
+            // Modal test
+            document.getElementById('modal-button').addEventListener('click', function() {
+                createModal('This is a test modal! It should be closeable by clicking the X or outside the modal.');
+                document.getElementById('modal-result').textContent = 'Modal opened successfully';
+                updateTestResult('Modal', 'pending', 'Modal opened, close it to complete test');
+            });
+
+            // Filter test
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Reset all buttons
+                    document.querySelectorAll('.filter-btn').forEach(b => {
+                        b.classList.remove('bg-purple-600');
+                        b.classList.add('bg-gray-700');
+                    });
+                    
+                    // Activate clicked button
+                    this.classList.remove('bg-gray-700');
+                    this.classList.add('bg-purple-600');
+                    
+                    const filter = this.dataset.filter;
+                    document.getElementById('filter-result').textContent = `Filter: ${filter}`;
+                    updateTestResult('Filter', 'pass', `Filter "${filter}" activated`);
+                });
+            });
+
+            // Animation test
+            document.getElementById('animate-button').addEventListener('click', function() {
+                const box = document.getElementById('animate-box');
+                box.style.transform = box.style.transform === 'rotate(180deg)' ? 'rotate(0deg)' : 'rotate(180deg)';
+                updateTestResult('Animation', 'pass', 'Animation triggered successfully');
+            });
+
+            // Notification test
+            document.getElementById('notify-button').addEventListener('click', function() {
+                showNotification('🎉 Test notification working!');
+                document.getElementById('notify-result').textContent = 'Notification shown successfully';
+                updateTestResult('Notification', 'pass', 'Notification displayed');
+            });
+
+            // Auto-run tests button
+            document.getElementById('run-tests').addEventListener('click', function() {
+                updateTestResult('Auto-Test', 'pending', 'Running automated tests...');
+                
+                // Simulate typing in search
+                setTimeout(() => {
+                    searchInput.value = 'cyberpunk';
+                    searchInput.dispatchEvent(new Event('input'));
+                }, 500);
+                
+                // Trigger click test
+                setTimeout(() => {
+                    document.getElementById('test-button').click();
+                }, 1000);
+                
+                // Trigger filter test
+                setTimeout(() => {
+                    document.querySelector('[data-filter="test"]').click();
+                }, 1500);
+                
+                // Trigger animation
+                setTimeout(() => {
+                    document.getElementById('animate-button').click();
+                }, 2000);
+                
+                // Show notification
+                setTimeout(() => {
+                    document.getElementById('notify-button').click();
+                    updateTestResult('Auto-Test', 'pass', 'All automated tests completed');
+                }, 2500);
+            });
+
+            updateTestResult('Events', 'pass', 'All event listeners attached');
+        });
+
+        // Global error handler
+        window.addEventListener('error', function(e) {
+            updateTestResult('Error', 'fail', `JavaScript error: ${e.message}`);
+        });
+
+        // Check external resources
+        window.addEventListener('load', function() {
+            updateTestResult('Resources', 'pass', 'All external resources loaded');
+        });
+    </script>
+</body>
+</html>

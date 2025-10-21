@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple ForgeVid Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background: #000; color: white; }
+    </style>
+</head>
+<body class="bg-black min-h-screen p-8">
+    <h1 class="text-4xl font-bold mb-8 text-center text-purple-400">ForgeVid - Simple Test</h1>
+    
+    <div id="status" class="bg-green-900 p-4 rounded mb-8 text-center">
+        <div id="status-text">Loading...</div>
+    </div>
+
+    <div id="video-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Videos will be inserted here -->
+    </div>
+
+    <script>
+        function updateStatus(message) {
+            document.getElementById('status-text').textContent = message;
+            console.log('[Status]', message);
+        }
+
+        // Simple video data
+        const videos = [
+            { id: 1, title: "Cyberpunk City", desc: "Futuristic cityscape", color: "from-purple-600 to-pink-600" },
+            { id: 2, title: "Ocean Waves", desc: "Dramatic ocean waves", color: "from-blue-600 to-teal-600" },
+            { id: 3, title: "Abstract Art", desc: "Geometric shapes", color: "from-green-600 to-yellow-600" },
+            { id: 4, title: "Space Journey", desc: "Travel through space", color: "from-red-600 to-orange-600" },
+            { id: 5, title: "AI Portrait", desc: "Character animation", color: "from-indigo-600 to-purple-600" },
+            { id: 6, title: "Product Demo", desc: "Product showcase", color: "from-pink-600 to-rose-600" }
+        ];
+
+        function createVideoCard(video) {
+            return `
+                <div class="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-purple-500 transition-all">
+                    <div class="aspect-video bg-gradient-to-br ${video.color} flex items-center justify-center">
+                        <i class="fas fa-play text-4xl text-white"></i>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="text-lg font-semibold mb-2">${video.title}</h3>
+                        <p class="text-gray-400 text-sm">${video.desc}</p>
+                        <div class="mt-3 flex items-center justify-between">
+                            <button class="text-red-400 hover:text-red-300">
+                                <i class="fas fa-heart mr-1"></i>123
+                            </button>
+                            <button class="text-purple-400 hover:text-purple-300">
+                                <i class="fas fa-bookmark"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderVideos() {
+            updateStatus('Rendering videos...');
+            
+            const grid = document.getElementById('video-grid');
+            if (!grid) {
+                updateStatus('ERROR: Grid not found!');
+                return;
+            }
+
+            grid.innerHTML = '';
+            
+            videos.forEach((video, index) => {
+                const cardHTML = createVideoCard(video);
+                grid.innerHTML += cardHTML;
+                updateStatus(`Rendered ${index + 1}/${videos.length} videos`);
+            });
+
+            updateStatus(`✅ All ${videos.length} videos rendered successfully!`);
+        }
+
+        // Start immediately when DOM loads
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus('DOM loaded, starting render...');
+            setTimeout(renderVideos, 100);
+        });
+
+        // Fallback - render after everything loads
+        window.addEventListener('load', function() {
+            updateStatus('Window loaded, checking render...');
+            const grid = document.getElementById('video-grid');
+            if (grid && grid.children.length === 0) {
+                updateStatus('No videos found, re-rendering...');
+                renderVideos();
+            }
+        });
+    </script>
+</body>
+</html>

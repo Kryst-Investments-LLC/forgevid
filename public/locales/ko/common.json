@@ -1,0 +1,56 @@
+{
+  "dashboard": {
+    "welcome": "다시 오신 것을 환영합니다, {{name}}!",
+    "searchPlaceholder": "동영상을 검색하세요...",
+    "filter": "필터",
+    "newVideo": "새 동영상",
+    "settings": "설정",
+    "logout": "로그아웃"
+  },
+  "sidebar": {
+    "dashboard": "대시보드",
+    "projects": "프로젝트",
+    "templates": "템플릿",
+    "analytics": "분석",
+    "settings": "설정",
+    "help": "도움말",
+    "profile": "프로필"
+  },
+  "login": {
+    "title": "ForgeVid에 로그인",
+    "email": "이메일",
+    "emailPlaceholder": "이메일을 입력하세요",
+    "password": "비밀번호",
+    "passwordPlaceholder": "비밀번호를 입력하세요",
+    "forgotPassword": "비밀번호를 잊으셨나요?",
+    "loginButton": "로그인",
+    "noAccount": "계정이 없으신가요?",
+    "signup": "가입하기"
+  },
+  "pricing": {
+    "title": "플랜을 선택하세요",
+    "monthly": "월간",
+    "yearly": "연간",
+    "free": "무료",
+    "pro": "프로",
+    "enterprise": "엔터프라이즈",
+    "videoLimit": "동영상당 최대 {{minutes}}분",
+    "featureList": "기능",
+    "selectPlan": "플랜 선택"
+  },
+  "languageSwitcher": {
+    "label": "언어",
+    "english": "영어",
+    "spanish": "스페인어",
+    "hindi": "힌디어",
+    "japanese": "일본어",
+    "chinese": "중국어",
+    "french": "프랑스어",
+    "german": "독일어",
+    "italian": "이탈리아어",
+    "korean": "한국어"
+  },
+  "darkMode": {
+    "toggle": "다크 모드 전환"
+  }
+}

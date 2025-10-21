@@ -1,0 +1,56 @@
+{
+  "dashboard": {
+    "welcome": "फिर से स्वागत है, {{name}}!",
+    "searchPlaceholder": "अपने वीडियो खोजें...",
+    "filter": "फ़िल्टर",
+    "newVideo": "नया वीडियो",
+    "settings": "सेटिंग्स",
+    "logout": "लॉगआउट"
+  },
+  "sidebar": {
+    "dashboard": "डैशबोर्ड",
+    "projects": "प्रोजेक्ट्स",
+    "templates": "टेम्पलेट्स",
+    "analytics": "एनालिटिक्स",
+    "settings": "सेटिंग्स",
+    "help": "सहायता",
+    "profile": "प्रोफ़ाइल"
+  },
+  "login": {
+    "title": "ForgeVid में साइन इन करें",
+    "email": "ईमेल",
+    "emailPlaceholder": "अपना ईमेल दर्ज करें",
+    "password": "पासवर्ड",
+    "passwordPlaceholder": "अपना पासवर्ड दर्ज करें",
+    "forgotPassword": "पासवर्ड भूल गए?",
+    "loginButton": "साइन इन करें",
+    "noAccount": "कोई खाता नहीं है?",
+    "signup": "साइन अप करें"
+  },
+  "pricing": {
+    "title": "अपना प्लान चुनें",
+    "monthly": "मासिक",
+    "yearly": "वार्षिक",
+    "free": "फ्री",
+    "pro": "प्रो",
+    "enterprise": "एंटरप्राइज",
+    "videoLimit": "प्रति वीडियो {{minutes}} मिनट तक",
+    "featureList": "विशेषताएँ",
+    "selectPlan": "प्लान चुनें"
+  },
+  "languageSwitcher": {
+    "label": "भाषा",
+    "english": "अंग्रेज़ी",
+    "spanish": "स्पेनिश",
+    "hindi": "हिन्दी",
+    "japanese": "जापानी",
+    "chinese": "चीनी",
+    "french": "फ्रेंच",
+    "german": "जर्मन",
+    "italian": "इतालवी",
+    "korean": "कोरियाई"
+  },
+  "darkMode": {
+    "toggle": "डार्क मोड टॉगल करें"
+  }
+}

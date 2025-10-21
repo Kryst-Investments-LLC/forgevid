@@ -1,0 +1,56 @@
+{
+  "dashboard": {
+    "welcome": "Willkommen zurück, {{name}}!",
+    "searchPlaceholder": "Suche deine Videos...",
+    "filter": "Filter",
+    "newVideo": "Neues Video",
+    "settings": "Einstellungen",
+    "logout": "Abmelden"
+  },
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "projects": "Projekte",
+    "templates": "Vorlagen",
+    "analytics": "Analytik",
+    "settings": "Einstellungen",
+    "help": "Hilfe",
+    "profile": "Profil"
+  },
+  "login": {
+    "title": "Bei ForgeVid anmelden",
+    "email": "E-Mail",
+    "emailPlaceholder": "Gib deine E-Mail ein",
+    "password": "Passwort",
+    "passwordPlaceholder": "Gib dein Passwort ein",
+    "forgotPassword": "Passwort vergessen?",
+    "loginButton": "Anmelden",
+    "noAccount": "Kein Konto?",
+    "signup": "Registrieren"
+  },
+  "pricing": {
+    "title": "Wähle deinen Plan",
+    "monthly": "Monatlich",
+    "yearly": "Jährlich",
+    "free": "Kostenlos",
+    "pro": "Pro",
+    "enterprise": "Unternehmen",
+    "videoLimit": "Bis zu {{minutes}} Minuten pro Video",
+    "featureList": "Funktionen",
+    "selectPlan": "Plan wählen"
+  },
+  "languageSwitcher": {
+    "label": "Sprache",
+    "english": "Englisch",
+    "spanish": "Spanisch",
+    "hindi": "Hindi",
+    "japanese": "Japanisch",
+    "chinese": "Chinesisch",
+    "french": "Französisch",
+    "german": "Deutsch",
+    "italian": "Italienisch",
+    "korean": "Koreanisch"
+  },
+  "darkMode": {
+    "toggle": "Dunkelmodus umschalten"
+  }
+}

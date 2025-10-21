@@ -1,0 +1,88 @@
+﻿{
+    "recommendations":  [
+                            "TIMELINE: Only 0 hours estimated - easily achievable",
+                            "QUALITY: Low TODO count indicates mature codebase"
+                        ],
+    "totalFiles":  319,
+    "priorityBreakdown":  {
+                              "LOW":  0,
+                              "CRITICAL":  0,
+                              "MEDIUM":  0,
+                              "HIGH":  0
+                          },
+    "estimatedHours":  0,
+    "completionScore":  100,
+    "moduleBreakdown":  {
+                            "api":  {
+                                        "todos":  0,
+                                        "priorities":  {
+                                                           "LOW":  0,
+                                                           "CRITICAL":  0,
+                                                           "MEDIUM":  0,
+                                                           "HIGH":  0
+                                                       },
+                                        "files":  54
+                                    },
+                            "other":  {
+                                          "todos":  0,
+                                          "priorities":  {
+                                                             "LOW":  0,
+                                                             "CRITICAL":  0,
+                                                             "MEDIUM":  0,
+                                                             "HIGH":  0
+                                                         },
+                                          "files":  62
+                                      },
+                            "app":  {
+                                        "todos":  0,
+                                        "priorities":  {
+                                                           "LOW":  0,
+                                                           "CRITICAL":  0,
+                                                           "MEDIUM":  0,
+                                                           "HIGH":  0
+                                                       },
+                                        "files":  45
+                                    },
+                            "lib":  {
+                                        "todos":  0,
+                                        "priorities":  {
+                                                           "LOW":  0,
+                                                           "CRITICAL":  0,
+                                                           "MEDIUM":  0,
+                                                           "HIGH":  0
+                                                       },
+                                        "files":  46
+                                    },
+                            "features":  {
+                                             "todos":  0,
+                                             "priorities":  {
+                                                                "LOW":  0,
+                                                                "CRITICAL":  0,
+                                                                "MEDIUM":  0,
+                                                                "HIGH":  0
+                                                            },
+                                             "files":  31
+                                         },
+                            "components":  {
+                                               "todos":  0,
+                                               "priorities":  {
+                                                                  "LOW":  0,
+                                                                  "CRITICAL":  0,
+                                                                  "MEDIUM":  0,
+                                                                  "HIGH":  0
+                                                              },
+                                               "files":  72
+                                           },
+                            "tests":  {
+                                          "todos":  0,
+                                          "priorities":  {
+                                                             "LOW":  0,
+                                                             "CRITICAL":  0,
+                                                             "MEDIUM":  0,
+                                                             "HIGH":  0
+                                                         },
+                                          "files":  7
+                                      }
+                        },
+    "totalTodos":  0
+}

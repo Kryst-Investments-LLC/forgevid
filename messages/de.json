@@ -1,0 +1,356 @@
+{
+  "common": {
+    "loading": "Laden...",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "create": "Erstellen",
+    "back": "Zurück",
+    "next": "Weiter",
+    "previous": "Vorherige",
+    "submit": "Senden",
+    "close": "Schließen",
+    "open": "Öffnen",
+    "search": "Suchen",
+    "filter": "Filtern",
+    "sort": "Sortieren",
+    "view": "Anzeigen",
+    "download": "Herunterladen",
+    "upload": "Hochladen",
+    "share": "Teilen",
+    "copy": "Kopieren",
+    "paste": "Einfügen",
+    "cut": "Ausschneiden",
+    "undo": "Rückgängig",
+    "redo": "Wiederholen",
+    "refresh": "Aktualisieren",
+    "settings": "Einstellungen",
+    "profile": "Profil",
+    "logout": "Abmelden",
+    "login": "Anmelden",
+    "register": "Registrieren",
+    "signup": "Registrieren",
+    "signin": "Anmelden",
+    "forgotPassword": "Passwort vergessen?",
+    "rememberMe": "Angemeldet bleiben",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "confirmPassword": "Passwort bestätigen",
+    "firstName": "Vorname",
+    "lastName": "Nachname",
+    "phone": "Telefon",
+    "address": "Adresse",
+    "city": "Stadt",
+    "country": "Land",
+    "zipCode": "Postleitzahl",
+    "website": "Website",
+    "description": "Beschreibung",
+    "title": "Titel",
+    "name": "Name",
+    "date": "Datum",
+    "time": "Zeit",
+    "status": "Status",
+    "type": "Typ",
+    "category": "Kategorie",
+    "tags": "Tags",
+    "price": "Preis",
+    "currency": "Währung",
+    "quantity": "Menge",
+    "total": "Gesamt",
+    "subtotal": "Zwischensumme",
+    "tax": "Steuer",
+    "discount": "Rabatt",
+    "shipping": "Versand",
+    "payment": "Zahlung",
+    "billing": "Abrechnung",
+    "order": "Bestellung",
+    "invoice": "Rechnung",
+    "receipt": "Quittung",
+    "refund": "Rückerstattung",
+    "return": "Rückgabe",
+    "exchange": "Umtausch",
+    "warranty": "Garantie",
+    "support": "Support",
+    "help": "Hilfe",
+    "faq": "FAQ",
+    "contact": "Kontakt",
+    "about": "Über uns",
+    "privacy": "Datenschutz",
+    "terms": "Bedingungen",
+    "cookies": "Cookies",
+    "language": "Sprache",
+    "theme": "Design",
+    "darkMode": "Dunkler Modus",
+    "lightMode": "Heller Modus",
+    "autoMode": "Automatischer Modus"
+  },
+  "navigation": {
+    "home": "Startseite",
+    "dashboard": "Dashboard",
+    "videos": "Meine Videos",
+    "templates": "Vorlagen",
+    "media": "Medienbibliothek",
+    "ai": "AI-Studio",
+    "collaborate": "Zusammenarbeit",
+    "analytics": "Analytics",
+    "billing": "Abrechnung",
+    "settings": "Einstellungen",
+    "help": "Hilfe und Support"
+  },
+  "hero": {
+    "badge": "KI-gestützte Videoproduktion",
+    "title": "Verwandeln Sie Ideen in",
+    "titleHighlight": "Professionelle Videos",
+    "subtitle": "Erstellen Sie beeindruckende Videos in Minuten mit unserer KI-gestützten Plattform. Von der Skripterstellung bis zum finalen Export übernimmt ForgeVid die Komplexität, damit Sie sich auf Ihre Kreativität konzentrieren können.",
+    "stats": {
+      "videosCreated": "50.000+ Videos erstellt",
+      "rating": "4,9/5 Bewertung",
+      "setupTime": "Setup in 2 Minuten"
+    },
+    "cta": {
+      "startCreating": "Kostenlos mit der Erstellung beginnen",
+      "noCreditCard": "Keine Kreditkarte",
+      "watchDemo": "Demo ansehen"
+    },
+    "demoPlaceholder": "Demo-Video bald verfügbar"
+  },
+  "features": {
+    "title": "Alles was Sie zum Erstellen brauchen",
+    "subtitle": "Leistungsstarke KI-Tools und professionelle Funktionen in einer integrierten Plattform",
+    "aiVideoGenerator": {
+      "title": "KI-Videogenerator",
+      "description": "Verwandeln Sie Textprompts in professionelle Videos mit fortschrittlicher KI-Technologie"
+    },
+    "stockAssets": {
+      "title": "8M+ Stock-Assets",
+      "description": "Zugriff auf Millionen hochwertiger Bilder, Videos und Audiotracks"
+    },
+    "collaboration": {
+      "title": "Echtzeit-Zusammenarbeit",
+      "description": "Arbeiten Sie mit Ihrem Team in Echtzeit mit Live-Bearbeitung und Kommentaren"
+    },
+    "emotionAI": {
+      "title": "Gefühlsbewusste KI",
+      "description": "Die KI analysiert die Stimmung Ihres Inhalts und schlägt perfekte Effekte und Übergänge vor"
+    },
+    "vrPreview": {
+      "title": "VR-Vorschau-Modus",
+      "description": "Vorschau Ihrer Videos in immersivem VR für Content-Erstellung auf dem nächsten Level"
+    },
+    "multilingual": {
+      "title": "Mehrsprachige Unterstützung",
+      "description": "Erstellen Sie Inhalte in 50+ Sprachen mit KI-Sprachausgabe und Untertiteln"
+    },
+    "productPhotoTransform": {
+      "title": "Produktfoto zu Video",
+      "description": "Verwandeln Sie Produktfotos in Minuten in hochkonvertierende Videos. Laden Sie Bilder hoch und erhalten Sie sofort TikTok- und Instagram-bereite Anzeigen - kein Studio, kein Stress, nur scroll-stoppende Inhalte, die verkaufen."
+    }
+  },
+  "pricing": {
+    "title": "Wählen Sie Ihren Plan",
+    "subtitle": "Starten Sie kostenlos und skalieren Sie mit Ihrem Wachstum. Alle Pläne enthalten unsere Kern-KI-Funktionen.",
+    "billing": {
+      "monthly": "Monatlich",
+      "annual": "Jährlich",
+      "save": "20% sparen"
+    },
+    "plans": {
+      "free": {
+        "title": "Kostenlos",
+        "price": "0$",
+        "description": "Perfekt zum Einstieg",
+        "features": [
+          "12 Videominuten/Woche",
+          "2 KI-Credits/Woche",
+          "5 Exports/Woche (mit Wasserzeichen)",
+          "Basis-Vorlagen",
+          "Community-Support"
+        ],
+        "button": "Starten"
+      },
+      "plus": {
+        "title": "Plus",
+        "price": "25$/Monat",
+        "description": "Ideal für Content-Ersteller",
+        "features": [
+          "60 Videominuten/Monat",
+          "40 Sekunden generatives Video/Monat",
+          "3 Benutzer, 120GB Speicher",
+          "Unbegrenzte Exports",
+          "Stock-Media-Zugang",
+          "E-Mail-Support"
+        ],
+        "button": "Kostenlose Testversion starten"
+      },
+      "max": {
+        "title": "Max",
+        "price": "45$/Monat",
+        "description": "Ideal für Profis",
+        "features": [
+          "220 Videominuten/Monat",
+          "130 Sekunden generatives Video/Monat",
+          "3 Benutzer, 420GB Speicher",
+          "Unbegrenzte Exports",
+          "Vollständige KI-Suite + Zusammenarbeit",
+          "Prioritäts-Support"
+        ],
+        "button": "Kostenlose Testversion starten"
+      },
+      "generative": {
+        "title": "Generativ",
+        "price": "90$/Monat",
+        "description": "Ideal für fortgeschrittene Ersteller",
+        "features": [
+          "220 Videominuten/Monat",
+          "320 Sekunden generatives Video/Monat",
+          "3 Benutzer, 420GB Speicher",
+          "Unbegrenzte Exports",
+          "Erweiterte Analytics",
+          "Prioritäts-Support"
+        ],
+        "button": "Kostenlose Testversion starten"
+      },
+      "team": {
+        "title": "Team",
+        "price": "850$/Monat",
+        "description": "Ideal für Teams und Agenturen",
+        "features": [
+          "2100 Videominuten/Monat",
+          "55 Minuten generatives Video/Monat",
+          "1 Sitz, 4,2TB Speicher",
+          "Unbegrenzte Exports",
+          "White-Label-Lösung",
+          "Dedizierter Account-Manager",
+          "SLA + Telefon-Support"
+        ],
+        "button": "Vertrieb kontaktieren"
+      }
+    },
+    "credits": {
+      "title": "Wie Credits funktionieren",
+      "description": [
+        "• 1 Credit = 1 Minute KI-generierter Videoinhalt",
+        "• Stock-Footage und Vorlagen verbrauchen keine Credits",
+        "• Ungenutzte Credits rollen bis zu 3 Monate über",
+        "• Mehr benötigt? Kaufen Sie jederzeit zusätzliche Credit-Pakete"
+      ]
+    }
+  },
+  "testimonials": {
+    "title": "Was unsere Kunden sagen",
+    "subtitle": "Schließen Sie sich Tausenden von Ersteller an, die ihre Videoproduktion transformiert haben",
+    "sarah": {
+      "quote": "ForgeVid hat unsere Videoproduktionszeit um 80% reduziert. Was früher Tage dauerte, dauert jetzt Minuten. Die KI versteht genau, was wir brauchen.",
+      "name": "Sarah Martinez",
+      "position": "Marketing-Direktorin, TechCorp"
+    },
+    "michael": {
+      "quote": "Die Zusammenarbeitsfunktionen sind revolutionär. Unser gesamtes Team kann gleichzeitig an Videos arbeiten. Es ist wie Google Docs für die Videoproduktion.",
+      "name": "Michael Johnson",
+      "position": "Kreativdirektor, StartupXYZ"
+    },
+    "emily": {
+      "quote": "Der ROI war sofort sichtbar. Wir erstellen 10x mehr Videoinhalte mit dem gleichen Budget. Die KI-Vorschläge sind unglaublich intelligent.",
+      "name": "Emily Chen",
+      "position": "CEO, MediaCo"
+    }
+  },
+  "faq": {
+    "title": "Häufig gestellte Fragen",
+    "subtitle": "Alles was Sie über ForgeVid wissen müssen",
+    "questions": {
+      "aiGeneration": {
+        "question": "Wie funktioniert die KI-Videogenerierung?",
+        "answer": "Unsere KI analysiert Ihren Textprompt und generiert automatisch professionelle Videos mit fortschrittlichen Machine-Learning-Modellen. Sie wählt passende Visuals aus, fügt Übergänge hinzu und generiert sogar Sprachausgaben."
+      },
+      "commercialUse": {
+        "question": "Kann ich die Videos kommerziell nutzen?",
+        "answer": "Ja! Alle mit ForgeVid erstellten Videos gehören Ihnen zur kommerziellen Nutzung. Wir gewähren vollständige kommerzielle Rechte für alle generierten Inhalte und Stock-Media in Ihrem Plan."
+      },
+      "satisfaction": {
+        "question": "Was passiert, wenn ich nicht zufrieden bin?",
+        "answer": "Wir bieten eine 14-tägige kostenlose Testversion und eine 30-tägige Geld-zurück-Garantie. Wenn Sie nicht vollständig zufrieden sind, erstatten wir Ihr Abonnement ohne Fragen zurück."
+      },
+      "security": {
+        "question": "Wie sicher ist mein Inhalt?",
+        "answer": "Ihr Inhalt ist verschlüsselt und sicher gespeichert. Wir sind SOC 2-zertifiziert und DSGVO-konform. Ihre Videos und Daten werden niemals ohne ausdrückliche Zustimmung zum Training unserer KI-Modelle verwendet."
+      }
+    }
+  },
+  "cta": {
+    "title": "Bereit, Ihre Videoproduktion zu transformieren?",
+    "subtitle": "Schließen Sie sich 50.000+ Ersteller an, die ihre Videoproduktion bereits mit ForgeVid revolutioniert haben",
+    "buttons": {
+      "startTrial": "Kostenlose Testversion starten",
+      "scheduleDemo": "Demo planen"
+    },
+    "guarantees": [
+      "14-tägige kostenlose Testversion",
+      "Keine Kreditkarte erforderlich",
+      "Jederzeit kündbar"
+    ]
+  },
+  "footer": {
+    "description": "Verwandeln Sie Ihre Ideen mit KI in professionelle Videos.",
+    "product": {
+      "title": "Produkt",
+      "links": {
+        "features": "Funktionen",
+        "templates": "Vorlagen",
+        "pricing": "Preise",
+        "api": "API"
+      }
+    },
+    "company": {
+      "title": "Unternehmen",
+      "links": {
+        "about": "Über uns",
+        "blog": "Blog",
+        "careers": "Karriere",
+        "contact": "Kontakt"
+      }
+    },
+    "legal": {
+      "title": "Rechtliches",
+      "links": {
+        "help": "Hilfe-Center",
+        "community": "Community",
+        "privacy": "Datenschutz",
+        "terms": "Bedingungen"
+      }
+    },
+    "copyright": "© 2025 ForgeVid. Alle Rechte vorbehalten. ForgeVid wird von Kryst Investments LLC besessen und betrieben."
+  },
+  "trust": {
+    "title": "Vertraut von führenden Unternehmen weltweit",
+    "companies": ["TechCorp", "StartupXYZ", "MediaCo", "CreativeInc"],
+    "certifications": {
+      "soc2": "SOC 2-zertifiziert",
+      "gdpr": "DSGVO-konform",
+      "uptime": "99,9% Verfügbarkeit"
+    }
+  },
+  "examples": {
+    "title": "Sehen Sie ForgeVid in Aktion",
+    "subtitle": "Echte Beispiele, die von unseren Benutzern in Minuten erstellt wurden, nicht Stunden",
+    "productLaunch": {
+      "title": "Produktlaunch-Video",
+      "description": "In 3 Minuten aus einem einfachen Textprompt erstellt",
+      "category": "Marketing"
+    },
+    "socialAd": {
+      "title": "Social-Media-Werbung",
+      "description": "KI-optimiert für maximales Engagement",
+      "category": "Social Media"
+    },
+    "training": {
+      "title": "Schulungs-Tutorial",
+      "description": "Professionelle Qualität mit automatisch generierten Untertiteln",
+      "category": "Bildung"
+    },
+    "viewMore": "Weitere Beispiele ansehen"
+  }
+}

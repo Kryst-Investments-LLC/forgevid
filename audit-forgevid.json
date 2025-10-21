@@ -1,0 +1,170 @@
+﻿{
+    "repoPath":  "C:\\Users\\yanp0\\OneDrive\\Documentos\\proyectos\\forgevid",
+    "timestamp":  "2025-10-14 20:06:07Z",
+    "checks":  [
+                   {
+                       "name":  "git_repo",
+                       "ok":  true,
+                       "note":  "Git repository or Git command available",
+                       "weight":  5
+                   },
+                   {
+                       "name":  "package_json",
+                       "ok":  true,
+                       "note":  "Found 127 dependencies",
+                       "weight":  10
+                   },
+                   {
+                       "name":  "nextjs_config",
+                       "ok":  true,
+                       "note":  "Next.js configuration file",
+                       "weight":  8
+                   },
+                   {
+                       "name":  "typescript_config",
+                       "ok":  true,
+                       "note":  "TypeScript configuration",
+                       "weight":  8
+                   },
+                   {
+                       "name":  "app_directory",
+                       "ok":  true,
+                       "note":  "Found app subdirs: api, dashboard, admin, auth",
+                       "weight":  10
+                   },
+                   {
+                       "name":  "components_directory",
+                       "ok":  true,
+                       "note":  "Components dir found, UI components: True",
+                       "weight":  8
+                   },
+                   {
+                       "name":  "lib_directory",
+                       "ok":  true,
+                       "note":  "Utility functions directory",
+                       "weight":  8
+                   },
+                   {
+                       "name":  "prisma_schema",
+                       "ok":  true,
+                       "note":  "Prisma schema with 23 models",
+                       "weight":  15
+                   },
+                   {
+                       "name":  "database_client",
+                       "ok":  true,
+                       "note":  "Database client configuration",
+                       "weight":  10
+                   },
+                   {
+                       "name":  "auth_provider",
+                       "ok":  true,
+                       "note":  "Authentication provider component",
+                       "weight":  12
+                   },
+                   {
+                       "name":  "protected_route",
+                       "ok":  true,
+                       "note":  "Protected route component",
+                       "weight":  10
+                   },
+                   {
+                       "name":  "middleware_security",
+                       "ok":  true,
+                       "note":  "Middleware with auth: False, rate limiting: True",
+                       "weight":  12
+                   },
+                   {
+                       "name":  "api_routes",
+                       "ok":  true,
+                       "note":  "API routes found: auth, videos, ai, media, templates, admin (6/6)",
+                       "weight":  15
+                   },
+                   {
+                       "name":  "ai_features",
+                       "ok":  true,
+                       "note":  "AI features found: 5/5",
+                       "weight":  12
+                   },
+                   {
+                       "name":  "video_editor",
+                       "ok":  true,
+                       "note":  "Video editor components: 3/3",
+                       "weight":  12
+                   },
+                   {
+                       "name":  "collaboration",
+                       "ok":  true,
+                       "note":  "Collaboration features: 3/3",
+                       "weight":  10
+                   },
+                   {
+                       "name":  "templates_media",
+                       "ok":  true,
+                       "note":  "Template/media components found: 2",
+                       "weight":  10
+                   },
+                   {
+                       "name":  "admin_dashboard",
+                       "ok":  true,
+                       "note":  "Admin dashboard with 12 files",
+                       "weight":  12
+                   },
+                   {
+                       "name":  "analytics_features",
+                       "ok":  true,
+                       "note":  "Analytics features: 2",
+                       "weight":  8
+                   },
+                   {
+                       "name":  "tests_and_coverage",
+                       "ok":  true,
+                       "note":  "Test config: jest.config.js, playwright.config.ts, tests, scripts: True",
+                       "weight":  15
+                   },
+                   {
+                       "name":  "documentation",
+                       "ok":  true,
+                       "note":  "Documentation files: 4/4",
+                       "weight":  10
+                   },
+                   {
+                       "name":  "security_compliance",
+                       "ok":  true,
+                       "note":  "Security/compliance files: 4/4",
+                       "weight":  12
+                   },
+                   {
+                       "name":  "infrastructure",
+                       "ok":  true,
+                       "note":  "Infrastructure files: infra\\main.tf, .github\\workflows, docker-compose.yml, Dockerfile",
+                       "weight":  8
+                   },
+                   {
+                       "name":  "env_configuration",
+                       "ok":  true,
+                       "note":  "Environment config files: .env.example",
+                       "weight":  8
+                   },
+                   {
+                       "name":  "code_quality",
+                       "ok":  false,
+                       "note":  "Code files: 271, TODOs: 13, Mocks: 532",
+                       "weight":  8
+                   },
+                   {
+                       "name":  "ai_service_keys_hint",
+                       "ok":  true,
+                       "note":  "AI service keys configured: OpenAI=True, ElevenLabs=True",
+                       "weight":  5
+                   }
+               ],
+    "score":  253,
+    "maxScore":  261,
+    "missing":  [
+                    "code_quality"
+                ],
+    "todo":  [
+
+             ]
+}
