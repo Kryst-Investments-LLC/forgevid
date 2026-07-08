@@ -12,6 +12,7 @@
  */
 
 import fs from 'fs';
+import { hasOpenAiKey, openAiApiKey } from './openai-key';
 import type * as fsTypes from 'fs';
 
 export interface CaptionCue {
@@ -45,7 +46,7 @@ export const CAPTION_PRESETS: Record<string, CaptionStyle> = {
  * Returns null when transcription is unavailable — never throws the job away.
  */
 export async function transcribeToCues(audioPath: string): Promise<CaptionCue[] | null> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!hasOpenAiKey()) {
     console.log('[Captions] No OPENAI_API_KEY — cannot transcribe, using scene captions');
     return null;
   }
@@ -53,7 +54,7 @@ export async function transcribeToCues(audioPath: string): Promise<CaptionCue[] 
 
   try {
     const { OpenAI } = await import('openai');
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({ apiKey: openAiApiKey() });
 
     const result: any = await openai.audio.transcriptions.create({
       file: fs.createReadStream(audioPath) as any,

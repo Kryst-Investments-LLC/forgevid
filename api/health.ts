@@ -1,3 +1,4 @@
+import { hasOpenAiKey } from '../lib/openai-key';
 // Health Check API Endpoint
 import { NextApiRequest, NextApiResponse } from 'next';
 
@@ -74,7 +75,7 @@ async function checkRedis(): Promise<boolean> {
 async function checkOpenAI(): Promise<boolean> {
   try {
     // Check if OpenAI API key is configured
-    if (!process.env.OPENAI_SECRET_KEY) {
+    if (!hasOpenAiKey()) {
       return false;
     }
     

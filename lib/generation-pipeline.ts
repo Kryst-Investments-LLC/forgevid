@@ -14,6 +14,7 @@
  */
 
 import { prisma } from './prisma';
+import { hasOpenAiKey, openAiApiKey } from './openai-key';
 import { aspectPreset, assembleVideo, generateVideoWithScenes } from './video-generator';
 import type { AspectRatio, ResolvedScene } from './video-generator';
 import { selectMusicPath } from './music-library';
@@ -134,10 +135,10 @@ export async function setStage(
  * missing key degrades rather than hard-fails at this step.
  */
 async function generateScript(input: GenerationInput): Promise<string> {
-  if (!process.env.OPENAI_API_KEY) return input.prompt;
+  if (!hasOpenAiKey()) return input.prompt;
 
   const { OpenAI } = await import('openai');
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const openai = new OpenAI({ apiKey: openAiApiKey() });
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4',

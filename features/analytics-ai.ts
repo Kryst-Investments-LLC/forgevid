@@ -1,9 +1,10 @@
 // Advanced Analytics & Insights - Production Implementation
 import OpenAI from 'openai';
+import { openAiApiKey } from '@/lib/openai-key';
 import { lazyClient } from '@/lib/lazy-client';
 
 const openai = lazyClient<OpenAI>(() => new OpenAI({
-  apiKey: process.env.OPENAI_SECRET_KEY,
+  apiKey: openAiApiKey(),
 }));
 
 export interface EngagementMetrics {

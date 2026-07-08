@@ -15,6 +15,7 @@ import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
+import { openAiApiKey } from './openai-key';
 import { uploadImage as uploadCloudinaryImage, uploadVideo as uploadCloudinaryVideo } from './cloudinary';
 import { selectMusicPath } from './music-library';
 import { DEFAULT_TTS_MODEL, resolveVoiceId } from './voice-catalog';
@@ -433,7 +434,7 @@ export async function planScenes(script: string, totalDuration: number): Promise
       }));
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({ apiKey: openAiApiKey() });
 
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
@@ -507,7 +508,7 @@ Be specific and focus on filmable, real-world visuals. Avoid abstract concepts.`
 async function extractKeywordsLegacy(prompt: string, style: string): Promise<string[]> {
   try {
     const { OpenAI: OpenAICtor } = await import('openai');
-    const openai = new OpenAICtor({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAICtor({ apiKey: openAiApiKey() });
 
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',

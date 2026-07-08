@@ -1,8 +1,9 @@
 import OpenAI from 'openai';
+import { openAiApiKey } from '../openai-key';
 import { lazyClient } from '../lazy-client';
 
 const openai = lazyClient<OpenAI>(() => new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: openAiApiKey(),
 }));
 
 export async function generateVideoScript(prompt: string): Promise<string> {

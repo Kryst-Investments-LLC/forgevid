@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { OpenAI } from 'openai';
+import { openAiApiKey } from '@/lib/openai-key';
 import { lazyClient } from '@/lib/lazy-client';
 import { securityConfigs } from '@/lib/api-security';
 import { enqueueGeneration } from '@/lib/video-queue';
@@ -18,7 +19,7 @@ const aiGenerationSchema = z.object({
 });
 
 const openai = lazyClient<OpenAI>(() => new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: openAiApiKey(),
 }));
 
 async function synthesizeWithElevenLabs(text: string, voiceId?: string) {

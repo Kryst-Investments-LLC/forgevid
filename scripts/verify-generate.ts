@@ -35,6 +35,7 @@ import {
 } from '../lib/transitions';
 import { resolveFfmpegPath, supportsFilter } from '../lib/ffmpeg-env';
 import { buildKenBurnsFilter, directionForScene } from '../lib/ken-burns';
+import { hasOpenAiKey, openAiApiKey } from '../lib/openai-key';
 
 const ffmpegPath: string = resolveFfmpegPath();
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-generate');
@@ -392,6 +393,32 @@ async function checkKenBurnsRender() {
   assert(fs.existsSync(photo), 'source photo not deleted by cleanup');
 }
 
+/**
+ * The codebase read two different OpenAI env vars. .env.example only listed
+ * OPENAI_API_KEY, so anyone following it got silently dead feature modules.
+ * Both names must work, with the canonical one winning.
+ */
+function checkOpenAiKeyAlias() {
+  console.log('\nChecking OpenAI env var alias...');
+  const api = process.env.OPENAI_API_KEY;
+  const secret = process.env.OPENAI_SECRET_KEY;
+
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_SECRET_KEY;
+  assert(!hasOpenAiKey(), 'no key set => hasOpenAiKey() is false');
+
+  process.env.OPENAI_SECRET_KEY = 'sk-legacy';
+  assert(openAiApiKey() === 'sk-legacy', 'legacy OPENAI_SECRET_KEY is still honoured');
+
+  process.env.OPENAI_API_KEY = 'sk-canonical';
+  assert(openAiApiKey() === 'sk-canonical', 'OPENAI_API_KEY wins when both are set');
+
+  if (api === undefined) delete process.env.OPENAI_API_KEY;
+  else process.env.OPENAI_API_KEY = api;
+  if (secret === undefined) delete process.env.OPENAI_SECRET_KEY;
+  else process.env.OPENAI_SECRET_KEY = secret;
+}
+
 /** The plan gate is what makes the watermark a business rule, not decoration. */
 function checkPlanGate() {
   console.log('\nChecking plan gate...');
@@ -482,6 +509,7 @@ async function main() {
   checkCaptionFormats();
   await checkCaptionEscaping(clipA);
   await checkMusicDucking(clipA);
+  checkOpenAiKeyAlias();
   checkPlanGate();
   await checkBrandingRender(clipA);
   checkTransitionMath();

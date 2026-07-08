@@ -1,4 +1,5 @@
 // Next.js 13+ Route Handler for /api/templates-media
+import { hasOpenAiKey } from '@/lib/openai-key';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
       case 'get_media':
         return await handleGetMedia(body);
       case 'generate_template':
-        if (!process.env.OPENAI_SECRET_KEY) {
+        if (!hasOpenAiKey()) {
           return NextResponse.json({ error: 'AI service unavailable' }, { status: 503 });
         }
         return await handleGenerateTemplate(body);

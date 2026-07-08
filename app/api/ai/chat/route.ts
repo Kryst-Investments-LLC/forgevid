@@ -3,10 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { OpenAI } from 'openai';
+import { openAiApiKey } from '@/lib/openai-key';
 import { lazyClient } from '@/lib/lazy-client';
 import { trackAIChatMessage } from '@/lib/posthog';
 
-const openai = lazyClient<OpenAI>(() => new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
+const openai = lazyClient<OpenAI>(() => new OpenAI({ apiKey: openAiApiKey() }));
 
 interface ChatMessage {
   role: 'user' | 'assistant';
