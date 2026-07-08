@@ -60,6 +60,7 @@ const generateVideoSchema = z.object({
   style: z.string().default('modern'),
   duration: z.number().int().min(3).max(600).default(60),
   addOns: z.array(z.string()).optional(),
+  aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
   enableEmotionAware: z.boolean().optional(),
 });
 
@@ -95,6 +96,8 @@ async function handleGenerateVideo(body: any, userId: string) {
             style: input.style,
             duration: input.duration,
             addOns: input.addOns ?? [],
+            // Re-render and scene-swap read this back so they keep the shape.
+            aspectRatio: input.aspectRatio,
             // enableEmotionAware is preserved for the pipeline to honor once
             // emotion-aware generation is folded into the worker (TODO Phase 5).
             enableEmotionAware: input.enableEmotionAware ?? false,

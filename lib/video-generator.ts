@@ -62,11 +62,37 @@ export interface VideoClip {
   type: 'video' | 'image';
 }
 
+/** Output shape. Drives both the render size and the stock-footage search. */
+export type AspectRatio = '16:9' | '9:16' | '1:1';
+
+export const ASPECT_PRESETS: Record<
+  AspectRatio,
+  { width: number; height: number; orientation: 'landscape' | 'portrait' | 'square' }
+> = {
+  '16:9': { width: 1920, height: 1080, orientation: 'landscape' },
+  '9:16': { width: 1080, height: 1920, orientation: 'portrait' },
+  '1:1': { width: 1080, height: 1080, orientation: 'square' },
+};
+
+export function aspectPreset(aspectRatio: AspectRatio = '16:9') {
+  return ASPECT_PRESETS[aspectRatio] ?? ASPECT_PRESETS['16:9'];
+}
+
+/** scale+pad filter that fits source footage into the target frame. */
+function fitFilter(aspectRatio: AspectRatio): string {
+  const { width, height } = aspectPreset(aspectRatio);
+  return (
+    `scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
+    `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1`
+  );
+}
+
 export interface GenerationOptions {
   prompt: string;
   style: string;
   duration: number;
   addOns: string[];
+  aspectRatio?: AspectRatio;
 }
 
 function sceneId(index: number): string {
@@ -193,7 +219,11 @@ export function isStockProviderConfigured(): boolean {
  * Search Pexels for stock video. Returns [] when unavailable — callers decide
  * how to fail. We never substitute unrelated sample footage.
  */
-export async function searchStockVideos(query: string, limit: number = 5): Promise<VideoClip[]> {
+export async function searchStockVideos(
+  query: string,
+  limit: number = 5,
+  orientation: 'landscape' | 'portrait' | 'square' = 'landscape',
+): Promise<VideoClip[]> {
   await initializeModules();
 
   const apiKey = process.env.PEXELS_API_KEY;
@@ -209,7 +239,9 @@ export async function searchStockVideos(query: string, limit: number = 5): Promi
       query,
       per_page: limit,
       size: 'large',
-      orientation: 'landscape',
+      // Matching orientation matters: landscape footage in a 9:16 frame is
+      // mostly letterbox.
+      orientation,
     });
 
     if ('videos' in response && response.videos) {
@@ -235,8 +267,15 @@ export async function searchStockVideos(query: string, limit: number = 5): Promi
   return [];
 }
 
-/** Download a remote file into public/temp. */
+/**
+ * Download a remote file into public/temp. A local path is returned as-is,
+ * which keeps assembleVideo testable without network access.
+ */
 async function downloadFile(url: string, filename: string): Promise<string> {
+  if (!/^https?:\/\//i.test(url)) {
+    if (!fs.existsSync(url)) throw new Error(`Scene source not found on disk: ${url}`);
+    return url;
+  }
   const tempDir = path.join(process.cwd(), 'public', 'temp');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
@@ -395,12 +434,14 @@ async function extractKeywordsLegacy(prompt: string, style: string): Promise<str
 export async function resolveSceneClip(
   scene: PlannedScene,
   exclude: Set<string> = new Set(),
+  aspectRatio: AspectRatio = '16:9',
 ): Promise<ResolvedScene | null> {
+  const { orientation } = aspectPreset(aspectRatio);
   const descriptionQuery = scene.description.split(/\s+/).slice(0, 6).join(' ');
   const queries = [descriptionQuery, ...scene.keywords].filter(Boolean);
 
   for (const query of queries) {
-    const candidates = await searchStockVideos(query, 5);
+    const candidates = await searchStockVideos(query, 5, orientation);
     const fresh = candidates.filter((c) => !exclude.has(c.url));
     if (fresh.length > 0) {
       const pick = fresh[0];
@@ -415,7 +456,10 @@ export async function resolveSceneClip(
  * configured or if a scene cannot be matched, rather than silently shipping
  * unrelated sample footage.
  */
-export async function resolveSceneClips(scenes: PlannedScene[]): Promise<ResolvedScene[]> {
+export async function resolveSceneClips(
+  scenes: PlannedScene[],
+  aspectRatio: AspectRatio = '16:9',
+): Promise<ResolvedScene[]> {
   if (!isStockProviderConfigured()) {
     throw new Error('No stock footage provider configured. Set PEXELS_API_KEY to generate videos.');
   }
@@ -424,7 +468,7 @@ export async function resolveSceneClips(scenes: PlannedScene[]): Promise<Resolve
   const resolved: ResolvedScene[] = [];
 
   for (const scene of scenes) {
-    const match = await resolveSceneClip(scene, used);
+    const match = await resolveSceneClip(scene, used, aspectRatio);
     if (!match) {
       throw new Error(`No stock footage found for scene ${scene.index + 1}: "${scene.description}"`);
     }
@@ -443,10 +487,13 @@ export async function resolveSceneClips(scenes: PlannedScene[]): Promise<Resolve
 export async function assembleVideo(
   scenes: ResolvedScene[],
   addOns: string[] = [],
+  aspectRatio: AspectRatio = '16:9',
 ): Promise<string> {
   await initializeModules();
 
   if (scenes.length === 0) throw new Error('Cannot assemble a video with no scenes');
+
+  const fit = fitFilter(aspectRatio);
 
   const tempDir = path.join(process.cwd(), 'public', 'temp');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
@@ -455,32 +502,38 @@ export async function assembleVideo(
   const wantSubtitles = addOns.length === 0 || addOns.includes('subtitles');
   const narration = scenes.map((s) => s.description).join('. ').replace(/\s+/g, ' ').trim();
 
-  const downloaded: string[] = [];
+  /** Source media handed to ffmpeg (may be a caller-owned local path). */
+  const sources: string[] = [];
+  /** Only files WE created — everything here gets deleted in `finally`. */
+  const tempFiles: string[] = [];
   const trimmed: string[] = [];
   let voiceoverPath: string | null = null;
   let fileListPath = '';
 
   try {
-    // Download footage and synthesize narration in parallel.
+    // Fetch footage and synthesize narration in parallel.
     const [clipPaths, vo] = await Promise.all([
       (async () => {
         const paths: string[] = [];
         for (const scene of scenes) {
           const filename = `scene_${Date.now()}_${scene.index}.mp4`;
-          paths.push(await downloadFile(scene.clipUrl, filename));
+          const resolved = await downloadFile(scene.clipUrl, filename);
+          paths.push(resolved);
+          // Only a downloaded copy is ours to delete; a local source is not.
+          if (resolved !== scene.clipUrl) tempFiles.push(resolved);
         }
         return paths;
       })(),
       wantVoiceover ? generateVoiceover(narration) : Promise.resolve(null),
     ]);
-    downloaded.push(...clipPaths);
+    sources.push(...clipPaths);
     voiceoverPath = vo;
 
     // Trim each clip to its scene duration.
     for (let i = 0; i < scenes.length; i++) {
       const trimmedPath = path.join(tempDir, `trimmed_${Date.now()}_${i}.mp4`);
       await new Promise<void>((resolve, reject) => {
-        ffmpeg(downloaded[i])
+        ffmpeg(sources[i])
           .setDuration(scenes[i].duration)
           .outputOptions([
             '-c:v libx264',
@@ -489,7 +542,7 @@ export async function assembleVideo(
             '-an',
             '-r 30',
             '-pix_fmt yuv420p',
-            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
+            '-vf', fit,
             '-movflags +faststart',
           ])
           .output(trimmedPath)
@@ -508,9 +561,8 @@ export async function assembleVideo(
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, outputFilename);
 
-    const scaleFilter = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2';
     const textFilter = wantSubtitles ? buildTextOverlayFilter(scenes) : '';
-    const videoFilter = textFilter ? `${scaleFilter},${textFilter}` : scaleFilter;
+    const videoFilter = textFilter ? `${fit},${textFilter}` : fit;
 
     await new Promise<void>((resolve, reject) => {
       const command = ffmpeg().input(fileListPath).inputOptions(['-f concat', '-safe 0']);
@@ -544,8 +596,8 @@ export async function assembleVideo(
 
     return await persistGeneratedVideo(outputPath, outputFilename);
   } finally {
-    // Always clean temp artifacts, even on failure.
-    for (const file of [...downloaded, ...trimmed, fileListPath, ...(voiceoverPath ? [voiceoverPath] : [])]) {
+    // Always clean temp artifacts, even on failure. Never the caller's sources.
+    for (const file of [...tempFiles, ...trimmed, fileListPath, ...(voiceoverPath ? [voiceoverPath] : [])]) {
       if (!file) continue;
       try {
         if (fs.existsSync(file)) fs.unlinkSync(file);
@@ -563,15 +615,17 @@ export async function assembleVideo(
 export async function generateVideoWithScenes(
   options: GenerationOptions,
 ): Promise<{ videoUrl: string; scenes: ResolvedScene[] }> {
-  const { prompt, duration, addOns } = options;
+  const { prompt, duration, addOns, aspectRatio = '16:9' } = options;
 
   const planned = await planScenes(prompt, duration);
   if (planned.length === 0) throw new Error('Failed to plan any scenes from the script');
 
-  const resolved = await resolveSceneClips(planned);
-  const videoUrl = await assembleVideo(resolved, addOns || []);
+  const resolved = await resolveSceneClips(planned, aspectRatio);
+  const videoUrl = await assembleVideo(resolved, addOns || [], aspectRatio);
 
-  console.log(`[Video Generator] ✅ Generated ${duration}s video with ${resolved.length} scenes`);
+  console.log(
+    `[Video Generator] ✅ Generated ${duration}s ${aspectRatio} video with ${resolved.length} scenes`,
+  );
   return { videoUrl, scenes: resolved };
 }
 

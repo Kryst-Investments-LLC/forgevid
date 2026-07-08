@@ -32,6 +32,12 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - Two real bugs that only running it could find: fluent-ffmpeg splits `outputOptions` entries on whitespace (broke `drawtext` values containing spaces — use `.complexFilter()`), and `-shortest` never terminates against `apad` from `filter_complex` (bound output with `-t` instead).
 - Known scope limits: audio embedded in video clips is dropped (audio comes from audio tracks); no multi-video-track layering; `drawtext` relies on a system font (may fail in a bare Linux container — bundle a font before deploying).
 
+**2026-07-08 — Phase 5a done: aspect ratio (16:9 / 9:16 / 1:1).**
+- Threaded through the whole path: render size *and* Pexels search orientation (landscape footage in a 9:16 frame is mostly letterbox). Persisted in `metadata.request.aspectRatio` so re-render and scene-swap keep the shape.
+- UI selector on the AI Studio page; `resolution` now written to the `Video` row.
+- `assembleVideo` accepts local source paths (not just URLs), so it is testable offline; it now deletes only files it created.
+- **Runtime verified**: `npm run verify:generate` renders all three ratios with ffmpeg and asserts 1920x1080 / 1080x1920 / 1080x1080 + durations, plus a guard that caller-owned sources survive cleanup.
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

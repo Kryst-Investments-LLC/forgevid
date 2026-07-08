@@ -20,6 +20,7 @@ export default function AIFeaturesPage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationProgress, setGenerationProgress] = useState(0)
   const [selectedStyle, setSelectedStyle] = useState("modern")
+  const [selectedAspectRatio, setSelectedAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9")
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null)
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
@@ -61,6 +62,7 @@ export default function AIFeaturesPage() {
           style: selectedStyle,
           duration: videoLength[0],
           addOns: selectedAddOns,
+          aspectRatio: selectedAspectRatio,
         }),
       })
 
@@ -224,6 +226,32 @@ export default function AIFeaturesPage() {
                           >
                             <div className="font-medium">{style.name}</div>
                             <div className="text-xs text-muted-foreground">{style.desc}</div>
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Aspect Ratio */}
+                    <div className="space-y-3">
+                      <label className="text-sm font-medium">Aspect Ratio</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: "16:9" as const, name: "16:9", desc: "YouTube" },
+                          { id: "9:16" as const, name: "9:16", desc: "TikTok / Reels" },
+                          { id: "1:1" as const, name: "1:1", desc: "Feed post" },
+                        ].map((ratio) => (
+                          <Button
+                            key={ratio.id}
+                            variant="outline"
+                            className={`h-auto p-3 flex flex-col items-start transition-all ${
+                              selectedAspectRatio === ratio.id
+                                ? 'border-cyan-400 bg-cyan-400/10 text-white'
+                                : 'border-gray-600 bg-gray-800/50 text-gray-300 hover:border-gray-500 hover:bg-gray-700/50'
+                            }`}
+                            onClick={() => setSelectedAspectRatio(ratio.id)}
+                          >
+                            <div className="font-medium">{ratio.name}</div>
+                            <div className="text-xs text-muted-foreground">{ratio.desc}</div>
                           </Button>
                         ))}
                       </div>

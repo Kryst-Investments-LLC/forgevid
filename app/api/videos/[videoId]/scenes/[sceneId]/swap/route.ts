@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
 import { requireVideoOwner } from '@/lib/video-access';
 import { loadScenes, saveScenes } from '@/lib/generation-pipeline';
 import { resolveSceneClip, isStockProviderConfigured } from '@/lib/video-generator';
+import type { AspectRatio } from '@/lib/video-generator';
 
 /**
  * Swap one scene's stock clip for a different match.
@@ -35,7 +37,20 @@ export async function POST(
   // Exclude every clip currently in use, including this scene's own.
   const exclude = new Set(scenes.map((s) => s.clipUrl).filter(Boolean));
 
-  const replacement = await resolveSceneClip(scenes[index], exclude);
+  // Search in the video's own orientation, otherwise a 9:16 video gets a
+  // landscape replacement clip.
+  const video = await prisma.video.findUnique({
+    where: { id: params.videoId },
+    select: { metadata: true },
+  });
+  let aspectRatio: AspectRatio = '16:9';
+  try {
+    aspectRatio = JSON.parse(video?.metadata ?? '{}')?.request?.aspectRatio ?? '16:9';
+  } catch {
+    // keep the default
+  }
+
+  const replacement = await resolveSceneClip(scenes[index], exclude, aspectRatio);
   if (!replacement) {
     return NextResponse.json(
       { error: 'No alternative footage found for this scene' },

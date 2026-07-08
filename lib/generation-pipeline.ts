@@ -14,14 +14,15 @@
  */
 
 import { prisma } from './prisma';
-import { assembleVideo, generateVideoWithScenes } from './video-generator';
-import type { ResolvedScene } from './video-generator';
+import { aspectPreset, assembleVideo, generateVideoWithScenes } from './video-generator';
+import type { AspectRatio, ResolvedScene } from './video-generator';
 
 export interface GenerationInput {
   prompt: string;
   style: string;
   duration: number;
   addOns?: string[];
+  aspectRatio?: AspectRatio;
   enableEmotionAware?: boolean;
 }
 
@@ -143,21 +144,25 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     // Handles scene decomposition, stock footage matching, voiceover, FFmpeg
     // assembly, and Cloudinary upload — and returns the scene structure so we
     // can persist it for scene-based editing / re-rendering.
+    const aspectRatio: AspectRatio = input.aspectRatio ?? '16:9';
     const { videoUrl, scenes } = await generateVideoWithScenes({
       prompt: script,
       style: input.style,
       duration: input.duration,
       addOns: input.addOns ?? [],
+      aspectRatio,
     });
 
     await setStage(videoId, 'uploading');
 
+    const { width, height } = aspectPreset(aspectRatio);
     await prisma.video.update({
       where: { id: videoId },
       data: {
         status: 'COMPLETED',
         url: videoUrl,
         fileUrl: videoUrl,
+        resolution: `${width}x${height}`,
       },
     });
     // Persist scenes alongside the script so the editor can load, swap, and
@@ -220,17 +225,26 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     throw new Error('This video has no persisted scenes to re-render');
   }
   const addOns: string[] = Array.isArray(meta.request?.addOns) ? meta.request.addOns : [];
+  // Reuse the ratio the video was generated with, or a re-render would silently
+  // turn a vertical video landscape.
+  const aspectRatio: AspectRatio = meta.request?.aspectRatio ?? '16:9';
 
   try {
     await prisma.video.update({ where: { id: videoId }, data: { status: 'PROCESSING' } });
     await setStage(videoId, 'assembling');
 
-    const videoUrl = await assembleVideo(scenes, addOns);
+    const videoUrl = await assembleVideo(scenes, addOns, aspectRatio);
 
     await setStage(videoId, 'uploading');
+    const { width, height } = aspectPreset(aspectRatio);
     await prisma.video.update({
       where: { id: videoId },
-      data: { status: 'COMPLETED', url: videoUrl, fileUrl: videoUrl },
+      data: {
+        status: 'COMPLETED',
+        url: videoUrl,
+        fileUrl: videoUrl,
+        resolution: `${width}x${height}`,
+      },
     });
     await writeProgress(videoId, {
       stage: 'done',
