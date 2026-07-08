@@ -13,7 +13,16 @@ import { execFileSync, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { assembleVideo, aspectPreset, type ResolvedScene, type AspectRatio } from '../lib/video-generator';
-import { cuesToSrt, cuesToVtt, wrapText, type CaptionCue } from '../lib/captions';
+import {
+  buildCaptionFilter,
+  cuesToSrt,
+  cuesToVtt,
+  escapeFontPath,
+  resolveCaptionFontFile,
+  wrapText,
+  __resetFontCache,
+  type CaptionCue,
+} from '../lib/captions';
 
 const ffmpegPath: string = require('@ffmpeg-installer/ffmpeg').path;
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-generate');
@@ -169,6 +178,35 @@ async function checkMusicDucking(clip: string) {
   fs.unlinkSync(outFile);
 }
 
+/**
+ * drawtext needs an explicit fontfile: a slim container (node:18-alpine) ships
+ * no fonts, so relying on fontconfig's "Sans" family fails in production.
+ */
+function checkFontResolution() {
+  console.log('\nChecking caption font resolution + filtergraph path escaping...');
+
+  const font = resolveCaptionFontFile();
+  assert(!!font && fs.existsSync(font), `a caption font was resolved (${font})`);
+
+  // `:` separates filter options, so a Windows drive letter must be escaped.
+  assert(
+    escapeFontPath('C:\\Windows\\Fonts\\arial.ttf') === 'C\\:/Windows/Fonts/arial.ttf',
+    'escapeFontPath: backslashes -> slashes, colon escaped',
+  );
+
+  const filter = buildCaptionFilter([{ start: 0, end: 1, text: 'hi' }]);
+  assert(filter.includes('fontfile='), 'buildCaptionFilter pins an explicit fontfile');
+
+  // An explicit CAPTION_FONT_FILE must win over the probed system paths.
+  const previous = process.env.CAPTION_FONT_FILE;
+  process.env.CAPTION_FONT_FILE = font!;
+  __resetFontCache();
+  assert(resolveCaptionFontFile() === font, 'CAPTION_FONT_FILE override is honoured');
+  if (previous === undefined) delete process.env.CAPTION_FONT_FILE;
+  else process.env.CAPTION_FONT_FILE = previous;
+  __resetFontCache();
+}
+
 /** SRT/VTT serialisation is pure — assert the exact bytes. */
 function checkCaptionFormats() {
   console.log('\nChecking SRT/VTT serialisation...');
@@ -226,6 +264,7 @@ async function main() {
   await renderAndCheck('9:16', [clipA, clipB]);
   await renderAndCheck('1:1', [clipA, clipB]);
   await checkTwoWordCaption(clipA);
+  checkFontResolution();
   checkCaptionFormats();
   await checkCaptionEscaping(clipA);
   await checkMusicDucking(clipA);

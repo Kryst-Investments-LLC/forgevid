@@ -23,6 +23,7 @@
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
+import { escapeDrawText, escapeFontPath, resolveCaptionFontFile } from './captions';
 
 let ffmpeg: any;
 
@@ -159,14 +160,6 @@ function runFfmpeg(build: (cmd: any) => any): Promise<void> {
   });
 }
 
-/** Escape a string for use inside an FFmpeg drawtext `text='...'` value. */
-function escapeDrawText(text: string): string {
-  return text
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, '')
-    .replace(/:/g, '\\:')
-    .replace(/%/g, '%%');
-}
 
 /** Normalize one video clip (trimmed) to a common intermediate. */
 async function renderVideoSegment(
@@ -301,13 +294,17 @@ export async function exportTimelineVideo(
     // drawtext value like "Hello World" would be torn in half there.
     const filters: string[] = [];
 
+    // Without a font, drawtext aborts the render — drop the overlays instead.
+    const font = resolveCaptionFontFile();
+    const fontOpt = font ? `fontfile='${escapeFontPath(font)}':` : null;
+
     // Always terminate the video chain in [vout] so the -map is uniform.
     const textChain =
-      textClips.length > 0
+      textClips.length > 0 && fontOpt
         ? textClips
             .map(
               (c) =>
-                `drawtext=text='${escapeDrawText(c.text!)}':fontsize=36:fontcolor=white:borderw=2:` +
+                `drawtext=${fontOpt}text='${escapeDrawText(c.text!)}':fontsize=36:fontcolor=white:borderw=2:` +
                 `bordercolor=black:x=(w-text_w)/2:y=h-80:` +
                 `enable='between(t\\,${c.startTime}\\,${c.startTime + c.duration})'`,
             )

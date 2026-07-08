@@ -17,7 +17,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Install FFmpeg for video processing
-RUN apk add --no-cache ffmpeg
+# ffmpeg's drawtext needs a real font file. Alpine ships none, and it renamed
+# ttf-dejavu -> font-dejavu across releases, so accept either.
+RUN apk add --no-cache ffmpeg fontconfig \
+    && (apk add --no-cache font-dejavu || apk add --no-cache ttf-dejavu)
 
 # Build the application
 ENV NEXT_TELEMETRY_DISABLED 1
@@ -40,7 +43,10 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
 # Install FFmpeg for video processing
-RUN apk add --no-cache ffmpeg
+# ffmpeg's drawtext needs a real font file. Alpine ships none, and it renamed
+# ttf-dejavu -> font-dejavu across releases, so accept either.
+RUN apk add --no-cache ffmpeg fontconfig \
+    && (apk add --no-cache font-dejavu || apk add --no-cache ttf-dejavu)
 
 # Create uploads directory
 RUN mkdir -p /app/uploads && chown nextjs:nodejs /app/uploads

@@ -70,6 +70,13 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
   - ⚠ **The migration has never been applied** — there is no database here. `prisma validate` passes and the SQL is two `ALTER TYPE ... ADD VALUE IF NOT EXISTS` statements, but run `npx prisma migrate deploy` against a real DB before trusting it. Note `ALTER TYPE ... ADD VALUE` requires **PostgreSQL 12+** to run inside a transaction.
 - Fixed a Prisma major-version mismatch: CLI was 5.x while `@prisma/client` was 6.x.
 
+**2026-07-08 — Linux deploy blocker fixed: caption font.**
+- `drawtext` with no `fontfile` relies on fontconfig finding a "Sans" family. `node:18-alpine` ships **no fonts**, so every captioned render would have died in production with "Cannot find a valid font".
+- `resolveCaptionFontFile()` now **searches** `/usr/share/fonts`, `/usr/local/share/fonts`, macOS and Windows font dirs (2 levels deep) for a preferred face, rather than hardcoding a path — Alpine moved DejaVu's install location between releases. `CAPTION_FONT_FILE` overrides. No font ⇒ captions are dropped with a clear error, the video still renders.
+- `escapeFontPath()`: a filtergraph uses `:` to separate options, so a Windows `C:\...` path must become `C\:/...`. Verified by rendering with an explicit `fontfile`.
+- Dockerfile installs `fontconfig` + `font-dejavu` (falling back to `ttf-dejavu`, since Alpine renamed it). ⚠ **The Docker build is unverified** — no Docker daemon here.
+- `lib/video-export.ts` reuses the shared escaper/font resolver (it had a duplicate escaper with the same bug).
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

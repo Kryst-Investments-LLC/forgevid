@@ -12,6 +12,7 @@
  */
 
 import fs from 'fs';
+import type * as fsTypes from 'fs';
 
 export interface CaptionCue {
   /** Seconds from the start of the video. */
@@ -121,6 +122,98 @@ export function escapeDrawText(text: string): string {
     .replace(/:/g, '\\:');
 }
 
+/**
+ * Where to look for a caption font, in order.
+ *
+ * drawtext without an explicit `fontfile` relies on fontconfig finding a
+ * "Sans" family. That works on a desktop but a slim container (our Dockerfile
+ * is node:18-alpine) ships no fonts at all, so rendering would die with
+ * "Cannot find a valid font". Pin an explicit file instead.
+ */
+/** Directories distros keep fonts in. Searched, not assumed. */
+const FONT_DIRS = [
+  '/usr/share/fonts',
+  '/usr/local/share/fonts',
+  '/System/Library/Fonts',
+  '/Library/Fonts',
+  'C:/Windows/Fonts',
+];
+
+/** Preferred faces, best first. Anything else is a last resort. */
+const PREFERRED = [
+  'dejavusans.ttf',
+  'liberationsans-regular.ttf',
+  'notosans-regular.ttf',
+  'arial.ttf',
+  'freesans.ttf',
+];
+
+/** Shallow-recursive .ttf search — distros nest fonts one or two levels deep. */
+function findTtfFiles(dir: string, depth = 2): string[] {
+  if (depth < 0 || !fs.existsSync(dir)) return [];
+  let found: string[] = [];
+  let entries: fsTypes.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  for (const entry of entries) {
+    const full = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) found = found.concat(findTtfFiles(full, depth - 1));
+    else if (/\.ttf$/i.test(entry.name)) found.push(full);
+  }
+  return found;
+}
+
+let cachedFont: string | null | undefined;
+
+/**
+ * Locate a usable caption font. Order: CAPTION_FONT_FILE, then a preferred face
+ * found under any known font dir, then any .ttf at all. Cached.
+ *
+ * Searching beats hardcoding paths: Alpine, Debian and macOS all nest fonts
+ * differently, and Alpine has moved the DejaVu package's install location.
+ * Env is read lazily — the worker loads .env after this module is imported.
+ */
+export function resolveCaptionFontFile(): string | null {
+  if (cachedFont !== undefined) return cachedFont;
+
+  const explicit = process.env.CAPTION_FONT_FILE;
+  if (explicit && fs.existsSync(explicit)) {
+    cachedFont = explicit;
+    return cachedFont;
+  }
+
+  const all = FONT_DIRS.flatMap((dir) => findTtfFiles(dir));
+  const byPreference = PREFERRED.map((name) =>
+    all.find((p) => p.toLowerCase().endsWith(`/${name}`)),
+  ).find(Boolean);
+
+  cachedFont = byPreference ?? all[0] ?? null;
+
+  if (!cachedFont) {
+    console.error(
+      '[Captions] No caption font found — captions will be omitted. ' +
+        'Install one (alpine: `apk add font-dejavu`) or set CAPTION_FONT_FILE.',
+    );
+  }
+  return cachedFont;
+}
+
+/** Test hook: drop the cache so a changed CAPTION_FONT_FILE is picked up. */
+export function __resetFontCache() {
+  cachedFont = undefined;
+}
+
+/**
+ * A path inside a filtergraph: `:` separates filter options, and a Windows
+ * path is full of them (`C:\...`). Forward slashes + escaped colons, quoted.
+ */
+export function escapeFontPath(fontPath: string): string {
+  return fontPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+}
+
 function fmtTime(seconds: number, sep: ',' | '.'): string {
   const clamped = Math.max(0, seconds);
   const h = Math.floor(clamped / 3600);
@@ -162,6 +255,12 @@ export function buildCaptionFilter(cues: CaptionCue[], style: CaptionStyle = {})
     ...style,
   };
 
+  // Without a font, drawtext aborts the whole render. Drop the captions instead
+  // of losing the video; resolveCaptionFontFile() has already logged how to fix it.
+  const font = resolveCaptionFontFile();
+  if (!font) return '';
+  const fontOpt = `fontfile='${escapeFontPath(font)}':`;
+
   const filters: string[] = [];
 
   for (const cue of cues) {
@@ -170,7 +269,7 @@ export function buildCaptionFilter(cues: CaptionCue[], style: CaptionStyle = {})
       // Stack lines upward from the bottom margin.
       const yOffset = marginBottom + (lines.length - 1 - lineIndex) * (fontSize + 8);
       filters.push(
-        `drawtext=text='${escapeDrawText(line)}':fontsize=${fontSize}:fontcolor=white:` +
+        `drawtext=${fontOpt}text='${escapeDrawText(line)}':fontsize=${fontSize}:fontcolor=white:` +
           `borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-${yOffset}:` +
           `enable='between(t\\,${cue.start.toFixed(3)}\\,${cue.end.toFixed(3)})'`,
       );
