@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireVideoOwner } from '@/lib/video-access';
 import { enqueueRerender } from '@/lib/video-queue';
 import { loadScenes, rerenderVideo, setStage } from '@/lib/generation-pipeline';
+import { withRenderSlot } from '@/lib/render-semaphore';
 
 /**
  * Re-encode a video from its (possibly edited) persisted scenes.
@@ -27,8 +28,8 @@ export async function POST(_req: NextRequest, { params }: { params: { videoId: s
 
   const jobId = await enqueueRerender({ videoId: params.videoId, userId: access.userId });
   if (!jobId) {
-    // No Redis configured: run inline without blocking the HTTP response.
-    void rerenderVideo(params.videoId).catch((err) => {
+    // No Redis: run inline, throttled — re-renders are full ffmpeg chains too.
+    void withRenderSlot(() => rerenderVideo(params.videoId)).catch((err) => {
       console.error(
         '[rerender] inline re-render failed:',
         err instanceof Error ? err.message : err,

@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { securityConfigs } from '@/lib/api-security';
 import { exportTimelineVideo, type ExportTrack } from '@/lib/video-export';
+import { resolveBranding } from '@/lib/brand-kit';
 import { uploadVideo } from '@/lib/cloudinary';
 import { sendExportCompleteEmail } from '@/lib/email';
 import crypto from 'crypto';
@@ -103,12 +104,14 @@ async function handlePost(request: NextRequest) {
 
     // Create export record
     const exportId = `export-${crypto.randomUUID()}`;
-    
-    // Define export settings
-    const exportSettings = settings || {
-      format: 'mp4' as const,
-      quality: 'hd' as const,
-      fps: 30,
+
+    // Watermark is resolved from the OWNER's plan, server-side. Whatever the
+    // client sent for `watermarkText` is discarded — otherwise the editor
+    // export is a clean-video loophole around the generation plan gate.
+    const branding = await resolveBranding(video.userId);
+    const exportSettings = {
+      ...(settings || { format: 'mp4' as const, quality: 'hd' as const, fps: 30 }),
+      watermarkText: branding.watermarkText,
     };
 
     // Create output directory if it doesn't exist

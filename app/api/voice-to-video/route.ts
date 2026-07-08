@@ -8,6 +8,8 @@ import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
 import { DEFAULT_TRANSITION } from '@/lib/transitions';
 import { resolveVoiceId } from '@/lib/voice-catalog';
+import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
+import { withRenderSlot } from '@/lib/render-semaphore';
 import {
   VOICE_STYLE_MAP,
   promptFromTranscript,
@@ -76,6 +78,19 @@ export async function POST(request: NextRequest) {
         : 'professional';
   const duration = opts.duration ?? 30;
 
+  // Same budget as any other generation — voice input isn't a quota bypass.
+  const quota = await checkGenerationQuota(session.user.id, duration);
+  if (!quota.allowed) {
+    return NextResponse.json(
+      {
+        error: quota.reason,
+        quota: { used: quota.used, limit: quota.limit, plan: quota.plan },
+        upgradeRequired: quota.upgradeRequired ?? false,
+      },
+      { status: 429 },
+    );
+  }
+
   try {
     // Fail visibly: never invent a transcript.
     const transcript = await transcribeVoiceRecording(audio);
@@ -119,9 +134,11 @@ export async function POST(request: NextRequest) {
       select: { id: true },
     });
 
+    await recordGenerationUsage(session.user.id, video.id, duration);
+
     const jobId = await enqueueGeneration({ videoId: video.id, userId: session.user.id, input });
     if (!jobId) {
-      void runGeneration(video.id, input).catch((err) => {
+      void withRenderSlot(() => runGeneration(video.id, input)).catch((err) => {
         console.error('[voice-to-video] inline generation failed:', err?.message ?? err);
       });
     }

@@ -20,6 +20,7 @@ import type { AspectRatio, ResolvedScene } from './video-generator';
 import { selectMusicPath } from './music-library';
 import { freeBranding, resolveBranding } from './brand-kit';
 import { resolveUserMedia } from './user-media';
+import { estimateGenerationCost, recordGenerationCost } from './cost-ledger';
 import { DEFAULT_TRANSITION, isTransitionType, type TransitionConfig } from './transitions';
 
 /** Rebuild a transition from persisted metadata, rejecting unknown types. */
@@ -151,8 +152,10 @@ export async function setStage(
  * inline pipeline. Falls back to the raw prompt if the API is unavailable so a
  * missing key degrades rather than hard-fails at this step.
  */
-async function generateScript(input: GenerationInput): Promise<string> {
-  if (!hasOpenAiKey()) return input.prompt;
+async function generateScript(
+  input: GenerationInput,
+): Promise<{ script: string; tokensUsed: number }> {
+  if (!hasOpenAiKey()) return { script: input.prompt, tokensUsed: 0 };
 
   const { OpenAI } = await import('openai');
   const openai = new OpenAI({ apiKey: openAiApiKey() });
@@ -174,7 +177,10 @@ async function generateScript(input: GenerationInput): Promise<string> {
     temperature: 0.7,
   });
 
-  return response.choices[0]?.message?.content?.trim() || input.prompt;
+  return {
+    script: response.choices[0]?.message?.content?.trim() || input.prompt,
+    tokensUsed: response.usage?.total_tokens ?? 0,
+  };
 }
 
 /**
@@ -182,13 +188,41 @@ async function generateScript(input: GenerationInput): Promise<string> {
  * Throws on failure (after marking the row FAILED) so the queue can record it.
  */
 export async function runGeneration(videoId: string, input: GenerationInput): Promise<string> {
+  // Owner is needed for branding, user media AND the cost ledger — fetch once.
+  const owner = await prisma.video.findUnique({
+    where: { id: videoId },
+    select: { userId: true },
+  });
+  let scriptTokens = 0;
+  let ledgerScenes: ResolvedScene[] = [];
+
+  const settle = async (succeeded: boolean, prompt: string) => {
+    if (!owner) return;
+    const narrationChars = ledgerScenes.reduce((n, s) => n + s.description.length, 0);
+    const renderSeconds = ledgerScenes.reduce((n, s) => n + s.duration, 0);
+    await recordGenerationCost({
+      userId: owner.userId,
+      videoId,
+      prompt,
+      succeeded,
+      breakdown: estimateGenerationCost({
+        gptTokens: scriptTokens,
+        // TTS synthesizes the narration; Whisper transcribes roughly its length.
+        ttsChars: narrationChars,
+        whisperSeconds: renderSeconds,
+        renderSeconds,
+      }),
+    });
+  };
+
   try {
     // The row is created QUEUED; it becomes PROCESSING once work actually starts.
     await prisma.video
       .update({ where: { id: videoId }, data: { status: 'PROCESSING' } })
       .catch(() => {});
     await setStage(videoId, 'script');
-    const script = await generateScript(input);
+    const { script, tokensUsed } = await generateScript(input);
+    scriptTokens = tokensUsed;
 
     await setStage(videoId, 'assembling');
     // Handles scene decomposition, stock footage matching, voiceover, FFmpeg
@@ -208,6 +242,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       transition: input.transition,
       userMedia: await userMediaForVideo(videoId, input.mediaAssetIds),
     });
+    ledgerScenes = scenes;
 
     await setStage(videoId, 'uploading');
 
@@ -231,6 +266,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       { script, scenes, captions: cues },
     );
 
+    await settle(true, input.prompt);
     return videoUrl;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Video generation failed';
@@ -240,6 +276,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       .update({ where: { id: videoId }, data: { status: 'FAILED' } })
       .catch(() => {});
     await writeProgress(videoId, { stage: 'failed', error: message }).catch(() => {});
+    await settle(false, input.prompt).catch(() => {});
     throw error;
   }
 }

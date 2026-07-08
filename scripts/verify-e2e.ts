@@ -20,6 +20,7 @@ import { prisma } from '../lib/prisma';
 import { resolveFfmpegPath } from '../lib/ffmpeg-env';
 import { runGeneration, rerenderVideo, loadScenes, saveScenes } from '../lib/generation-pipeline';
 import { resolveBranding } from '../lib/brand-kit';
+import { checkGenerationQuota, recordGenerationUsage } from '../lib/quota';
 import { WATERMARK_TEXT } from '../lib/plan';
 import type { ResolvedScene } from '../lib/video-generator';
 
@@ -181,6 +182,39 @@ async function main() {
     const lapsed = await resolveBranding(userId);
     assert(lapsed.plan === 'free' && lapsed.watermarkText === WATERMARK_TEXT, 'a PAST_DUE plan is treated as free');
 
+    // ---- 4b. Quotas against real usage rows ----------------------------------
+    console.log('\n4b. Checking generation quotas...');
+    // Step 4 left the subscription PAST_DUE, so the user is effectively free.
+    const overLong = await checkGenerationQuota(userId, 120);
+    assert(!overLong.allowed, 'free plan rejects a 120s video (cap is 60s)');
+    assert(!!overLong.upgradeRequired, 'the rejection carries upgrade pressure');
+
+    const fresh = await checkGenerationQuota(userId, 30);
+    assert(fresh.allowed && fresh.limit === 3, 'a 30s video is allowed (0/3 used this month)');
+
+    await recordGenerationUsage(userId, video.id, 30);
+    await recordGenerationUsage(userId, video.id, 30);
+    await recordGenerationUsage(userId, video.id, 30);
+    const exhausted = await checkGenerationQuota(userId, 30);
+    assert(!exhausted.allowed && exhausted.used === 3, 'the 4th generation this month is rejected');
+    assert(/Monthly limit/.test(exhausted.reason ?? ''), 'the rejection names the limit');
+
+    // An ACTIVE pro plan lifts both the count and the duration cap.
+    await prisma.subscription.updateMany({ where: { userId }, data: { status: 'ACTIVE' } });
+    const proVerdict = await checkGenerationQuota(userId, 300);
+    assert(proVerdict.allowed && proVerdict.limit === 100, 'pro allows 300s and 100/month');
+    await prisma.subscription.updateMany({ where: { userId }, data: { status: 'PAST_DUE' } });
+
+    // ---- 4c. Cost ledger -------------------------------------------------------
+    console.log('\n4c. Checking the cost ledger...');
+    const ledger = await prisma.aIGeneration.findMany({
+      where: { userId, type: 'VIDEO_GENERATION' },
+      orderBy: { createdAt: 'asc' },
+    });
+    assert(ledger.length >= 1, 'the generation wrote an AIGeneration cost row');
+    assert(Number(ledger[0].cost) > 0, `estimated cost recorded (${ledger[0].cost} USD)`);
+    assert(ledger[0].result === video.id, 'cost row points back at the video');
+
     // ---- 5. Fail visibly -----------------------------------------------------
     console.log('\n5. A generation that cannot find footage must fail visibly...');
     const pexels = process.env.PEXELS_API_KEY;
@@ -216,6 +250,8 @@ async function main() {
     if (userId) {
       // subscriptions_userId_fkey is RESTRICT (not CASCADE), so children must go
       // first or the user delete is rejected.
+      await prisma.usageRecord.deleteMany({ where: { userId } }).catch(() => {});
+      await prisma.aIGeneration.deleteMany({ where: { userId } }).catch(() => {});
       await prisma.subscription.deleteMany({ where: { userId } }).catch(() => {});
       await prisma.brandKit.deleteMany({ where: { userId } }).catch(() => {});
       await prisma.mediaAsset.deleteMany({ where: { uploadedById: userId } }).catch(() => {});

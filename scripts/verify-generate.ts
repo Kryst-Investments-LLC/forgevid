@@ -43,6 +43,7 @@ import { resolveFfmpegPath, supportsFilter } from '../lib/ffmpeg-env';
 import { buildKenBurnsFilter, directionForScene } from '../lib/ken-burns';
 import { hasOpenAiKey, openAiApiKey } from '../lib/openai-key';
 import { applySceneOps, describeScenesForModel, sceneOpsSchema } from '../lib/scene-ops';
+import { withRenderSlot, activeRenders, queuedRenders } from '../lib/render-semaphore';
 
 const ffmpegPath: string = resolveFfmpegPath();
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-generate');
@@ -530,6 +531,39 @@ function checkSceneOps(clip: string) {
   assert(digest.includes('scene-2 (scene 2)'), 'digest labels scenes the way the prompt expects');
 }
 
+/**
+ * Inline renders must be throttled: with no Redis, N clicks used to fork N
+ * parallel multi-minute ffmpeg chains.
+ */
+async function checkRenderSemaphore() {
+  console.log('\nChecking the inline render semaphore...');
+  const prev = process.env.RENDER_CONCURRENCY;
+  process.env.RENDER_CONCURRENCY = '2';
+
+  let maxActive = 0;
+  const order: number[] = [];
+  const job = (i: number) =>
+    withRenderSlot(async () => {
+      order.push(i);
+      maxActive = Math.max(maxActive, activeRenders());
+      await new Promise((r) => setTimeout(r, 60));
+    });
+
+  await Promise.all([job(1), job(2), job(3), job(4), job(5)]);
+  assert(maxActive === 2, `never more than 2 concurrent renders (saw ${maxActive})`);
+  assert(activeRenders() === 0 && queuedRenders() === 0, 'all slots released afterwards');
+  assert(order.join(',') === '1,2,3,4,5', 'FIFO — early requests are not starved');
+
+  // A crashing job must still release its slot.
+  await withRenderSlot(async () => {
+    throw new Error('boom');
+  }).catch(() => {});
+  assert(activeRenders() === 0, 'a failed render releases its slot');
+
+  if (prev === undefined) delete process.env.RENDER_CONCURRENCY;
+  else process.env.RENDER_CONCURRENCY = prev;
+}
+
 /** The plan gate is what makes the watermark a business rule, not decoration. */
 function checkPlanGate() {
   console.log('\nChecking plan gate...');
@@ -621,6 +655,7 @@ async function main() {
   await checkCaptionEscaping(clipA);
   await checkMusicDucking(clipA);
   checkOpenAiKeyAlias();
+  await checkRenderSemaphore();
   await checkUserMedia(clipA, clipB);
   checkSceneOps(clipA);
   checkPlanGate();

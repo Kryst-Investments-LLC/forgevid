@@ -90,6 +90,17 @@ async function getRevenueAnalytics(days: number) {
     }),
   ])
 
+  // AI unit-cost side of the ledger: what this month's generations cost US.
+  // Revenue without this number cannot tell you whether a plan is profitable.
+  const [aiCostMonth, aiCostAll] = await Promise.all([
+    prisma.aIGeneration.aggregate({
+      _sum: { cost: true },
+      _count: { id: true },
+      where: { createdAt: { gte: startDate, lte: endDate } },
+    }),
+    prisma.aIGeneration.aggregate({ _sum: { cost: true }, _count: { id: true } }),
+  ])
+
   // Calculate MRR from groupBy instead of fetching all active subs
   const mrr = planBreakdown.reduce((total, plan) => {
     return total + (planPricing[plan.plan] || 0) * plan._count.plan
@@ -149,6 +160,14 @@ async function getRevenueAnalytics(days: number) {
     recentTransactions,
     totalUsers,
     activeSubscriptions: totalActiveUsers,
-    period: days
+    period: days,
+    // Unit economics: estimated AI/render spend vs the MRR above.
+    aiCosts: {
+      periodUsd: Number(aiCostMonth._sum.cost ?? 0),
+      periodGenerations: aiCostMonth._count.id,
+      allTimeUsd: Number(aiCostAll._sum.cost ?? 0),
+      allTimeGenerations: aiCostAll._count.id,
+      grossMarginUsd: Math.round((mrr - Number(aiCostMonth._sum.cost ?? 0)) * 100) / 100,
+    },
   }
 }

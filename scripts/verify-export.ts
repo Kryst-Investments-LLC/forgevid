@@ -81,8 +81,14 @@ async function main() {
     },
   ];
 
-  console.log('2. Rendering timeline (gap filler + audio mix + text overlay)...');
-  await exportTimelineVideo(tracks, { format: 'mp4', quality: 'sd', fps: 24 }, output);
+  console.log('2. Rendering timeline (gap filler + audio mix + text overlay + free-plan watermark)...');
+  // watermarkText exercises the plan-gated branding path that closed the
+  // "editor export renders clean video for free users" loophole.
+  await exportTimelineVideo(
+    tracks,
+    { format: 'mp4', quality: 'sd', fps: 24, watermarkText: 'Made with ForgeVid' },
+    output,
+  );
 
   console.log('3. Asserting output...');
   assert(fs.existsSync(output), 'output file exists');
@@ -95,6 +101,15 @@ async function main() {
   assert(/Stream .*Video: h264/.test(info), 'has H.264 video stream');
   assert(/Stream .*Audio: aac/.test(info), 'has AAC audio stream (audio track was mixed in)');
   assert(/1280x720/.test(info), 'scaled to sd 1280x720');
+
+  // The watermark must add pixels: render the same timeline WITHOUT it and the
+  // two outputs must differ. (Duration/codec alone can't tell them apart.)
+  console.log('4. Watermark actually reaches the pixels...');
+  const clean = path.join(workDir, 'out-clean.mp4');
+  await exportTimelineVideo(tracks, { format: 'mp4', quality: 'sd', fps: 24 }, clean);
+  assert(fs.existsSync(clean), 'clean render produced output');
+  const differs = !fs.readFileSync(output).equals(fs.readFileSync(clean));
+  assert(differs, 'watermarked and clean exports differ — the watermark is burned in');
 
   console.log('\nPASS — timeline renderer produced a real composited video.');
 }

@@ -118,6 +118,12 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - Teardown note: `subscriptions_userId_fkey` is `RESTRICT`, not `CASCADE`, so deleting a user requires deleting its subscriptions first.
 - Still unverified: OpenAI/ElevenLabs/Pexels/Cloudinary calls (no keys), the Docker build (no daemon), and the HTTP routes themselves (need a NextAuth session).
 
+**2026-07-08 — Tier 1 revenue hardening (pre-launch blockers).**
+- **Editor export watermark hole closed**: `exportTimelineVideo` takes `watermarkText`, and `/api/editor/export` resolves it from the **owner's plan server-side** (client input for it is discarded). Verified by rendering the same timeline with and without the watermark and asserting the outputs differ at the byte level.
+- **Quotas** (`lib/quota.ts`): free 3 videos/mo & 60s max, starter 20/180s, pro 100/600s. Enforced in `/api/ai` and `/api/voice-to-video` (voice input isn't a bypass); usage recorded on job *acceptance* so requeue-while-running can't dodge it; fails closed on lookup errors. Rejections name the limit and carry `upgradeRequired` — that's the Stripe upgrade pressure. Verified against real `UsageRecord` rows (duration cap, 4th-video rejection, pro lift).
+- **Render semaphore** (`lib/render-semaphore.ts`, `RENDER_CONCURRENCY`, default 2): throttles the no-Redis inline path on all three routes (generate, re-render, voice-to-video). Verified: 5 concurrent jobs never exceed 2 active, FIFO order, failed job releases its slot.
+- **Cost ledger** (`lib/cost-ledger.ts`): every generation writes an `AIGeneration` row with an estimated cost (GPT tokens from the real response, TTS chars, Whisper minutes, render minutes; rates in `RATES`). Recorded in the *pipeline*, so worker and inline both book. Admin revenue now returns `aiCosts` (period/all-time spend, generation counts, gross margin vs MRR). Verified: the e2e generation booked $0.006917 for a 6s render.
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

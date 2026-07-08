@@ -23,7 +23,12 @@
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
-import { escapeDrawText, escapeFontPath, resolveCaptionFontFile } from './captions';
+import {
+  buildWatermarkFilter,
+  escapeDrawText,
+  escapeFontPath,
+  resolveCaptionFontFile,
+} from './captions';
 import { resolveFfmpegPath } from './ffmpeg-env';
 
 let ffmpeg: any;
@@ -42,6 +47,12 @@ export interface ExportSettings {
   format: 'mp4' | 'mov' | 'webm';
   quality: 'sd' | 'hd' | '4k';
   fps: number;
+  /**
+   * Burned-in watermark for free plans. Resolved SERVER-SIDE from the video
+   * owner's plan — without this, the editor export was a clean-video loophole
+   * around the generation path's plan gate.
+   */
+  watermarkText?: string | null;
   preset?:
     | 'social-youtube'
     | 'social-tiktok'
@@ -300,17 +311,25 @@ export async function exportTimelineVideo(
     const fontOpt = font ? `fontfile='${escapeFontPath(font)}':` : null;
 
     // Always terminate the video chain in [vout] so the -map is uniform.
-    const textChain =
-      textClips.length > 0 && fontOpt
-        ? textClips
-            .map(
-              (c) =>
-                `drawtext=${fontOpt}text='${escapeDrawText(c.text!)}':fontsize=36:fontcolor=white:borderw=2:` +
-                `bordercolor=black:x=(w-text_w)/2:y=h-80:` +
-                `enable='between(t\\,${c.startTime}\\,${c.startTime + c.duration})'`,
-            )
-            .join(',')
-        : 'null';
+    const overlayParts: string[] = [];
+    if (textClips.length > 0 && fontOpt) {
+      overlayParts.push(
+        textClips
+          .map(
+            (c) =>
+              `drawtext=${fontOpt}text='${escapeDrawText(c.text!)}':fontsize=36:fontcolor=white:borderw=2:` +
+              `bordercolor=black:x=(w-text_w)/2:y=h-80:` +
+              `enable='between(t\\,${c.startTime}\\,${c.startTime + c.duration})'`,
+          )
+          .join(','),
+      );
+    }
+    // Free-plan watermark — same builder the generation path uses.
+    if (settings.watermarkText) {
+      const wm = buildWatermarkFilter(settings.watermarkText);
+      if (wm) overlayParts.push(wm);
+    }
+    const textChain = overlayParts.length > 0 ? overlayParts.join(',') : 'null';
     filters.push(`[0:v]${textChain}[vout]`);
 
     if (audioClips.length > 0) {

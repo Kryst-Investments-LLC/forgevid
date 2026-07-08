@@ -11,6 +11,8 @@ import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
 import { DEFAULT_TTS_MODEL, resolveVoiceId } from '@/lib/voice-catalog';
 import { DEFAULT_TRANSITION, TRANSITIONS } from '@/lib/transitions';
+import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
+import { withRenderSlot } from '@/lib/render-semaphore';
 
 const aiGenerationSchema = z.object({
   prompt: z.string().min(1).max(2000),
@@ -93,6 +95,21 @@ async function handleGenerateVideo(body: any, userId: string) {
   }
   const input = parsed.data;
 
+  // Quota gate: every generation costs GPT + TTS + Whisper + compute. The
+  // rejection names the limit so it doubles as upgrade pressure.
+  const quota = await checkGenerationQuota(userId, input.duration);
+  if (!quota.allowed) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: quota.reason,
+        quota: { used: quota.used, limit: quota.limit, plan: quota.plan },
+        upgradeRequired: quota.upgradeRequired ?? false,
+      },
+      { status: 429 },
+    );
+  }
+
   try {
     const video = await prisma.video.create({
       data: {
@@ -123,10 +140,14 @@ async function handleGenerateVideo(body: any, userId: string) {
       select: { id: true },
     });
 
+    // The job is accepted — consume quota now, not on completion, or a user
+    // could requeue endlessly while jobs run.
+    await recordGenerationUsage(userId, video.id, input.duration);
+
     const jobId = await enqueueGeneration({ videoId: video.id, userId, input });
     if (!jobId) {
-      // No Redis configured: run inline without blocking the HTTP response.
-      void runGeneration(video.id, input).catch((err) => {
+      // No Redis: run inline, throttled so N clicks can't fork N ffmpeg chains.
+      void withRenderSlot(() => runGeneration(video.id, input)).catch((err) => {
         console.error(
           '[AI API] inline generation failed:',
           err instanceof Error ? err.message : err,
