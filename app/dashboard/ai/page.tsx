@@ -12,6 +12,7 @@ import { Sparkles, Wand2, Brain, Heart, Zap, Clock, Play, Download, Eye, Trendin
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import AIChatPanel from "@/components/ai-chat-panel"
+import SceneEditorPanel from "@/components/scene-editor-panel"
 
 export default function AIFeaturesPage() {
   const [prompt, setPrompt] = useState("")
@@ -21,6 +22,7 @@ export default function AIFeaturesPage() {
   const [selectedStyle, setSelectedStyle] = useState("modern")
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null)
+  const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false)
   const [generatedScript, setGeneratedScript] = useState<string | null>(null)
 
@@ -71,6 +73,7 @@ export default function AIFeaturesPage() {
       if (!data.success || !videoId) {
         throw new Error(data.error || 'Failed to start generation')
       }
+      setCurrentVideoId(videoId)
 
       // Poll real server-side progress until a terminal state (15 min cap).
       const deadline = Date.now() + 15 * 60 * 1000
@@ -392,6 +395,14 @@ export default function AIFeaturesPage() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Scene-by-scene editing: tweak a line, swap footage, re-render */}
+              {currentVideoId && generatedVideo && (
+                <SceneEditorPanel
+                  videoId={currentVideoId}
+                  onRerendered={(url) => setGeneratedVideo(url)}
+                />
+              )}
             </TabsContent>
 
             {/* Emotion AI Tab */}

@@ -16,6 +16,14 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - Verified here: type-check (0 errors) + worker module-graph smoke test. NOT yet verified: end-to-end generation (needs Redis/DB/OpenAI/Pexels/ElevenLabs/Cloudinary keys + ffmpeg).
 - Still open in Phase 2: thumbnail generation, `POST /api/videos` (returns 501), add DRAFT/QUEUED to `VideoStatus` enum (needs a DB migration).
 
+**2026-07-08 — Phase 3 done; Phase 8 done; the app builds for the first time.**
+- `lib/video-generator.ts` split into `planScenes` → `resolveSceneClips` → `assembleVideo`. Scenes persist to `Video.metadata.scenes`.
+- Scene editing: `GET/PATCH /api/videos/[id]/scenes`, `POST /api/videos/[id]/scenes/[sceneId]/swap`, `POST /api/videos/[id]/rerender` (async, same progress endpoint). UI: `components/scene-editor-panel.tsx` on the AI Studio page.
+- **Phase 8 done**: deleted `getFallbackVideos()` and the `replicate-video.ts` sample returns — generation now fails visibly instead of shipping Google's `ForBiggerBlazes.mp4`.
+- Footage quality: full-description search before keyword fallback + cross-scene clip dedupe (was one keyword, random pick from top 3).
+- **`npm run build` now exits 0** (was a hard failure). Root cause: OpenAI/Stripe clients constructed at module scope, plus `ENCRYPTION_KEY`/`JWT_SECRET` throws at import — all deferred via `lib/lazy-client.ts`. Also fixed two prerender errors.
+- Caution: `npx tsc` resolves an unrelated `tsc` binary here. **Verify with `npm run type-check` and check the exit code**, not by grepping output.
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

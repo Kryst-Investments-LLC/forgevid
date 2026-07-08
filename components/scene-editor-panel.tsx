@@ -1,0 +1,232 @@
+"use client"
+
+import { useCallback, useEffect, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Progress } from "@/components/ui/progress"
+import { Shuffle, RefreshCw, Save, Film } from "lucide-react"
+import { toast } from "sonner"
+
+interface Scene {
+  id: string
+  index: number
+  description: string
+  keywords: string[]
+  duration: number
+  clipUrl: string
+  matchedQuery: string
+}
+
+interface SceneEditorPanelProps {
+  videoId: string
+  /** Called with the fresh video URL after a successful re-render. */
+  onRerendered?: (videoUrl: string) => void
+}
+
+/**
+ * Scene-by-scene editor: tweak a scene's line or duration, swap its stock clip,
+ * then re-render. Edits mutate the stored scene list; re-render re-encodes.
+ */
+export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProps) {
+  const [scenes, setScenes] = useState<Scene[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busyScene, setBusyScene] = useState<string | null>(null)
+  const [rerendering, setRerendering] = useState(false)
+  const [progress, setProgress] = useState(0)
+
+  const loadScenes = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/videos/${videoId}/scenes`)
+      if (!res.ok) throw new Error("Failed to load scenes")
+      const data = await res.json()
+      setScenes(data.scenes ?? [])
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load scenes")
+    } finally {
+      setLoading(false)
+    }
+  }, [videoId])
+
+  useEffect(() => {
+    loadScenes()
+  }, [loadScenes])
+
+  const updateLocal = (sceneId: string, patch: Partial<Scene>) => {
+    setScenes((prev) => prev.map((s) => (s.id === sceneId ? { ...s, ...patch } : s)))
+  }
+
+  const saveScene = async (scene: Scene) => {
+    setBusyScene(scene.id)
+    try {
+      const res = await fetch(`/api/videos/${videoId}/scenes`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sceneId: scene.id,
+          description: scene.description,
+          duration: scene.duration,
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json())?.error || "Save failed")
+      toast.success(`Scene ${scene.index + 1} saved`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Save failed")
+    } finally {
+      setBusyScene(null)
+    }
+  }
+
+  const swapClip = async (scene: Scene) => {
+    setBusyScene(scene.id)
+    try {
+      const res = await fetch(`/api/videos/${videoId}/scenes/${scene.id}/swap`, { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "Swap failed")
+      updateLocal(scene.id, data.scene)
+      toast.success(`Scene ${scene.index + 1}: new clip (“${data.scene.matchedQuery}”)`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Swap failed")
+    } finally {
+      setBusyScene(null)
+    }
+  }
+
+  const rerender = async () => {
+    setRerendering(true)
+    setProgress(0)
+    try {
+      const res = await fetch(`/api/videos/${videoId}/rerender`, { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "Re-render failed to start")
+
+      const deadline = Date.now() + 15 * 60 * 1000
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000))
+        const statusRes = await fetch(`/api/ai/jobs/${videoId}`)
+        if (!statusRes.ok) continue
+        const job = await statusRes.json()
+        setProgress(job.percent ?? 0)
+
+        if (job.status === "COMPLETED" && job.videoUrl) {
+          setProgress(100)
+          toast.success("Re-rendered with your edits")
+          onRerendered?.(`${job.videoUrl.split("?")[0]}?t=${Date.now()}`)
+          return
+        }
+        if (job.status === "FAILED") throw new Error(job.error || "Re-render failed")
+      }
+      throw new Error("Re-render timed out")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Re-render failed")
+    } finally {
+      setRerendering(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Scenes</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">Loading scenes…</CardContent>
+      </Card>
+    )
+  }
+
+  if (scenes.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Scenes</CardTitle>
+          <CardDescription>
+            No scene data for this video. Scenes are saved for videos generated after this feature shipped.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    )
+  }
+
+  const totalDuration = scenes.reduce((sum, s) => sum + (Number(s.duration) || 0), 0)
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Film className="h-5 w-5" />
+              Scenes ({scenes.length})
+            </CardTitle>
+            <CardDescription>
+              Edit a line, retime it, or swap the footage — then re-render. Total {totalDuration}s.
+            </CardDescription>
+          </div>
+          <Button onClick={rerender} disabled={rerendering}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${rerendering ? "animate-spin" : ""}`} />
+            {rerendering ? "Re-rendering…" : "Re-render"}
+          </Button>
+        </div>
+        {rerendering && <Progress value={progress} className="mt-3" />}
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {scenes.map((scene) => (
+          <div key={scene.id} className="rounded-lg border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <Badge variant="secondary">Scene {scene.index + 1}</Badge>
+              {scene.matchedQuery && (
+                <span className="text-xs text-muted-foreground truncate max-w-[50%]">
+                  footage: “{scene.matchedQuery}”
+                </span>
+              )}
+            </div>
+
+            <Textarea
+              value={scene.description}
+              rows={2}
+              onChange={(e) => updateLocal(scene.id, { description: e.target.value })}
+              placeholder="What happens in this scene"
+            />
+
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={120}
+                value={scene.duration}
+                onChange={(e) => updateLocal(scene.id, { duration: Number(e.target.value) })}
+                className="w-24"
+              />
+              <span className="text-sm text-muted-foreground mr-auto">seconds</span>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => swapClip(scene)}
+                disabled={busyScene === scene.id || rerendering}
+              >
+                <Shuffle className="h-4 w-4 mr-2" />
+                Swap clip
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => saveScene(scene)}
+                disabled={busyScene === scene.id || rerendering}
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Save
+              </Button>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+export default SceneEditorPanel
