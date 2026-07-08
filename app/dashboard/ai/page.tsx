@@ -13,6 +13,7 @@ import { useState, useEffect } from "react"
 import { toast } from "sonner"
 import AIChatPanel from "@/components/ai-chat-panel"
 import SceneEditorPanel from "@/components/scene-editor-panel"
+import MediaPicker from "@/components/media-picker"
 
 export default function AIFeaturesPage() {
   const [prompt, setPrompt] = useState("")
@@ -23,6 +24,7 @@ export default function AIFeaturesPage() {
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9")
   const [voices, setVoices] = useState<Array<{ id: string; name: string; gender: string; description: string }>>([])
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>("")
+  const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([])
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null)
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
@@ -80,6 +82,7 @@ export default function AIFeaturesPage() {
           addOns: selectedAddOns,
           aspectRatio: selectedAspectRatio,
           ...(selectedVoiceId ? { voiceId: selectedVoiceId } : {}),
+          ...(selectedMediaIds.length ? { mediaAssetIds: selectedMediaIds } : {}),
         }),
       })
 
@@ -273,6 +276,13 @@ export default function AIFeaturesPage() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Your own footage/photos — they fill scenes in order */}
+                    <MediaPicker
+                      value={selectedMediaIds}
+                      onChange={setSelectedMediaIds}
+                      disabled={isGenerating}
+                    />
 
                     {/* Add-ons */}
                     <div className="space-y-3">
