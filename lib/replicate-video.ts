@@ -143,31 +143,20 @@ export async function generateVideoWithReplicate(request: VideoGenerationRequest
   console.log('[VideoGen] Replicate unavailable, falling back to stock footage pipeline');
   const { generateVideoFromPrompt } = await import('@/lib/video-generator');
 
-  try {
-    const fallbackUrl = await generateVideoFromPrompt({
-      prompt: request.prompt,
-      style: request.style,
-      duration: request.duration,
-      addOns: [],
-    });
+  const fallbackUrl = await generateVideoFromPrompt({
+    prompt: request.prompt,
+    style: request.style,
+    duration: request.duration,
+    addOns: [],
+  });
 
-    return {
-      videoUrl: fallbackUrl,
-      provider: 'fallback',
-      model: 'stock-footage',
-      processingTime: Date.now() - startTime,
-      cost: 0,
-    };
-  } catch {
-    // Final fallback: sample video
-    return {
-      videoUrl: `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4`,
-      provider: 'fallback',
-      model: 'sample-video',
-      processingTime: Date.now() - startTime,
-      cost: 0,
-    };
-  }
+  return {
+    videoUrl: fallbackUrl,
+    provider: 'fallback',
+    model: 'stock-footage',
+    processingTime: Date.now() - startTime,
+    cost: 0,
+  };
 }
 
 /**
@@ -196,11 +185,6 @@ export async function generateVideoFromImage(imageUrl: string, options?: {
     };
   }
 
-  return {
-    videoUrl: `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4`,
-    provider: 'fallback',
-    model: 'sample-video',
-    processingTime: Date.now() - startTime,
-    cost: 0,
-  };
+  // Fail visibly — never hand the caller an unrelated sample video.
+  throw new Error('Image-to-video generation failed (Replicate unavailable or not configured)');
 }

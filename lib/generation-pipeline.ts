@@ -14,7 +14,7 @@
  */
 
 import { prisma } from './prisma';
-import { generateVideoFromPrompt } from './video-generator';
+import { generateVideoWithScenes } from './video-generator';
 
 export interface GenerationInput {
   prompt: string;
@@ -139,9 +139,10 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     const script = await generateScript(input);
 
     await setStage(videoId, 'assembling');
-    // generateVideoFromPrompt handles scene decomposition, stock footage,
-    // voiceover, FFmpeg assembly, and Cloudinary upload; it returns a URL.
-    const videoUrl = await generateVideoFromPrompt({
+    // Handles scene decomposition, stock footage matching, voiceover, FFmpeg
+    // assembly, and Cloudinary upload — and returns the scene structure so we
+    // can persist it for scene-based editing / re-rendering.
+    const { videoUrl, scenes } = await generateVideoWithScenes({
       prompt: script,
       style: input.style,
       duration: input.duration,
@@ -158,10 +159,12 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
         fileUrl: videoUrl,
       },
     });
+    // Persist scenes alongside the script so the editor can load, swap, and
+    // re-render individual scenes without re-deriving them from the prompt.
     await writeProgress(
       videoId,
       { stage: 'done', percent: 100, videoUrl, provider: 'stock-assembler' },
-      { script },
+      { script, scenes },
     );
 
     return videoUrl;

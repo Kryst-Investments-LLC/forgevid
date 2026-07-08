@@ -4,11 +4,7 @@ import { z } from 'zod';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { OpenAI } from 'openai';
-import { generateVideoFromPrompt, cleanupOldVideos } from '@/lib/video-generator';
-import { generateVideoWithReplicate } from '@/lib/replicate-video';
 import { securityConfigs } from '@/lib/api-security';
-import { trackVideoGenerated, trackFeatureUsed } from '@/lib/posthog';
-import { analyzeEmotion, selectAssetsForEmotion, generateEmotionAwareScript } from '@/features/emotion-ai';
 import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
 

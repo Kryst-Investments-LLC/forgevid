@@ -1,8 +1,14 @@
 /**
- * Real AI Video Generator using Stock Footage with Scene-by-Scene Matching
- * Creates actual MP4 videos from text prompts that follow the script
- * 
- * Pipeline: GPT-4 scene decomposition → Pexels stock footage → ElevenLabs voiceover → FFmpeg assembly
+ * Stock-footage video generator with scene-by-scene matching.
+ *
+ * Decomposed into three composable stages so scenes are first-class and can be
+ * persisted, edited, and re-rendered without re-deriving them from the prompt:
+ *
+ *   planScenes(script, duration)   -> PlannedScene[]   (GPT scene decomposition)
+ *   resolveSceneClips(scenes)      -> ResolvedScene[]  (Pexels footage matching)
+ *   assembleVideo(scenes, ...)     -> public URL       (FFmpeg + voiceover + upload)
+ *
+ * Failures are surfaced, never papered over with someone else's demo video.
  */
 
 import axios from 'axios';
@@ -15,7 +21,6 @@ let ffmpeg: any;
 let createClient: any;
 let OpenAI: any;
 
-// Initialize modules
 async function initializeModules() {
   if (!ffmpeg) {
     const fluentFfmpeg = await import('fluent-ffmpeg');
@@ -33,27 +38,39 @@ async function initializeModules() {
   }
 }
 
-const PEXELS_API_KEY = process.env.PEXELS_API_KEY || '';
 let pexelsClient: any = null;
 
-interface Scene {
+/** A scene as planned from the script, before footage is chosen. */
+export interface PlannedScene {
+  id: string;
+  index: number;
   description: string;
   keywords: string[];
   duration: number;
   visualElements: string[];
 }
 
-interface VideoClip {
+/** A planned scene with its chosen stock clip. */
+export interface ResolvedScene extends PlannedScene {
+  clipUrl: string;
+  matchedQuery: string;
+}
+
+export interface VideoClip {
   url: string;
   duration: number;
   type: 'video' | 'image';
 }
 
-interface GenerationOptions {
+export interface GenerationOptions {
   prompt: string;
   style: string;
   duration: number;
   addOns: string[];
+}
+
+function sceneId(index: number): string {
+  return `scene-${index + 1}`;
 }
 
 function isCloudinaryConfigured(): boolean {
@@ -73,33 +90,30 @@ async function persistGeneratedVideo(outputPath: string, outputFilename: string)
   }
 
   try {
-    console.log('[Video Generator] Uploading generated AI video to Cloudinary...');
     const uploadResult = await uploadCloudinaryVideo(outputPath, {
       folder: 'forgevid/generated-ai-videos',
       resource_type: 'video',
     });
 
     try {
-      if (fs.existsSync(outputPath)) {
-        fs.unlinkSync(outputPath);
-      }
+      if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
     } catch (cleanupError) {
-      console.error('[Video Generator] Failed to cleanup local generated video after Cloudinary upload:', cleanupError);
+      console.error('[Video Generator] Failed to cleanup local file after upload:', cleanupError);
     }
 
-    console.log('[Video Generator] ✓ Generated AI video persisted to Cloudinary:', uploadResult.secure_url);
+    console.log('[Video Generator] ✓ Persisted to Cloudinary:', uploadResult.secure_url);
     return uploadResult.secure_url;
   } catch (uploadError) {
-    console.error('[Video Generator] Cloudinary upload failed, falling back to local generated file:', uploadError);
+    console.error('[Video Generator] Cloudinary upload failed, keeping local file:', uploadError);
     return localUrl;
   }
 }
 
 /**
- * Generate voiceover audio file using ElevenLabs
- * Returns path to the downloaded .mp3 file, or null if unavailable
+ * Generate voiceover audio via ElevenLabs. Returns the .mp3 path, or null when
+ * no key is configured (voiceover is optional — the video still renders).
  */
-async function generateVoiceover(script: string, scenes: Scene[]): Promise<string | null> {
+async function generateVoiceover(narration: string): Promise<string | null> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
     console.log('[Video Generator] No ElevenLabs API key — skipping voiceover');
@@ -107,15 +121,7 @@ async function generateVoiceover(script: string, scenes: Scene[]): Promise<strin
   }
 
   try {
-    // Build a clean narration from scenes
-    const narration = scenes
-      .map(s => s.description)
-      .join('. ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    const textToSpeak = narration.length > 20 ? narration : script.substring(0, 2000);
-
+    const textToSpeak = narration.slice(0, 2000);
     console.log(`[Video Generator] Generating voiceover (${textToSpeak.length} chars)...`);
 
     const response = await fetch(
@@ -123,7 +129,7 @@ async function generateVoiceover(script: string, scenes: Scene[]): Promise<strin
       {
         method: 'POST',
         headers: {
-          'Accept': 'audio/mpeg',
+          Accept: 'audio/mpeg',
           'Content-Type': 'application/json',
           'xi-api-key': apiKey,
         },
@@ -146,7 +152,6 @@ async function generateVoiceover(script: string, scenes: Scene[]): Promise<strin
 
     const voiceoverPath = path.join(tempDir, `voiceover_${Date.now()}.mp3`);
     fs.writeFileSync(voiceoverPath, audioBuffer);
-    console.log(`[Video Generator] ✓ Voiceover saved: ${voiceoverPath} (${(audioBuffer.length / 1024).toFixed(0)} KB)`);
     return voiceoverPath;
   } catch (error) {
     console.error('[Video Generator] Voiceover generation failed:', error);
@@ -154,15 +159,12 @@ async function generateVoiceover(script: string, scenes: Scene[]): Promise<strin
   }
 }
 
-/**
- * Build FFmpeg drawtext filter for scene captions
- */
-function buildTextOverlayFilter(scenes: Scene[]): string {
+/** Build an FFmpeg drawtext filter showing each scene's caption over its span. */
+function buildTextOverlayFilter(scenes: Array<{ description: string; duration: number }>): string {
   const filters: string[] = [];
   let currentTime = 0;
 
   for (const scene of scenes) {
-    // Clean the description for FFmpeg (escape special chars)
     const text = scene.description
       .substring(0, 60)
       .replace(/'/g, '')
@@ -183,111 +185,93 @@ function buildTextOverlayFilter(scenes: Scene[]): string {
   return filters.join(',');
 }
 
+export function isStockProviderConfigured(): boolean {
+  return Boolean(process.env.PEXELS_API_KEY);
+}
+
 /**
- * Search for relevant stock videos on Pexels
+ * Search Pexels for stock video. Returns [] when unavailable — callers decide
+ * how to fail. We never substitute unrelated sample footage.
  */
 export async function searchStockVideos(query: string, limit: number = 5): Promise<VideoClip[]> {
-  // Initialize modules first
   await initializeModules();
-  
-  if (!PEXELS_API_KEY) {
-    console.log('[Video Generator] Using fallback videos (no Pexels API key)');
-    return getFallbackVideos(query, limit);
-  }
-  
+
+  const apiKey = process.env.PEXELS_API_KEY;
+  if (!apiKey) return [];
+
   if (!pexelsClient && createClient) {
-    pexelsClient = createClient(PEXELS_API_KEY);
+    pexelsClient = createClient(apiKey);
   }
-  
-  if (!pexelsClient) {
-    console.log('[Video Generator] Pexels client initialization failed');
-    return getFallbackVideos(query, limit);
-  }
+  if (!pexelsClient) return [];
 
   try {
-    console.log(`[Video Generator] Searching Pexels for: "${query}"`);
-    const response = await pexelsClient.videos.search({ 
-      query, 
+    const response = await pexelsClient.videos.search({
+      query,
       per_page: limit,
-      size: 'large', // Request larger/higher quality videos
-      orientation: 'landscape' // Better for standard videos
+      size: 'large',
+      orientation: 'landscape',
     });
-    
+
     if ('videos' in response && response.videos) {
-      return response.videos.map((video: any) => {
-        // Find the highest quality video file (prefer HD/FHD)
-        const videoFiles = video.video_files || [];
-        const hdFile = videoFiles.find((f: any) => f.quality === 'hd' || f.quality === 'sd' && f.width >= 1280);
-        const bestFile = hdFile || videoFiles[0];
-        
-        return {
-          url: bestFile?.link || '',
-          duration: video.duration || 5,
-          type: 'video' as const
-        };
-      }).filter((v: { url: string }) => v.url);
+      return response.videos
+        .map((video: any) => {
+          const videoFiles = video.video_files || [];
+          const hdFile = videoFiles.find(
+            (f: any) => f.quality === 'hd' || (f.quality === 'sd' && f.width >= 1280)
+          );
+          const bestFile = hdFile || videoFiles[0];
+          return {
+            url: bestFile?.link || '',
+            duration: video.duration || 5,
+            type: 'video' as const,
+          };
+        })
+        .filter((v: { url: string }) => v.url);
     }
   } catch (error) {
     console.error('[Video Generator] Pexels API error:', error);
   }
 
-  return getFallbackVideos(query, limit);
+  return [];
 }
 
-/**
- * Fallback videos when Pexels is not available
- */
-function getFallbackVideos(query: string, limit: number): VideoClip[] {
-  const fallbackVideos = [
-    { url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', duration: 15, type: 'video' as const },
-    { url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4', duration: 15, type: 'video' as const },
-    { url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4', duration: 15, type: 'video' as const },
-    { url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4', duration: 15, type: 'video' as const },
-    { url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4', duration: 15, type: 'video' as const },
-  ];
-  
-  return fallbackVideos.slice(0, limit);
-}
-
-/**
- * Download a video/audio file to temp directory
- */
+/** Download a remote file into public/temp. */
 async function downloadFile(url: string, filename: string): Promise<string> {
   const tempDir = path.join(process.cwd(), 'public', 'temp');
-  if (!fs.existsSync(tempDir)) {
-    fs.mkdirSync(tempDir, { recursive: true });
-  }
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
   const filepath = path.join(tempDir, filename);
-  
-  try {
-    const response = await axios.get(url, { responseType: 'stream' });
-    const writer = fs.createWriteStream(filepath);
-    response.data.pipe(writer);
+  const response = await axios.get(url, { responseType: 'stream' });
+  const writer = fs.createWriteStream(filepath);
+  response.data.pipe(writer);
 
-    return new Promise((resolve, reject) => {
-      writer.on('finish', () => resolve(filepath));
-      writer.on('error', reject);
-    });
-  } catch (error) {
-    console.error(`[Video Generator] Download error for ${url}:`, error);
-    throw error;
-  }
+  return new Promise((resolve, reject) => {
+    writer.on('finish', () => resolve(filepath));
+    writer.on('error', reject);
+  });
 }
 
 /**
- * Parse script into individual scenes with AI
+ * Stage 1 — decompose the script into scenes with GPT.
  */
-async function parseScriptIntoScenes(script: string, totalDuration: number): Promise<Scene[]> {
+export async function planScenes(script: string, totalDuration: number): Promise<PlannedScene[]> {
   await initializeModules();
-  
+
+  const withIds = (raw: any[]): PlannedScene[] =>
+    raw
+      .filter((s) => s && typeof s.description === 'string')
+      .map((s, i) => ({
+        id: sceneId(i),
+        index: i,
+        description: String(s.description),
+        keywords: Array.isArray(s.keywords) ? s.keywords.map(String) : [],
+        duration: Number(s.duration) > 0 ? Number(s.duration) : Math.max(1, totalDuration / raw.length),
+        visualElements: Array.isArray(s.visualElements) ? s.visualElements.map(String) : [],
+      }));
+
   try {
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-    
-    console.log('[Video Generator] Parsing script into scenes with AI...');
-    
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
@@ -308,288 +292,229 @@ Return ONLY a JSON array with this structure:
     "keywords": ["flour", "baking", "countertop", "kitchen"],
     "duration": 5,
     "visualElements": ["flour dust", "wooden counter", "baking preparation"]
-  },
-  ...
+  }
 ]
 
-Be specific and focus on filmable, real-world visuals. Avoid abstract concepts.`
+Be specific and focus on filmable, real-world visuals. Avoid abstract concepts.`,
         },
-        {
-          role: 'user',
-          content: `Parse this script into scenes:\n\n${script}`
-        }
+        { role: 'user', content: `Parse this script into scenes:\n\n${script}` },
       ],
       max_tokens: 1500,
-      temperature: 0.3
+      temperature: 0.3,
     });
-    
-    let content = response.choices[0]?.message?.content || '{}';
-    
-    // Remove markdown code blocks with multiple strategies
-    content = content.trim();
-    
-    // Strategy 1: Remove markdown with backticks
+
+    let content = (response.choices[0]?.message?.content || '').trim();
+
+    // Strip markdown fences, then fall back to extracting the JSON array.
     if (content.startsWith('```')) {
       const lines = content.split('\n');
-      // Remove first line if it's ```json or ```
-      if (lines[0].trim().match(/^```(json)?$/)) {
-        lines.shift();
-      }
-      // Remove last line if it's ```
-      if (lines[lines.length - 1].trim() === '```') {
-        lines.pop();
-      }
+      if (lines[0].trim().match(/^```(json)?$/)) lines.shift();
+      if (lines[lines.length - 1].trim() === '```') lines.pop();
       content = lines.join('\n').trim();
     }
-    
-    // Strategy 2: Extract JSON array using regex as fallback
     const jsonMatch = content.match(/\[\s*\{[\s\S]*\}\s*\]/);
-    if (jsonMatch) {
-      content = jsonMatch[0];
+    if (jsonMatch) content = jsonMatch[0];
+
+    const parsed = JSON.parse(content);
+    const raw = Array.isArray(parsed) ? parsed : parsed.scenes || [];
+    const scenes = withIds(raw);
+
+    if (scenes.length > 0) {
+      console.log(`[Video Generator] Planned ${scenes.length} scenes`);
+      return scenes;
     }
-    
-    console.log('[Video Generator] Cleaned content for parsing:', content.substring(0, 100) + '...');
-    
-    // Try to parse JSON, looking for scenes array
-    let scenes: Scene[] = [];
-    try {
-      const parsed = JSON.parse(content);
-      scenes = Array.isArray(parsed) ? parsed : (parsed.scenes || []);
-      
-      // If it's not an array, try to extract it
-      if (!Array.isArray(scenes)) {
-        console.error('[Video Generator] Parsed content is not an array:', typeof scenes);
-        scenes = [];
-      }
-    } catch (parseError) {
-      console.error('[Video Generator] JSON parse error:', parseError);
-      console.error('[Video Generator] Content was:', content.substring(0, 300));
-      scenes = [];
-    }
-    
-    console.log(`[Video Generator] Parsed ${scenes.length} scenes from script`);
-    scenes.forEach((scene, i) => {
-      console.log(`  Scene ${i + 1}: ${scene.description} (${scene.duration}s) - Keywords: ${scene.keywords.join(', ')}`);
-    });
-    
-    return scenes;
   } catch (error) {
-    console.error('[Video Generator] Scene parsing failed:', error);
-    // Fallback: Create one scene from the whole prompt
-    return [{
+    console.error('[Video Generator] Scene planning failed:', error);
+  }
+
+  // Degrade to a single scene rather than failing the whole job.
+  return [
+    {
+      id: sceneId(0),
+      index: 0,
       description: script.substring(0, 100),
       keywords: await extractKeywordsLegacy(script, 'cinematic'),
       duration: totalDuration,
-      visualElements: []
-    }];
-  }
+      visualElements: [],
+    },
+  ];
 }
 
-/**
- * Legacy keyword extraction (fallback)
- */
+/** Legacy keyword extraction, used when scene planning degrades. */
 async function extractKeywordsLegacy(prompt: string, style: string): Promise<string[]> {
-  // Use OpenAI to extract meaningful visual keywords from the prompt
   try {
-    const { OpenAI } = await import('openai');
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-    
+    const { OpenAI: OpenAICtor } = await import('openai');
+    const openai = new OpenAICtor({ apiKey: process.env.OPENAI_API_KEY });
+
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
         {
           role: 'system',
-          content: 'Extract 3-5 visual keywords from the video description that would be good search terms for finding stock footage. Return ONLY a comma-separated list of keywords. Focus on: locations, objects, actions, and visual elements that can be filmed. Avoid abstract concepts.'
+          content:
+            'Extract 3-5 visual keywords from the video description that would be good search terms for finding stock footage. Return ONLY a comma-separated list of keywords. Focus on locations, objects, actions, and visual elements that can be filmed. Avoid abstract concepts.',
         },
-        {
-          role: 'user',
-          content: prompt
-        }
+        { role: 'user', content: prompt },
       ],
       max_tokens: 50,
-      temperature: 0.3
+      temperature: 0.3,
     });
-    
-    const keywordsText = response.choices[0]?.message?.content || '';
-    const extractedKeywords = keywordsText
+
+    const extracted = (response.choices[0]?.message?.content || '')
       .split(',')
-      .map(k => k.trim().toLowerCase())
-      .filter(k => k.length > 2);
-    
-    console.log(`[Video Generator] AI extracted keywords: ${extractedKeywords.join(', ')}`);
-    
-    if (extractedKeywords.length > 0) {
-      return extractedKeywords.slice(0, 5);
-    }
+      .map((k) => k.trim().toLowerCase())
+      .filter((k) => k.length > 2);
+
+    if (extracted.length > 0) return extracted.slice(0, 5);
   } catch (error) {
     console.error('[Video Generator] AI keyword extraction failed:', error);
   }
-  
-  // Fallback to manual extraction
+
   const commonWords = ['a', 'an', 'the', 'is', 'are', 'was', 'were', 'for', 'with', 'about', 'create', 'make', 'video', 'generate', 'prompt', 'description', 'short', 'animated'];
-  const words = prompt.toLowerCase()
+  const words = prompt
+    .toLowerCase()
     .replace(/[^\w\s]/g, '')
     .split(/\s+/)
-    .filter(word => word.length > 3 && !commonWords.includes(word));
-  
-  // Add style-related keywords
+    .filter((word) => word.length > 3 && !commonWords.includes(word));
+
   const styleKeywords: Record<string, string[]> = {
     cinematic: ['nature', 'landscape', 'sunset'],
     modern: ['city', 'technology', 'business'],
     energetic: ['sports', 'action', 'movement'],
-    professional: ['office', 'meeting', 'workplace']
+    professional: ['office', 'meeting', 'workplace'],
   };
-  
-  const keywords = [...new Set([...words.slice(0, 3), ...(styleKeywords[style] || [])])];
-  console.log(`[Video Generator] Manual extracted keywords: ${keywords.join(', ')}`);
-  return keywords.slice(0, 5);
+
+  return [...new Set([...words.slice(0, 3), ...(styleKeywords[style] || [])])].slice(0, 5);
 }
 
 /**
- * Generate a video from script with scene-by-scene matching
+ * Pick a stock clip for one scene. Tries the scene description first (better
+ * semantic match than a bare keyword), then each keyword. Skips any clip URL in
+ * `exclude` so scenes don't reuse the same footage.
  */
-export async function generateVideoFromPrompt(options: GenerationOptions): Promise<string> {
-  console.log('[Video Generator] Starting INTELLIGENT video generation with scene matching');
-  
-  // Initialize FFmpeg and Pexels
-  await initializeModules();
-  
-  const { prompt, style, duration, addOns } = options;
-  
-  try {
-    // Step 1: Parse the script into individual scenes
-    console.log('[Video Generator] Step 1: Parsing script into scenes...');
-    const scenes = await parseScriptIntoScenes(prompt, duration);
-    
-    if (scenes.length === 0) {
-      throw new Error('Failed to parse script into scenes');
-    }
-    
-    console.log(`[Video Generator] Found ${scenes.length} scenes to match`);
+export async function resolveSceneClip(
+  scene: PlannedScene,
+  exclude: Set<string> = new Set(),
+): Promise<ResolvedScene | null> {
+  const descriptionQuery = scene.description.split(/\s+/).slice(0, 6).join(' ');
+  const queries = [descriptionQuery, ...scene.keywords].filter(Boolean);
 
-    // Step 2: In parallel — fetch stock footage + generate voiceover
-    console.log('[Video Generator] Step 2: Fetching footage + generating voiceover in parallel...');
-    const wantVoiceover = !addOns || addOns.includes('voiceover') || addOns.length === 0;
-    
-    const [sceneClips, voiceoverPath] = await Promise.all([
-      // Fetch and download footage for each scene
+  for (const query of queries) {
+    const candidates = await searchStockVideos(query, 5);
+    const fresh = candidates.filter((c) => !exclude.has(c.url));
+    if (fresh.length > 0) {
+      const pick = fresh[0];
+      return { ...scene, clipUrl: pick.url, matchedQuery: query };
+    }
+  }
+  return null;
+}
+
+/**
+ * Stage 2 — choose footage for every scene. Throws if no provider is
+ * configured or if a scene cannot be matched, rather than silently shipping
+ * unrelated sample footage.
+ */
+export async function resolveSceneClips(scenes: PlannedScene[]): Promise<ResolvedScene[]> {
+  if (!isStockProviderConfigured()) {
+    throw new Error('No stock footage provider configured. Set PEXELS_API_KEY to generate videos.');
+  }
+
+  const used = new Set<string>();
+  const resolved: ResolvedScene[] = [];
+
+  for (const scene of scenes) {
+    const match = await resolveSceneClip(scene, used);
+    if (!match) {
+      throw new Error(`No stock footage found for scene ${scene.index + 1}: "${scene.description}"`);
+    }
+    used.add(match.clipUrl);
+    resolved.push(match);
+    console.log(`[Video Generator] ✓ Scene ${scene.index + 1} matched "${match.matchedQuery}"`);
+  }
+
+  return resolved;
+}
+
+/**
+ * Stage 3 — download, trim, concat, caption, add voiceover, and upload.
+ * Takes an explicit scene list so re-renders can skip planning/resolving.
+ */
+export async function assembleVideo(
+  scenes: ResolvedScene[],
+  addOns: string[] = [],
+): Promise<string> {
+  await initializeModules();
+
+  if (scenes.length === 0) throw new Error('Cannot assemble a video with no scenes');
+
+  const tempDir = path.join(process.cwd(), 'public', 'temp');
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+  const wantVoiceover = addOns.length === 0 || addOns.includes('voiceover');
+  const wantSubtitles = addOns.length === 0 || addOns.includes('subtitles');
+  const narration = scenes.map((s) => s.description).join('. ').replace(/\s+/g, ' ').trim();
+
+  const downloaded: string[] = [];
+  const trimmed: string[] = [];
+  let voiceoverPath: string | null = null;
+  let fileListPath = '';
+
+  try {
+    // Download footage and synthesize narration in parallel.
+    const [clipPaths, vo] = await Promise.all([
       (async () => {
-        const clips: Array<{ filepath: string; duration: number }> = [];
-        for (let i = 0; i < scenes.length; i++) {
-          const scene = scenes[i];
-          console.log(`[Video Generator] Processing scene ${i + 1}/${scenes.length}: ${scene.description}`);
-          try {
-            // Search multiple keywords to improve match quality
-            let foundClip = false;
-            for (const keyword of scene.keywords) {
-              if (foundClip) break;
-              const searchClips = await searchStockVideos(keyword, 3);
-              if (searchClips.length > 0) {
-                // Pick a random clip from top results for variety
-                const pick = searchClips[Math.floor(Math.random() * searchClips.length)];
-                const filename = `scene_${Date.now()}_${i}.mp4`;
-                const filepath = await downloadFile(pick.url, filename);
-                clips.push({ filepath, duration: scene.duration });
-                console.log(`[Video Generator] ✓ Scene ${i + 1}: Found "${keyword}" footage`);
-                foundClip = true;
-              }
-            }
-            if (!foundClip) {
-              console.log(`[Video Generator] ⚠ Scene ${i + 1}: No footage found, using fallback`);
-              const fallback = getFallbackVideos('', 1)[0];
-              const filename = `scene_${Date.now()}_${i}.mp4`;
-              const filepath = await downloadFile(fallback.url, filename);
-              clips.push({ filepath, duration: scene.duration });
-            }
-          } catch (error) {
-            console.error(`[Video Generator] Error processing scene ${i + 1}:`, error);
-          }
+        const paths: string[] = [];
+        for (const scene of scenes) {
+          const filename = `scene_${Date.now()}_${scene.index}.mp4`;
+          paths.push(await downloadFile(scene.clipUrl, filename));
         }
-        return clips;
+        return paths;
       })(),
-      // Generate voiceover in parallel
-      wantVoiceover ? generateVoiceover(prompt, scenes) : Promise.resolve(null),
+      wantVoiceover ? generateVoiceover(narration) : Promise.resolve(null),
     ]);
-    
-    if (sceneClips.length === 0) {
-      throw new Error('Failed to download any scene clips');
+    downloaded.push(...clipPaths);
+    voiceoverPath = vo;
+
+    // Trim each clip to its scene duration.
+    for (let i = 0; i < scenes.length; i++) {
+      const trimmedPath = path.join(tempDir, `trimmed_${Date.now()}_${i}.mp4`);
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(downloaded[i])
+          .setDuration(scenes[i].duration)
+          .outputOptions([
+            '-c:v libx264',
+            '-preset ultrafast',
+            '-crf 23',
+            '-an',
+            '-r 30',
+            '-pix_fmt yuv420p',
+            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
+            '-movflags +faststart',
+          ])
+          .output(trimmedPath)
+          .on('end', () => resolve())
+          .on('error', (err: Error) => reject(err))
+          .run();
+      });
+      trimmed.push(trimmedPath);
     }
-    
-    console.log(`[Video Generator] Downloaded ${sceneClips.length} scene clips`);
-    if (voiceoverPath) console.log('[Video Generator] ✓ Voiceover ready');
-    
-    // Step 3: Trim each clip to its specified duration
-    console.log('[Video Generator] Step 3: Trimming clips...');
-    const tempDir = path.join(process.cwd(), 'public', 'temp');
-    const trimmedClips: string[] = [];
-    
-    for (let i = 0; i < sceneClips.length; i++) {
-      const { filepath, duration: targetDuration } = sceneClips[i];
-      const trimmedFilename = `trimmed_${Date.now()}_${i}.mp4`;
-      const trimmedPath = path.join(tempDir, trimmedFilename);
-      
-      try {
-        await new Promise<void>((resolve, reject) => {
-          ffmpeg(filepath)
-            .setDuration(targetDuration)
-            .outputOptions([
-              '-c:v libx264',
-              '-preset ultrafast',
-              '-crf 23',
-              '-an',              // Strip original audio (we add voiceover later)
-              '-r 30',
-              '-pix_fmt yuv420p',
-              '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
-              '-movflags +faststart'
-            ])
-            .output(trimmedPath)
-            .on('end', () => {
-              console.log(`[Video Generator] ✓ Trimmed scene ${i + 1} to ${targetDuration}s`);
-              resolve();
-            })
-            .on('error', (err: Error) => {
-              console.error(`[Video Generator] Trim error for scene ${i + 1}:`, err);
-              reject(err);
-            })
-            .run();
-        });
-        
-        trimmedClips.push(trimmedPath);
-      } catch (error) {
-        console.error(`[Video Generator] Failed to trim scene ${i + 1}, using original`);
-        trimmedClips.push(filepath);
-      }
-    }
-    
-    // Step 4: Create file list for FFmpeg concatenation
-    const fileListPath = path.join(tempDir, `filelist_${Date.now()}.txt`);
-    const fileListContent = trimmedClips.map(clip => `file '${clip.replace(/\\/g, '/')}'`).join('\n');
-    fs.writeFileSync(fileListPath, fileListContent);
-    
-    // Step 5: Assemble final video with text overlays and voiceover
+
+    fileListPath = path.join(tempDir, `filelist_${Date.now()}.txt`);
+    fs.writeFileSync(fileListPath, trimmed.map((c) => `file '${c.replace(/\\/g, '/')}'`).join('\n'));
+
     const outputFilename = `generated_video_${Date.now()}.mp4`;
     const outputDir = path.join(process.cwd(), 'public', 'generated');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, outputFilename);
 
-    // Build text overlay filter
-    const wantSubtitles = !addOns || addOns.includes('subtitles') || addOns.length === 0;
-    const textFilter = wantSubtitles ? buildTextOverlayFilter(scenes) : '';
     const scaleFilter = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2';
+    const textFilter = wantSubtitles ? buildTextOverlayFilter(scenes) : '';
     const videoFilter = textFilter ? `${scaleFilter},${textFilter}` : scaleFilter;
-    
-    console.log('[Video Generator] Step 5: Assembling final video...');
-    await new Promise<void>((resolve, reject) => {
-      const command = ffmpeg()
-        .input(fileListPath)
-        .inputOptions(['-f concat', '-safe 0']);
 
-      // Add voiceover as second input if available
-      if (voiceoverPath) {
-        command.input(voiceoverPath);
-      }
+    await new Promise<void>((resolve, reject) => {
+      const command = ffmpeg().input(fileListPath).inputOptions(['-f concat', '-safe 0']);
+      if (voiceoverPath) command.input(voiceoverPath);
 
       const outputOptions = [
         '-c:v libx264',
@@ -603,91 +528,81 @@ export async function generateVideoFromPrompt(options: GenerationOptions): Promi
       ];
 
       if (voiceoverPath) {
-        // Mix voiceover: use voiceover audio, trim to video length
         outputOptions.push('-map', '0:v', '-map', '1:a', '-c:a', 'aac', '-b:a', '192k', '-shortest');
       } else {
-        outputOptions.push('-an'); // No audio
+        outputOptions.push('-an');
       }
 
       command
         .outputOptions(outputOptions)
         .output(outputPath)
-        .on('start', () => {
-          console.log('[Video Generator] FFmpeg assembly started');
-        })
-        .on('progress', (progress: any) => {
-          console.log(`[Video Generator] Assembly progress: ${progress.percent?.toFixed(1) || 0}%`);
-        })
-        .on('end', () => {
-          console.log('[Video Generator] ✅ Video assembly complete!');
-          resolve();
-        })
-        .on('error', (err: Error) => {
-          console.error('[Video Generator] FFmpeg assembly error:', err);
-          reject(err);
-        })
+        .on('progress', (p: any) => console.log(`[Video Generator] Assembly ${p.percent?.toFixed(1) || 0}%`))
+        .on('end', () => resolve())
+        .on('error', (err: Error) => reject(err))
         .run();
     });
-    
-    // Step 6: Clean up temp files
-    console.log('[Video Generator] Step 6: Cleaning up temporary files...');
-    const filesToClean = [
-      ...sceneClips.map(c => c.filepath),
-      ...trimmedClips,
-      fileListPath,
-      ...(voiceoverPath ? [voiceoverPath] : []),
-    ];
-    filesToClean.forEach(file => {
+
+    return await persistGeneratedVideo(outputPath, outputFilename);
+  } finally {
+    // Always clean temp artifacts, even on failure.
+    for (const file of [...downloaded, ...trimmed, fileListPath, ...(voiceoverPath ? [voiceoverPath] : [])]) {
+      if (!file) continue;
       try {
         if (fs.existsSync(file)) fs.unlinkSync(file);
       } catch (error) {
         console.error('[Video Generator] Cleanup error:', error);
       }
-    });
-    
-    // Persist final generated video to Cloudinary when configured.
-    const publicUrl = await persistGeneratedVideo(outputPath, outputFilename);
-    console.log('[Video Generator] ✅ Video generated successfully:', publicUrl);
-    console.log(`[Video Generator] Final video: ${duration}s with ${scenes.length} scenes`);
-    return publicUrl;
-    
-  } catch (error) {
-    console.error('[Video Generator] Generation failed:', error);
-    throw new Error(`Video generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }
 
 /**
- * Clean up old generated videos (older than 24 hours)
+ * Full generation returning BOTH the video URL and the scene structure, so the
+ * caller can persist scenes for later editing / re-rendering.
  */
+export async function generateVideoWithScenes(
+  options: GenerationOptions,
+): Promise<{ videoUrl: string; scenes: ResolvedScene[] }> {
+  const { prompt, duration, addOns } = options;
+
+  const planned = await planScenes(prompt, duration);
+  if (planned.length === 0) throw new Error('Failed to plan any scenes from the script');
+
+  const resolved = await resolveSceneClips(planned);
+  const videoUrl = await assembleVideo(resolved, addOns || []);
+
+  console.log(`[Video Generator] ✅ Generated ${duration}s video with ${resolved.length} scenes`);
+  return { videoUrl, scenes: resolved };
+}
+
+/** Backwards-compatible wrapper returning just the URL. */
+export async function generateVideoFromPrompt(options: GenerationOptions): Promise<string> {
+  const { videoUrl } = await generateVideoWithScenes(options);
+  return videoUrl;
+}
+
+/** Remove generated/temp files older than 24h. */
 export function cleanupOldVideos() {
   const generatedDir = path.join(process.cwd(), 'public', 'generated');
   const tempDir = path.join(process.cwd(), 'public', 'temp');
-  
+
   const cleanDirectory = (dir: string) => {
     if (!fs.existsSync(dir)) return;
-    
-    const files = fs.readdirSync(dir);
     const now = Date.now();
-    const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-    
-    files.forEach(file => {
+    const maxAge = 24 * 60 * 60 * 1000;
+
+    for (const file of fs.readdirSync(dir)) {
       const filepath = path.join(dir, file);
-      const stats = fs.statSync(filepath);
-      const age = now - stats.mtimeMs;
-      
-      if (age > maxAge) {
-        try {
+      try {
+        if (now - fs.statSync(filepath).mtimeMs > maxAge) {
           fs.unlinkSync(filepath);
-          console.log(`[Video Generator] Cleaned up old file: ${file}`);
-        } catch (error) {
-          console.error(`[Video Generator] Failed to cleanup ${file}:`, error);
         }
+      } catch (error) {
+        console.error(`[Video Generator] Failed to cleanup ${file}:`, error);
       }
-    });
+    }
   };
-  
+
   cleanDirectory(generatedDir);
   cleanDirectory(tempDir);
 }
-
