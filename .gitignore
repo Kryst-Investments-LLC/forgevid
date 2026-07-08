@@ -72,3 +72,7 @@ next-env.d.ts
 # generated videos (large files)
 /public/generated/
 /public/temp/
+# background music: keep the manifest/README, never commit licensed audio
+/public/music/*
+!/public/music/README.md
+!/public/music/tracks.json

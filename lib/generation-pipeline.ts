@@ -16,6 +16,7 @@
 import { prisma } from './prisma';
 import { aspectPreset, assembleVideo, generateVideoWithScenes } from './video-generator';
 import type { AspectRatio, ResolvedScene } from './video-generator';
+import { selectMusicPath } from './music-library';
 
 export interface GenerationInput {
   prompt: string;
@@ -151,6 +152,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       duration: input.duration,
       addOns: input.addOns ?? [],
       aspectRatio,
+      mood: input.style,
     });
 
     await setStage(videoId, 'uploading');
@@ -233,7 +235,11 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     await prisma.video.update({ where: { id: videoId }, data: { status: 'PROCESSING' } });
     await setStage(videoId, 'assembling');
 
-    const videoUrl = await assembleVideo(scenes, addOns, aspectRatio);
+    // Keep the soundtrack on a re-render too.
+    const wantMusic = addOns.length === 0 || addOns.includes('music');
+    const musicPath = wantMusic ? selectMusicPath(meta.request?.style) : null;
+
+    const videoUrl = await assembleVideo(scenes, addOns, aspectRatio, { musicPath });
 
     await setStage(videoId, 'uploading');
     const { width, height } = aspectPreset(aspectRatio);

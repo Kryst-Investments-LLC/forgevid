@@ -40,6 +40,15 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - `assembleVideo` accepts local source paths (not just URLs), so it is testable offline; it now deletes only files it created.
 - **Runtime verified**: `npm run verify:generate` renders all three ratios with ffmpeg and asserts 1920x1080 / 1080x1920 / 1080x1080 + durations, plus a guard that caller-owned sources survive cleanup.
 
+**2026-07-08 — Phase 5b done: background music + ducking.**
+- `lib/music-library.ts` reads `public/music/tracks.json` (moods → track). **No tracks are bundled** — music needs a license; see `public/music/README.md`. Empty library ⇒ generation still succeeds, just silent. The UI's "Background Music" add-on was already there and inert; it now does something.
+- Music is looped (`-stream_loop -1`) and ducked under narration via `sidechaincompress`. The final pass moved from `-vf` to `complexFilter` (ffmpeg accepts one or the other, not both).
+- `assembleVideo` gained `AssembleOptions { musicPath, musicVolume, voiceoverPath }`. Injecting a voiceover lets a re-render skip a paid TTS call — and makes the whole assembler testable offline.
+- **Runtime verified, and it caught two real bugs:**
+  1. `sidechaincompress` stops when its *sidechain key* ends, so the music died the instant narration stopped (audio ended at 2s of a 4s video). Fixed by `apad`-ing the key + `amix=duration=longest`.
+  2. the cleanup block unlinked `voiceoverPath` unconditionally, deleting a caller-injected voiceover.
+  Ducking is *measured*, not assumed: `volumedetect` shows −40 dB under narration vs −36.1 dB after it ends.
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

@@ -9,7 +9,7 @@
  *   npm run verify:generate
  */
 
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { assembleVideo, aspectPreset, type ResolvedScene, type AspectRatio } from '../lib/video-generator';
@@ -91,6 +91,77 @@ async function renderAndCheck(aspectRatio: AspectRatio, sources: string[]) {
   fs.unlinkSync(outFile);
 }
 
+/**
+ * Mean volume (dB) of a time window of `file`, via ffmpeg's volumedetect.
+ * volumedetect exits 0, so read stderr from spawnSync rather than a thrown error.
+ */
+function meanVolumeDb(file: string, start: number, duration: number): number {
+  const res = spawnSync(
+    ffmpegPath,
+    [
+      '-nostdin',
+      '-ss', String(start),
+      '-t', String(duration),
+      '-i', file,
+      '-vn', // don't decode the video stream — we only want loudness
+      '-af', 'volumedetect',
+      '-f', 'null', '-',
+    ],
+    { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
+  );
+  const out = `${res.stderr ?? ''}`;
+  const m = out.match(/mean_volume:\s*(-?[\d.]+|-inf) dB/);
+  if (!m) {
+    throw new Error(
+      `Could not parse mean_volume from ${file} [${start}s +${duration}s]. ` +
+        `status=${res.status} signal=${res.signal} error=${res.error?.message} ` +
+        `stderrLen=${out.length}\ntail:\n${out.slice(-400)}`,
+    );
+  }
+  // A fully silent window reports -inf; treat it as very quiet.
+  return m[1] === '-inf' ? -100 : Number(m[1]);
+}
+
+/**
+ * Music must duck under narration. The voiceover here is deliberately quiet
+ * (above sidechaincompress's threshold, but contributing little to the mix), so
+ * a loudness drop while it plays can only come from the music being ducked.
+ */
+async function checkMusicDucking(clip: string) {
+  console.log('\nChecking music ducking under narration...');
+  const music = path.join(workDir, 'music.m4a');
+  const voice = path.join(workDir, 'voice.m4a');
+
+  // Music: loud, 6s. Voice: quiet, only the first 2s of a 4s video.
+  ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=300:duration=6', '-c:a', 'aac', music]);
+  ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=800:duration=2', '-af', 'volume=0.2', '-c:a', 'aac', voice]);
+
+  const url = await assembleVideo([scene(0, clip, 4)], ['subtitles'], '16:9', {
+    musicPath: music,
+    voiceoverPath: voice,
+  });
+  const outFile = path.join(process.cwd(), 'public', 'generated', path.basename(url));
+  assert(fs.existsSync(outFile), 'music+voiceover render produced output');
+
+  const info = probe(outFile);
+  assert(/Stream .*Audio: aac/.test(info), 'output has an audio stream');
+
+  const duringNarration = meanVolumeDb(outFile, 0.2, 1.5); // voice playing -> music ducked
+  const afterNarration = meanVolumeDb(outFile, 2.6, 1.2); // voice gone -> music recovers
+  console.log(`      during narration: ${duringNarration} dB, after: ${afterNarration} dB`);
+  // Regression: sidechaincompress ends when its key input ends, which used to
+  // kill the music the instant narration stopped (audio ended at 2s, not 4s).
+  assert(afterNarration > -90, 'music still plays after narration ends (sidechain key is padded)');
+  assert(
+    afterNarration > duringNarration + 1.5,
+    `music is ducked while narration plays (${duringNarration}dB -> ${afterNarration}dB)`,
+  );
+
+  // The caller's music/voice files must survive cleanup.
+  assert(fs.existsSync(music) && fs.existsSync(voice), 'injected music/voiceover not deleted');
+  fs.unlinkSync(outFile);
+}
+
 async function main() {
   fs.mkdirSync(workDir, { recursive: true });
   const clipA = path.join(workDir, 'a.mp4');
@@ -105,6 +176,7 @@ async function main() {
   await renderAndCheck('9:16', [clipA, clipB]);
   await renderAndCheck('1:1', [clipA, clipB]);
   await checkTwoWordCaption(clipA);
+  await checkMusicDucking(clipA);
 
   // Regression guard: assembleVideo must not delete media it did not download.
   assert(fs.existsSync(clipA) && fs.existsSync(clipB), 'caller-owned local sources were NOT deleted');

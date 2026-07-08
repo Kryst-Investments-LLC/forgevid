@@ -15,6 +15,7 @@ import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import { uploadVideo as uploadCloudinaryVideo } from './cloudinary';
+import { selectMusicPath } from './music-library';
 
 // Dynamic imports to avoid webpack bundling issues
 let ffmpeg: any;
@@ -93,6 +94,8 @@ export interface GenerationOptions {
   duration: number;
   addOns: string[];
   aspectRatio?: AspectRatio;
+  /** Mood tag used to pick a music track; defaults to `style`. */
+  mood?: string;
 }
 
 function sceneId(index: number): string {
@@ -484,16 +487,31 @@ export async function resolveSceneClips(
  * Stage 3 — download, trim, concat, caption, add voiceover, and upload.
  * Takes an explicit scene list so re-renders can skip planning/resolving.
  */
+export interface AssembleOptions {
+  /** Absolute path to a background music file. Looped and ducked under narration. */
+  musicPath?: string | null;
+  /** Music level before ducking (0-1). */
+  musicVolume?: number;
+  /**
+   * Reuse an existing voiceover instead of synthesizing a new one. Lets a
+   * re-render skip a paid TTS call — and makes the assembler testable offline.
+   */
+  voiceoverPath?: string | null;
+}
+
 export async function assembleVideo(
   scenes: ResolvedScene[],
   addOns: string[] = [],
   aspectRatio: AspectRatio = '16:9',
+  options: AssembleOptions = {},
 ): Promise<string> {
   await initializeModules();
 
   if (scenes.length === 0) throw new Error('Cannot assemble a video with no scenes');
 
   const fit = fitFilter(aspectRatio);
+  const timelineDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
+  const musicVolume = options.musicVolume ?? 0.25;
 
   const tempDir = path.join(process.cwd(), 'public', 'temp');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
@@ -524,10 +542,17 @@ export async function assembleVideo(
         }
         return paths;
       })(),
-      wantVoiceover ? generateVoiceover(narration) : Promise.resolve(null),
+      // An injected voiceover wins: re-renders reuse it instead of paying for TTS again.
+      options.voiceoverPath
+        ? Promise.resolve(options.voiceoverPath)
+        : wantVoiceover
+          ? generateVoiceover(narration)
+          : Promise.resolve(null),
     ]);
     sources.push(...clipPaths);
     voiceoverPath = vo;
+    // Only a voiceover we synthesized is ours to delete.
+    if (voiceoverPath && !options.voiceoverPath) tempFiles.push(voiceoverPath);
 
     // Trim each clip to its scene duration.
     for (let i = 0; i < scenes.length; i++) {
@@ -564,32 +589,80 @@ export async function assembleVideo(
     const textFilter = wantSubtitles ? buildTextOverlayFilter(scenes) : '';
     const videoFilter = textFilter ? `${fit},${textFilter}` : fit;
 
+    const musicPath = options.musicPath ?? null;
+
     await new Promise<void>((resolve, reject) => {
       const command = ffmpeg().input(fileListPath).inputOptions(['-f concat', '-safe 0']);
-      if (voiceoverPath) command.input(voiceoverPath);
+
+      // Input indices: 0 = concatenated video, then voiceover, then music.
+      let inputIndex = 0;
+      let voiceIndex = -1;
+      let musicIndex = -1;
+      if (voiceoverPath) {
+        command.input(voiceoverPath);
+        voiceIndex = ++inputIndex;
+      }
+      if (musicPath) {
+        // Loop a short track to cover the whole video; -t below bounds the output.
+        command.input(musicPath).inputOptions(['-stream_loop -1']);
+        musicIndex = ++inputIndex;
+      }
+
+      // ffmpeg accepts either -vf or -filter_complex, never both — so the video
+      // chain lives in the complex graph now that audio needs one.
+      const filters: string[] = [`[0:v]${videoFilter}[vout]`];
+
+      // sidechaincompress requires both inputs in the same format.
+      const AFMT = 'aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo';
+
+      if (voiceIndex > 0 && musicIndex > 0) {
+        // Duck the music using the narration as the sidechain key.
+        //
+        // The key MUST be padded with silence: sidechaincompress stops as soon
+        // as its sidechain input ends, which would kill the music the instant
+        // narration finishes. Padding lets the compressor release back to full
+        // volume and keep the music playing to the end of the video.
+        filters.push(`[${voiceIndex}:a]${AFMT},asplit=2[vo][vokeyraw]`);
+        filters.push(`[vokeyraw]apad[vokey]`);
+        filters.push(`[${musicIndex}:a]${AFMT},volume=${musicVolume}[mus]`);
+        filters.push(
+          `[mus][vokey]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=400[musduck]`,
+        );
+        // duration=longest keeps the (looped) music going past the narration.
+        filters.push(`[vo][musduck]amix=inputs=2:duration=longest:dropout_transition=0[aout]`);
+      } else if (voiceIndex > 0) {
+        filters.push(`[${voiceIndex}:a]${AFMT}[aout]`);
+      } else if (musicIndex > 0) {
+        filters.push(`[${musicIndex}:a]${AFMT},volume=${musicVolume}[aout]`);
+      }
+
+      const hasAudio = voiceIndex > 0 || musicIndex > 0;
+      const maps = hasAudio ? ['vout', 'aout'] : ['vout'];
 
       const outputOptions = [
-        '-c:v libx264',
-        '-preset slow',
-        '-crf 18',
-        '-r 30',
-        '-pix_fmt yuv420p',
-        '-movflags +faststart',
-        '-max_muxing_queue_size 1024',
+        // Bound the output: music is looped infinitely, and -shortest is
+        // unreliable for streams coming out of filter_complex.
+        '-t', String(timelineDuration),
+        '-c:v', 'libx264',
+        '-preset', 'slow',
+        '-crf', '18',
+        '-r', '30',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',
+        '-max_muxing_queue_size', '1024',
       ];
 
-      if (voiceoverPath) {
-        outputOptions.push('-map', '0:v', '-map', '1:a', '-c:a', 'aac', '-b:a', '192k', '-shortest');
+      if (hasAudio) {
+        outputOptions.push('-c:a', 'aac', '-b:a', '192k');
       } else {
         outputOptions.push('-an');
       }
 
       command
-        // NOT outputOptions(['-vf', videoFilter]): fluent splits an array entry
-        // that contains EXACTLY ONE space (custom.js: `split.length === 2`), so a
-        // two-word caption like "Opening shot" silently tears the filter in half.
-        // videoFilters() passes the graph through untouched.
-        .videoFilters(videoFilter)
+        // complexFilter(), not outputOptions(['-vf', ...]): fluent splits an array
+        // entry containing EXACTLY ONE space (custom.js: `split.length === 2`), so
+        // a two-word caption like "Opening shot" tears the filter in half.
+        .complexFilter(filters.join(';'), maps)
         .outputOptions(outputOptions)
         .output(outputPath)
         .on('progress', (p: any) => console.log(`[Video Generator] Assembly ${p.percent?.toFixed(1) || 0}%`))
@@ -600,8 +673,10 @@ export async function assembleVideo(
 
     return await persistGeneratedVideo(outputPath, outputFilename);
   } finally {
-    // Always clean temp artifacts, even on failure. Never the caller's sources.
-    for (const file of [...tempFiles, ...trimmed, fileListPath, ...(voiceoverPath ? [voiceoverPath] : [])]) {
+    // Always clean temp artifacts, even on failure. Never the caller's media —
+    // a synthesized voiceover is already in tempFiles; an injected one is not,
+    // and neither is the music track.
+    for (const file of [...tempFiles, ...trimmed, fileListPath]) {
       if (!file) continue;
       try {
         if (fs.existsSync(file)) fs.unlinkSync(file);
@@ -619,13 +694,18 @@ export async function assembleVideo(
 export async function generateVideoWithScenes(
   options: GenerationOptions,
 ): Promise<{ videoUrl: string; scenes: ResolvedScene[] }> {
-  const { prompt, duration, addOns, aspectRatio = '16:9' } = options;
+  const { prompt, duration, addOns, aspectRatio = '16:9', mood } = options;
 
   const planned = await planScenes(prompt, duration);
   if (planned.length === 0) throw new Error('Failed to plan any scenes from the script');
 
   const resolved = await resolveSceneClips(planned, aspectRatio);
-  const videoUrl = await assembleVideo(resolved, addOns || [], aspectRatio);
+
+  // Music is opt-out and silently skipped when the library is empty.
+  const wantMusic = !addOns || addOns.length === 0 || addOns.includes('music');
+  const musicPath = wantMusic ? selectMusicPath(mood ?? options.style) : null;
+
+  const videoUrl = await assembleVideo(resolved, addOns || [], aspectRatio, { musicPath });
 
   console.log(
     `[Video Generator] ✅ Generated ${duration}s ${aspectRatio} video with ${resolved.length} scenes`,
