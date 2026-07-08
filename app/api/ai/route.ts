@@ -9,6 +9,8 @@ import { generateVideoWithReplicate } from '@/lib/replicate-video';
 import { securityConfigs } from '@/lib/api-security';
 import { trackVideoGenerated, trackFeatureUsed } from '@/lib/posthog';
 import { analyzeEmotion, selectAssetsForEmotion, generateEmotionAwareScript } from '@/features/emotion-ai';
+import { enqueueGeneration } from '@/lib/video-queue';
+import { runGeneration } from '@/lib/generation-pipeline';
 
 const aiGenerationSchema = z.object({
   prompt: z.string().min(1).max(2000),
@@ -56,145 +58,81 @@ async function synthesizeWithElevenLabs(text: string, voiceId: string = 'ErXwoba
   }
 }
 
+const generateVideoSchema = z.object({
+  prompt: z.string().min(1).max(2000),
+  style: z.string().default('modern'),
+  duration: z.number().int().min(3).max(600).default(60),
+  addOns: z.array(z.string()).optional(),
+  enableEmotionAware: z.boolean().optional(),
+});
+
+// Start a generation job and return immediately.
+//
+// The multi-minute pipeline (script -> scenes -> footage -> voiceover ->
+// FFmpeg -> upload) runs OUT of the request: on a BullMQ worker when REDIS_URL
+// is set, otherwise inline as a fire-and-forget task. Either way we create the
+// Video row up front (status PROCESSING) so it shows in "My Videos" right away
+// and the client can poll GET /api/ai/jobs/[videoId] for real progress.
 async function handleGenerateVideo(body: any, userId: string) {
+  const parsed = generateVideoSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { success: false, error: 'Invalid request', details: parsed.error.issues },
+      { status: 400 },
+    );
+  }
+  const input = parsed.data;
+
   try {
-    const { prompt, style, duration, addOns, enableEmotionAware } = body;
-    
-    console.log('[AI API] Generating REAL video:', { prompt, style, duration, addOns, enableEmotionAware });
-    
-    // Step 1: Analyze emotion from prompt (if enabled)
-    let detectedEmotion = null;
-    let emotionAssets = null;
-    
-    if (enableEmotionAware) {
-      console.log('[AI API] Analyzing emotion from prompt...');
-      detectedEmotion = await analyzeEmotion(prompt);
-      emotionAssets = selectAssetsForEmotion(detectedEmotion.emotion);
-      console.log(`[AI API] Detected emotion: ${detectedEmotion.emotion} (confidence: ${detectedEmotion.confidence.toFixed(2)})`);
-    }
-    
-    // Step 2: Generate video script using OpenAI with emotion-aware enhancements
-    console.log('[AI API] Step 2: Generating script with OpenAI...');
-    const scriptResponse = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a professional video script writer and director. Create a detailed video script that can be used to generate a ${duration}-second ${style} video. Include:
-          - Scene descriptions with timestamps
-          - Visual elements and camera angles
-          - Suggested background music/sound effects
-          - Text overlays or captions
-          - Transitions between scenes
-          
-          Style guidelines for "${style}":
-          ${style === 'modern' ? 'Clean, minimalist, contemporary design with smooth transitions' : ''}
-          ${style === 'cinematic' ? 'Film-like quality with dramatic lighting, wide shots, and epic feel' : ''}
-          ${style === 'energetic' ? 'Fast-paced, dynamic movements, vibrant colors, upbeat music' : ''}
-          ${style === 'professional' ? 'Corporate, polished, formal, trustworthy, clean presentation' : ''}
-          ${emotionAssets ? `\n\nEmotional tone: ${detectedEmotion?.emotion}\nRecommended pacing: ${emotionAssets.pacing}\nRecommended music style: ${emotionAssets.musicTracks.join(', ')}` : ''}`
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      max_tokens: 1500,
-      temperature: 0.7
+    const video = await prisma.video.create({
+      data: {
+        title: input.prompt.slice(0, 80),
+        description: input.prompt,
+        status: 'PROCESSING',
+        duration: input.duration,
+        format: 'mp4',
+        userId,
+        metadata: JSON.stringify({
+          generation: { stage: 'queued', percent: 5, updatedAt: new Date().toISOString() },
+          request: {
+            style: input.style,
+            duration: input.duration,
+            addOns: input.addOns ?? [],
+            // enableEmotionAware is preserved for the pipeline to honor once
+            // emotion-aware generation is folded into the worker (TODO Phase 5).
+            enableEmotionAware: input.enableEmotionAware ?? false,
+          },
+        }),
+      },
+      select: { id: true },
     });
 
-    let script = scriptResponse.choices[0]?.message?.content || '';
-    console.log('[AI API] Script generated successfully');
-    
-    // Step 3: Apply emotion-aware enhancements to script (if enabled)
-    if (enableEmotionAware && detectedEmotion) {
-      console.log('[AI API] Applying emotion-aware enhancements...');
-      script = await generateEmotionAwareScript(script, detectedEmotion.emotion);
-      console.log('[AI API] Emotion-aware enhancements applied');
-    }
-    
-    // Step 4: Generate actual video — try Replicate AI first, then stock footage fallback
-    console.log('[AI API] Step 4: Generating video with Replicate / stock footage...');
-    let videoUrl: string;
-    let videoProvider: string = 'fallback';
-    
-    try {
-      // PRIMARY: Stock footage assembler (Pexels + FFmpeg + voiceover)
-      // This produces professional InVideo-style results
-      console.log('[AI API] Using stock footage assembler (primary pipeline)...');
-      const assembledUrl = await generateVideoFromPrompt({
-        prompt: script,
-        style,
-        duration,
-        addOns: addOns || [],
+    const jobId = await enqueueGeneration({ videoId: video.id, userId, input });
+    if (!jobId) {
+      // No Redis configured: run inline without blocking the HTTP response.
+      void runGeneration(video.id, input).catch((err) => {
+        console.error(
+          '[AI API] inline generation failed:',
+          err instanceof Error ? err.message : err,
+        );
       });
-      
-      videoUrl = assembledUrl;
-      videoProvider = 'stock-assembler';
-      console.log(`[AI API] Video assembled from stock footage: ${videoUrl}`);
-    } catch (assemblerError) {
-      console.error('[AI API] Stock assembler failed, trying Replicate fallback:', assemblerError);
-      
-      try {
-        // FALLBACK: Replicate AI video generation
-        const replicateResult = await generateVideoWithReplicate({
-          prompt: script,
-          style: style as 'modern' | 'cinematic' | 'energetic' | 'professional',
-          duration,
-        });
-        
-        videoUrl = replicateResult.videoUrl;
-        videoProvider = replicateResult.provider;
-        console.log(`[AI API] Video generated via ${replicateResult.provider}/${replicateResult.model}: ${videoUrl}`);
-      } catch (replicateError) {
-        console.error('[AI API] All video generation failed, using sample:', replicateError);
-        videoUrl = `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/${
-          style === 'cinematic' ? 'ForBiggerBlazes.mp4' :
-          style === 'energetic' ? 'ForBiggerEscapes.mp4' :
-          style === 'modern' ? 'ForBiggerFun.mp4' :
-          'ForBiggerJoyrides.mp4'
-        }`;
-      }
     }
-    
-    // Track analytics
-    trackVideoGenerated(userId, {
-      style,
-      duration,
-      provider: videoProvider,
-      hasAddOns: addOns && addOns.length > 0,
-      tokensUsed: scriptResponse.usage?.total_tokens || 0,
-    });
 
     return NextResponse.json({
       success: true,
       data: {
-        videoUrl,
-        script,
-        duration,
-        style,
-        tokensUsed: scriptResponse.usage?.total_tokens || 0,
-        cost: (scriptResponse.usage?.total_tokens || 0) * 0.00003,
-        isGenerated: !videoUrl.includes('commondatastorage.googleapis.com'),
-        videoProvider,
-        ...(enableEmotionAware && detectedEmotion ? {
-          emotion: detectedEmotion.emotion,
-          emotionConfidence: detectedEmotion.confidence,
-          emotionAssets
-        } : {})
+        videoId: video.id,
+        jobId: jobId ?? null,
+        status: 'queued',
+        mode: jobId ? 'queued' : 'inline',
       },
-      message: videoUrl.includes('commondatastorage.googleapis.com') 
-        ? 'Script generated successfully. Video generation failed, showing placeholder.'
-        : '🎉 Real video generated successfully from your prompt!'
+      message: 'Video generation started. Poll /api/ai/jobs/{videoId} for progress.',
     });
   } catch (error) {
-    console.error('[AI API] Video generation error:', error);
+    console.error('[AI API] Failed to start video generation:', error);
     return NextResponse.json(
-      { 
-        success: false,
-        error: 'Failed to generate video'
-      }, 
-      { status: 500 }
+      { success: false, error: 'Failed to start video generation' },
+      { status: 500 },
     );
   }
 }

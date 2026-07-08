@@ -46,25 +46,13 @@ export default function AIFeaturesPage() {
 
     setIsGenerating(true)
     setGenerationProgress(0)
+    setGeneratedVideo(null)
 
     try {
-      // Start progress animation
-      const interval = setInterval(() => {
-        setGenerationProgress((prev) => {
-          if (prev >= 90) {
-            return 90 // Hold at 90% until API completes
-          }
-          const increment = prev < 50 ? 10 : 5
-          return Math.min(prev + increment, 90)
-        })
-      }, 200)
-
-      // Call the AI generation API
+      // Kick off the job — returns immediately with a videoId to poll.
       const response = await fetch('/api/ai', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'generate_video',
           prompt,
@@ -74,49 +62,48 @@ export default function AIFeaturesPage() {
         }),
       })
 
-      clearInterval(interval)
-
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`)
       }
 
       const data = await response.json()
-      
-      console.log('🔍 API Response:', data)
-      
-      if (data.success && data.data && data.data.videoUrl) {
-        setGenerationProgress(100)
-        // Add cache-busting timestamp to video URL
-        const videoUrl = data.data.videoUrl.includes('?') 
-          ? `${data.data.videoUrl}&t=${Date.now()}`
-          : `${data.data.videoUrl}?t=${Date.now()}`;
-        
-        console.log('✅ Setting video URL:', videoUrl)
-        setGeneratedVideo(videoUrl)
-        setGeneratedScript(data.data.script || null)
-        setIsGenerating(false)
-        
-        const message = data.data.isGenerated 
-          ? '🎉 HD VIDEO GENERATED! Check preview panel below!'
-          : '📝 Script generated (video failed, showing placeholder)'
-        toast.success(message)
-        
-        console.log('========================================')
-        console.log('🎬 VIDEO GENERATED!')
-        console.log('========================================')
-        console.log('Video URL:', videoUrl)
-        console.log('Is Generated:', data.data.isGenerated)
-        console.log('========================================')
-      } else {
-        console.error('❌ Invalid response:', data)
-        throw new Error(data.error || 'Failed to generate video')
+      const videoId = data?.data?.videoId
+      if (!data.success || !videoId) {
+        throw new Error(data.error || 'Failed to start generation')
       }
 
+      // Poll real server-side progress until a terminal state (15 min cap).
+      const deadline = Date.now() + 15 * 60 * 1000
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000))
+
+        const statusRes = await fetch(`/api/ai/jobs/${videoId}`)
+        if (!statusRes.ok) continue
+        const job = await statusRes.json()
+
+        setGenerationProgress(job.percent ?? 0)
+
+        if (job.status === 'COMPLETED' && job.videoUrl) {
+          const url = job.videoUrl.includes('?')
+            ? `${job.videoUrl}&t=${Date.now()}`
+            : `${job.videoUrl}?t=${Date.now()}`
+          setGeneratedVideo(url)
+          setGenerationProgress(100)
+          setIsGenerating(false)
+          toast.success('🎉 Video generated! Check the preview below.')
+          return
+        }
+        if (job.status === 'FAILED') {
+          throw new Error(job.error || 'Generation failed')
+        }
+      }
+
+      throw new Error('Generation timed out')
     } catch (error) {
       console.error('Error generating video:', error)
       setIsGenerating(false)
       setGenerationProgress(0)
-      toast.error(`❌ Failed to generate video: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      toast.error(`❌ ${error instanceof Error ? error.message : 'Failed to generate video'}`)
     }
   }
 

@@ -7,6 +7,17 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 
 ---
 
+## Progress log
+
+**2026-07-07 — Phase 0 done; Phase 1 core done.**
+- Repo isolated at `C:\Users\yanp0\dev\forgevid` (was rooted at OneDrive; 654 files were unretrievable OneDrive placeholders — reconstructed from git history). Old OneDrive `.git` still exists and should be neutralized.
+- Stale docs/dead code removed; missing deps installed; **`npm run type-check` exits 0** (was 701 errors — the project never compiled).
+- Async pipeline built: `lib/video-queue.ts` (Redis-optional BullMQ), `lib/generation-pipeline.ts` (shared orchestrator, fails visibly — no placeholder substitution), `workers/video-worker.ts` (`npm run worker`), `GET /api/ai/jobs/[videoId]` status endpoint. `POST /api/ai` now creates a `Video` row (PROCESSING) and enqueues/inline-runs, returning `videoId` immediately; the dashboard polls real progress instead of a fake timer.
+- Verified here: type-check (0 errors) + worker module-graph smoke test. NOT yet verified: end-to-end generation (needs Redis/DB/OpenAI/Pexels/ElevenLabs/Cloudinary keys + ffmpeg).
+- Still open in Phase 2: thumbnail generation, `POST /api/videos` (returns 501), add DRAFT/QUEUED to `VideoStatus` enum (needs a DB migration).
+
+---
+
 ## Phase 0 — Repo hygiene (do before any feature work)
 
 - [ ] Commit or deliberately revert the working tree (510 uncommitted files, ~60 deleted status MDs).
