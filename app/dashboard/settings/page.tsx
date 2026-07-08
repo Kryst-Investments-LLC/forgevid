@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import BrandKitPanel from "@/components/brand-kit-panel"
 import { 
   User, 
   Bell, 
@@ -70,13 +71,19 @@ export default function SettingsPage() {
           </div>
 
           <Tabs defaultValue="profile" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="profile">Profile</TabsTrigger>
+              <TabsTrigger value="branding">Branding</TabsTrigger>
               <TabsTrigger value="notifications">Notifications</TabsTrigger>
               <TabsTrigger value="preferences">Preferences</TabsTrigger>
               <TabsTrigger value="privacy">Privacy</TabsTrigger>
               <TabsTrigger value="billing">Billing</TabsTrigger>
             </TabsList>
+
+            {/* Brand kit: logo, caption colour/font, intro/outro (paid plans) */}
+            <TabsContent value="branding">
+              <BrandKitPanel />
+            </TabsContent>
 
             {/* Profile Settings */}
             <TabsContent value="profile">
