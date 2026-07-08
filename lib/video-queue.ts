@@ -16,11 +16,14 @@ import type { GenerationInput } from './generation-pipeline';
 
 export const GENERATION_QUEUE_NAME = 'video-generation';
 
-export interface GenerationJobData {
-  videoId: string;
-  userId: string;
-  input: GenerationInput;
-}
+/**
+ * Two job kinds share one queue/worker:
+ *  - generate: plan scenes, match footage, assemble
+ *  - rerender: re-assemble from the scenes already persisted on the Video
+ */
+export type GenerationJobData =
+  | { kind: 'generate'; videoId: string; userId: string; input: GenerationInput }
+  | { kind: 'rerender'; videoId: string; userId: string };
 
 let connection: IORedis | null = null;
 let generationQueue: Queue<GenerationJobData> | null = null;
@@ -51,17 +54,32 @@ export function getGenerationQueue(): Queue<GenerationJobData> | null {
 }
 
 /**
- * Enqueue a generation job. Returns the BullMQ job id, or null if no queue is
- * configured (caller should then run the job inline).
+ * Enqueue a job. Returns the BullMQ job id, or null if no queue is configured
+ * (caller should then run the work inline).
  */
-export async function enqueueGeneration(data: GenerationJobData): Promise<string | null> {
+export async function enqueueJob(data: GenerationJobData): Promise<string | null> {
   const queue = getGenerationQueue();
   if (!queue) return null;
-  const job = await queue.add('generate', data, {
+  const job = await queue.add(data.kind, data, {
     attempts: 2,
     backoff: { type: 'exponential', delay: 10_000 },
     removeOnComplete: { age: 3600, count: 200 },
     removeOnFail: { age: 24 * 3600 },
   });
   return job.id ?? null;
+}
+
+export function enqueueGeneration(args: {
+  videoId: string;
+  userId: string;
+  input: GenerationInput;
+}): Promise<string | null> {
+  return enqueueJob({ kind: 'generate', ...args });
+}
+
+export function enqueueRerender(args: {
+  videoId: string;
+  userId: string;
+}): Promise<string | null> {
+  return enqueueJob({ kind: 'rerender', ...args });
 }

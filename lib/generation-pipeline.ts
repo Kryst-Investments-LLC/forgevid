@@ -14,7 +14,8 @@
  */
 
 import { prisma } from './prisma';
-import { generateVideoWithScenes } from './video-generator';
+import { assembleVideo, generateVideoWithScenes } from './video-generator';
+import type { ResolvedScene } from './video-generator';
 
 export interface GenerationInput {
   prompt: string;
@@ -172,6 +173,75 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     const message = error instanceof Error ? error.message : 'Video generation failed';
     // Mark the row FAILED and surface the reason — never silently substitute a
     // placeholder video (see TODO Phase 8).
+    await prisma.video
+      .update({ where: { id: videoId }, data: { status: 'FAILED' } })
+      .catch(() => {});
+    await writeProgress(videoId, { stage: 'failed', error: message }).catch(() => {});
+    throw error;
+  }
+}
+
+/** Read the persisted scene list for a video (empty if none yet). */
+export async function loadScenes(videoId: string): Promise<ResolvedScene[]> {
+  const video = await prisma.video.findUnique({
+    where: { id: videoId },
+    select: { metadata: true },
+  });
+  const meta = parseMetadata(video?.metadata ?? null);
+  return Array.isArray(meta.scenes) ? (meta.scenes as ResolvedScene[]) : [];
+}
+
+/** Replace the persisted scene list, leaving the rest of metadata intact. */
+export async function saveScenes(videoId: string, scenes: ResolvedScene[]): Promise<void> {
+  const video = await prisma.video.findUnique({
+    where: { id: videoId },
+    select: { metadata: true },
+  });
+  const meta = parseMetadata(video?.metadata ?? null);
+  meta.scenes = scenes;
+  await prisma.video.update({
+    where: { id: videoId },
+    data: { metadata: JSON.stringify(meta) },
+  });
+}
+
+/**
+ * Re-assemble a video from its already-persisted (and possibly edited) scenes.
+ * Skips planning and footage matching entirely.
+ */
+export async function rerenderVideo(videoId: string): Promise<string> {
+  const video = await prisma.video.findUnique({
+    where: { id: videoId },
+    select: { metadata: true },
+  });
+  const meta = parseMetadata(video?.metadata ?? null);
+  const scenes = Array.isArray(meta.scenes) ? (meta.scenes as ResolvedScene[]) : [];
+  if (scenes.length === 0) {
+    throw new Error('This video has no persisted scenes to re-render');
+  }
+  const addOns: string[] = Array.isArray(meta.request?.addOns) ? meta.request.addOns : [];
+
+  try {
+    await prisma.video.update({ where: { id: videoId }, data: { status: 'PROCESSING' } });
+    await setStage(videoId, 'assembling');
+
+    const videoUrl = await assembleVideo(scenes, addOns);
+
+    await setStage(videoId, 'uploading');
+    await prisma.video.update({
+      where: { id: videoId },
+      data: { status: 'COMPLETED', url: videoUrl, fileUrl: videoUrl },
+    });
+    await writeProgress(videoId, {
+      stage: 'done',
+      percent: 100,
+      videoUrl,
+      provider: 'stock-assembler',
+    });
+
+    return videoUrl;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Re-render failed';
     await prisma.video
       .update({ where: { id: videoId }, data: { status: 'FAILED' } })
       .catch(() => {});

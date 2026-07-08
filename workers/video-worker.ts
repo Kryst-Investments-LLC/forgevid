@@ -18,7 +18,7 @@ loadEnvConfig(process.cwd());
 async function main() {
   const { Worker } = await import('bullmq');
   const { getRedisConnection, GENERATION_QUEUE_NAME } = await import('../lib/video-queue');
-  const { runGeneration } = await import('../lib/generation-pipeline');
+  const { runGeneration, rerenderVideo } = await import('../lib/generation-pipeline');
 
   const connection = getRedisConnection();
   if (!connection) {
@@ -31,9 +31,12 @@ async function main() {
   const worker = new Worker<import('../lib/video-queue').GenerationJobData>(
     GENERATION_QUEUE_NAME,
     async (job) => {
-      const { videoId, input } = job.data;
-      console.log(`[worker] job ${job.id} generating video ${videoId}`);
-      const url = await runGeneration(videoId, input);
+      const { kind, videoId } = job.data;
+      console.log(`[worker] job ${job.id} ${kind} video ${videoId}`);
+      const url =
+        job.data.kind === 'rerender'
+          ? await rerenderVideo(videoId)
+          : await runGeneration(videoId, job.data.input);
       console.log(`[worker] job ${job.id} done -> ${url}`);
       return { url };
     },
