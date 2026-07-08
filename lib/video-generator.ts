@@ -14,28 +14,35 @@
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { uploadImage as uploadCloudinaryImage, uploadVideo as uploadCloudinaryVideo } from './cloudinary';
 import { selectMusicPath } from './music-library';
 import { DEFAULT_TTS_MODEL, resolveVoiceId } from './voice-catalog';
 import {
   buildCaptionFilter,
+  buildWatermarkFilter,
   cuesFromScenes,
+  shiftCues,
   transcribeToCues,
   type CaptionCue,
   type CaptionStyle,
 } from './captions';
+import { overlayPosition, type Branding } from './brand-kit';
 
 // Dynamic imports to avoid webpack bundling issues
 let ffmpeg: any;
 let createClient: any;
 let OpenAI: any;
 
+let ffmpegBin = '';
+
 async function initializeModules() {
   if (!ffmpeg) {
     const fluentFfmpeg = await import('fluent-ffmpeg');
     const ffmpegInstaller = await import('@ffmpeg-installer/ffmpeg');
     ffmpeg = fluentFfmpeg.default;
-    ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+    ffmpegBin = ffmpegInstaller.path;
+    ffmpeg.setFfmpegPath(ffmpegBin);
   }
   if (!createClient) {
     const pexels = await import('pexels');
@@ -106,6 +113,8 @@ export interface GenerationOptions {
   mood?: string;
   /** ElevenLabs voice id for the narration. */
   voiceId?: string;
+  /** Plan-gated branding (watermark / logo / intro / outro). */
+  branding?: Branding | null;
 }
 
 function sceneId(index: number): string {
@@ -146,6 +155,42 @@ async function persistGeneratedVideo(outputPath: string, outputFilename: string)
     console.error('[Video Generator] Cloudinary upload failed, keeping local file:', uploadError);
     return localUrl;
   }
+}
+
+/**
+ * Duration of a media file, in seconds.
+ *
+ * `ffmpeg -i` prints it to stderr and exits non-zero (no output specified);
+ * @ffmpeg-installer ships no ffprobe, so parse that. Returns 0 on failure.
+ */
+function probeDurationSeconds(filePath: string): number {
+  const result = spawnSync(ffmpegBin, ['-hide_banner', '-i', filePath], {
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  const match = `${result.stderr ?? ''}`.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/);
+  if (!match) return 0;
+  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+}
+
+/** Re-encode a clip to the render's frame size/fps so concat is seamless. */
+async function normalizeClip(source: string, fit: string, outPath: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg(source)
+      .outputOptions([
+        '-c:v libx264',
+        '-preset ultrafast',
+        '-crf 23',
+        '-an',
+        '-r 30',
+        '-pix_fmt yuv420p',
+      ])
+      .videoFilters(fit)
+      .output(outPath)
+      .on('end', () => resolve())
+      .on('error', (err: Error) => reject(err))
+      .run();
+  });
 }
 
 /**
@@ -531,6 +576,8 @@ export interface AssembleOptions {
    */
   cues?: CaptionCue[] | null;
   captionStyle?: CaptionStyle;
+  /** Plan-gated branding: watermark, logo, intro/outro, caption colour/font. */
+  branding?: Branding | null;
 }
 
 export interface AssembleResult {
@@ -552,8 +599,9 @@ export async function assembleVideo(
   if (scenes.length === 0) throw new Error('Cannot assemble a video with no scenes');
 
   const fit = fitFilter(aspectRatio);
-  const timelineDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
+  const scenesDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
   const musicVolume = options.musicVolume ?? 0.25;
+  const branding = options.branding ?? null;
 
   const tempDir = path.join(process.cwd(), 'public', 'temp');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
@@ -620,6 +668,41 @@ export async function assembleVideo(
       trimmed.push(trimmedPath);
     }
 
+    // Brand intro/outro bookend the scenes. They must be normalized to the same
+    // codec/size/fps or the concat demuxer produces a broken stream.
+    let introDuration = 0;
+    let outroDuration = 0;
+
+    const prepareBookend = async (url: string, label: string): Promise<string> => {
+      const src = await downloadFile(url, `${label}_${Date.now()}.mp4`);
+      if (src !== url) tempFiles.push(src);
+      const normalized = path.join(tempDir, `${label}_norm_${Date.now()}.mp4`);
+      await normalizeClip(src, fit, normalized);
+      tempFiles.push(normalized);
+      return normalized;
+    };
+
+    if (branding?.introUrl) {
+      try {
+        const intro = await prepareBookend(branding.introUrl, 'intro');
+        introDuration = probeDurationSeconds(intro);
+        trimmed.unshift(intro);
+      } catch (error) {
+        console.error('[Video Generator] Intro failed, skipping (non-fatal):', error);
+      }
+    }
+    if (branding?.outroUrl) {
+      try {
+        const outro = await prepareBookend(branding.outroUrl, 'outro');
+        outroDuration = probeDurationSeconds(outro);
+        trimmed.push(outro);
+      } catch (error) {
+        console.error('[Video Generator] Outro failed, skipping (non-fatal):', error);
+      }
+    }
+
+    const timelineDuration = introDuration + scenesDuration + outroDuration;
+
     fileListPath = path.join(tempDir, `filelist_${Date.now()}.txt`);
     fs.writeFileSync(fileListPath, trimmed.map((c) => `file '${c.replace(/\\/g, '/')}'`).join('\n'));
 
@@ -636,20 +719,46 @@ export async function assembleVideo(
         options.cues ??
         (voiceoverPath ? await transcribeToCues(voiceoverPath) : null) ??
         cuesFromScenes(scenes);
+
+      // A brand intro delays the narration; shift the cues to match.
+      cues = shiftCues(cues, introDuration);
     }
 
-    const textFilter = cues.length > 0 ? buildCaptionFilter(cues, options.captionStyle) : '';
-    const videoFilter = textFilter ? `${fit},${textFilter}` : fit;
+    const captionStyle: CaptionStyle = {
+      ...options.captionStyle,
+      ...(branding?.captionColor ? { fontColor: branding.captionColor } : {}),
+      ...(branding?.fontFile ? { fontFile: branding.fontFile } : {}),
+    };
+
+    const textFilter = cues.length > 0 ? buildCaptionFilter(cues, captionStyle) : '';
+    const watermarkFilter = branding?.watermarkText
+      ? buildWatermarkFilter(branding.watermarkText)
+      : '';
+
+    const videoFilter = [fit, textFilter, watermarkFilter].filter(Boolean).join(',');
 
     const musicPath = options.musicPath ?? null;
+
+    // Materialize the brand logo up front — it becomes an extra ffmpeg input.
+    let logoPath: string | null = null;
+    if (branding?.logoUrl) {
+      try {
+        logoPath = await downloadFile(branding.logoUrl, `logo_${Date.now()}.png`);
+        if (logoPath !== branding.logoUrl) tempFiles.push(logoPath);
+      } catch (error) {
+        console.error('[Video Generator] Logo fetch failed, skipping (non-fatal):', error);
+        logoPath = null;
+      }
+    }
 
     await new Promise<void>((resolve, reject) => {
       const command = ffmpeg().input(fileListPath).inputOptions(['-f concat', '-safe 0']);
 
-      // Input indices: 0 = concatenated video, then voiceover, then music.
+      // Input indices: 0 = concatenated video, then voiceover, music, logo.
       let inputIndex = 0;
       let voiceIndex = -1;
       let musicIndex = -1;
+      let logoIndex = -1;
       if (voiceoverPath) {
         command.input(voiceoverPath);
         voiceIndex = ++inputIndex;
@@ -659,10 +768,25 @@ export async function assembleVideo(
         command.input(musicPath).inputOptions(['-stream_loop -1']);
         musicIndex = ++inputIndex;
       }
+      if (logoPath) {
+        // A still image must loop, or it appears for a single frame.
+        command.input(logoPath).inputOptions(['-loop 1']);
+        logoIndex = ++inputIndex;
+      }
 
       // ffmpeg accepts either -vf or -filter_complex, never both — so the video
       // chain lives in the complex graph now that audio needs one.
-      const filters: string[] = [`[0:v]${videoFilter}[vout]`];
+      const filters: string[] = [];
+      if (logoIndex > 0) {
+        filters.push(`[0:v]${videoFilter}[vbase]`);
+        filters.push(`[${logoIndex}:v]format=rgba,colorchannelmixer=aa=${branding!.logoOpacity}[logo]`);
+        filters.push(
+          `[vbase][logo]overlay=${overlayPosition(branding!.logoPosition)}:format=auto,` +
+            `format=yuv420p[vout]`,
+        );
+      } else {
+        filters.push(`[0:v]${videoFilter}[vout]`);
+      }
 
       // sidechaincompress requires both inputs in the same format.
       const AFMT = 'aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo';
@@ -756,7 +880,7 @@ export async function generateVideoWithScenes(
   cues: CaptionCue[];
   thumbnailUrl: string | null;
 }> {
-  const { prompt, duration, addOns, aspectRatio = '16:9', mood, voiceId } = options;
+  const { prompt, duration, addOns, aspectRatio = '16:9', mood, voiceId, branding } = options;
 
   const planned = await planScenes(prompt, duration);
   if (planned.length === 0) throw new Error('Failed to plan any scenes from the script');
@@ -770,6 +894,7 @@ export async function generateVideoWithScenes(
   const { videoUrl, cues, thumbnailUrl } = await assembleVideo(resolved, addOns || [], aspectRatio, {
     musicPath,
     voiceId,
+    branding,
   });
 
   console.log(

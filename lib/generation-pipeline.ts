@@ -17,6 +17,20 @@ import { prisma } from './prisma';
 import { aspectPreset, assembleVideo, generateVideoWithScenes } from './video-generator';
 import type { AspectRatio, ResolvedScene } from './video-generator';
 import { selectMusicPath } from './music-library';
+import { freeBranding, resolveBranding } from './brand-kit';
+
+/**
+ * Branding is resolved from the video's OWNER on the server, never from client
+ * input — otherwise a free user could simply ask for no watermark.
+ */
+async function brandingForVideo(videoId: string) {
+  const video = await prisma.video.findUnique({
+    where: { id: videoId },
+    select: { userId: true },
+  });
+  if (!video) return freeBranding();
+  return resolveBranding(video.userId);
+}
 
 export interface GenerationInput {
   prompt: string;
@@ -152,6 +166,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     // assembly, and Cloudinary upload — and returns the scene structure so we
     // can persist it for scene-based editing / re-rendering.
     const aspectRatio: AspectRatio = input.aspectRatio ?? '16:9';
+    const branding = await brandingForVideo(videoId);
     const { videoUrl, scenes, cues, thumbnailUrl } = await generateVideoWithScenes({
       prompt: script,
       style: input.style,
@@ -160,6 +175,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       aspectRatio,
       mood: input.style,
       voiceId: input.voiceId,
+      branding,
     });
 
     await setStage(videoId, 'uploading');
@@ -250,9 +266,13 @@ export async function rerenderVideo(videoId: string): Promise<string> {
 
     // A re-render re-synthesizes the voiceover, so previously-transcribed cues
     // would no longer be aligned; only reuse them when the scenes are unchanged.
+    // Re-resolve branding: the user's plan may have changed since generation.
+    const branding = await brandingForVideo(videoId);
+
     const { videoUrl, cues, thumbnailUrl } = await assembleVideo(scenes, addOns, aspectRatio, {
       musicPath,
       voiceId: meta.request?.voiceId,
+      branding,
     });
 
     await setStage(videoId, 'uploading');

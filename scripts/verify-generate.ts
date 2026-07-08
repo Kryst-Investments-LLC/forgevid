@@ -20,9 +20,13 @@ import {
   escapeFontPath,
   resolveCaptionFontFile,
   wrapText,
+  buildWatermarkFilter,
+  shiftCues,
   __resetFontCache,
   type CaptionCue,
 } from '../lib/captions';
+import { allowsCustomBranding, requiresWatermark, WATERMARK_TEXT } from '../lib/plan';
+import { freeBranding, isValidHexColor, overlayPosition } from '../lib/brand-kit';
 
 const ffmpegPath: string = require('@ffmpeg-installer/ffmpeg').path;
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-generate');
@@ -250,6 +254,78 @@ async function checkCaptionEscaping(clip: string) {
   fs.unlinkSync(outFile);
 }
 
+/** The plan gate is what makes the watermark a business rule, not decoration. */
+function checkPlanGate() {
+  console.log('\nChecking plan gate...');
+  assert(requiresWatermark('free'), 'free plan is watermarked');
+  assert(!requiresWatermark('pro'), 'pro plan is not watermarked');
+  assert(!allowsCustomBranding('free'), 'free plan cannot use custom branding');
+  assert(allowsCustomBranding('enterprise'), 'enterprise plan can use custom branding');
+
+  const free = freeBranding();
+  assert(free.watermarkText === WATERMARK_TEXT && !free.logoUrl, 'freeBranding: watermark, no logo');
+
+  // primaryColor is interpolated into a filtergraph — reject anything but hex.
+  assert(isValidHexColor('#ff0000') && isValidHexColor('#f00'), 'hex colours accepted');
+  assert(
+    !isValidHexColor("red':x=0,drawtext=text='pwned") && !isValidHexColor('red'),
+    'non-hex colour (filtergraph injection) rejected',
+  );
+
+  assert(overlayPosition('top-left', 24) === '24:24', 'overlay position: top-left');
+  assert(overlayPosition('bottom-right', 24) === 'W-w-24:H-h-24', 'overlay position: bottom-right');
+  assert(buildWatermarkFilter(WATERMARK_TEXT).includes('drawtext='), 'watermark builds a drawtext');
+}
+
+/**
+ * Branding must actually reach the pixels: a free watermark, a logo overlay,
+ * and intro/outro clips that lengthen the video AND shift caption timing.
+ */
+async function checkBrandingRender(clip: string) {
+  console.log('\nRendering with watermark + logo + intro/outro...');
+  const logo = path.join(workDir, 'logo.png');
+  const intro = path.join(workDir, 'intro.mp4');
+  const outro = path.join(workDir, 'outro.mp4');
+
+  ffmpeg(['-f', 'lavfi', '-i', 'color=yellow:s=80x80', '-frames:v', '1', logo]);
+  // Deliberately a different size to prove bookends are normalized before concat.
+  ffmpeg(['-f', 'lavfi', '-i', 'color=white:s=320x240:r=24', '-t', '1', '-pix_fmt', 'yuv420p', intro]);
+  ffmpeg(['-f', 'lavfi', '-i', 'color=gray:s=320x240:r=24', '-t', '1', '-pix_fmt', 'yuv420p', outro]);
+
+  // Free plan branding, but with a logo/intro/outro attached, exercising every path.
+  const branding = {
+    ...freeBranding('free'),
+    logoUrl: logo,
+    logoOpacity: 0.8,
+    logoPosition: 'bottom-right' as const,
+    introUrl: intro,
+    outroUrl: outro,
+  };
+
+  const { videoUrl: url } = await assembleVideo([scene(0, clip, 2)], ['subtitles'], '16:9', {
+    branding,
+  });
+  const outFile = path.join(process.cwd(), 'public', 'generated', path.basename(url));
+  assert(fs.existsSync(outFile), 'branded render produced output');
+
+  const info = probe(outFile);
+  const dur = durationSeconds(info);
+  // 1s intro + 2s scene + 1s outro
+  assert(Math.abs(dur - 4) < 0.6, `intro+scenes+outro concatenated (~4s, got ${dur.toFixed(2)}s)`);
+  assert(/1920x1080/.test(info), 'bookends normalized to the render frame size');
+
+  // Cues must be pushed later by the intro, or every caption fires early.
+  const shifted = shiftCues([{ start: 0, end: 1.5, text: 'x' }], 1);
+  assert(
+    shifted[0].start === 1 && shifted[0].end === 2.5,
+    'shiftCues delays captions by the intro duration',
+  );
+  assert(shiftCues([{ start: 0, end: 1, text: 'x' }], 0)[0].start === 0, 'no intro => no shift');
+
+  fs.rmSync(path.join(process.cwd(), 'public', 'generated'), { recursive: true, force: true });
+  assert(fs.existsSync(logo) && fs.existsSync(intro), 'brand assets not deleted by cleanup');
+}
+
 async function main() {
   fs.mkdirSync(workDir, { recursive: true });
   const clipA = path.join(workDir, 'a.mp4');
@@ -268,6 +344,8 @@ async function main() {
   checkCaptionFormats();
   await checkCaptionEscaping(clipA);
   await checkMusicDucking(clipA);
+  checkPlanGate();
+  await checkBrandingRender(clipA);
 
   // Regression guard: assembleVideo must not delete media it did not download.
   assert(fs.existsSync(clipA) && fs.existsSync(clipB), 'caller-owned local sources were NOT deleted');

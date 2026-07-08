@@ -27,6 +27,10 @@ export interface CaptionStyle {
   marginBottom?: number;
   /** Wrap text at roughly this many characters per line. */
   maxCharsPerLine?: number;
+  /** Text colour. Must be a validated hex value — it goes into a filtergraph. */
+  fontColor?: string;
+  /** Override the resolved system font (brand kit typeface). */
+  fontFile?: string | null;
 }
 
 /** Named presets so callers don't hand-tune pixel values. */
@@ -86,6 +90,17 @@ export function cuesFromScenes(
     t += scene.duration;
   }
   return cues;
+}
+
+/**
+ * Push every cue later by `offsetSeconds`.
+ *
+ * Cue times are relative to the scenes. Anything prepended to the render (a
+ * brand intro) delays the narration, so without this every caption fires early.
+ */
+export function shiftCues(cues: CaptionCue[], offsetSeconds: number): CaptionCue[] {
+  if (!offsetSeconds) return cues;
+  return cues.map((c) => ({ ...c, start: c.start + offsetSeconds, end: c.end + offsetSeconds }));
 }
 
 /** Greedy word wrap so long cues don't run off the frame. */
@@ -250,14 +265,18 @@ export function cuesToVtt(cues: CaptionCue[]): string {
  * Returns '' when there is nothing to draw.
  */
 export function buildCaptionFilter(cues: CaptionCue[], style: CaptionStyle = {}): string {
-  const { fontSize = 28, marginBottom = 60, maxCharsPerLine = 42 } = {
-    ...CAPTION_PRESETS.default,
-    ...style,
-  };
+  const {
+    fontSize = 28,
+    marginBottom = 60,
+    maxCharsPerLine = 42,
+    fontColor = 'white',
+  } = { ...CAPTION_PRESETS.default, ...style };
 
+  // A brand typeface wins, but only if it actually exists on disk.
+  const brandFont = style.fontFile && fs.existsSync(style.fontFile) ? style.fontFile : null;
   // Without a font, drawtext aborts the whole render. Drop the captions instead
   // of losing the video; resolveCaptionFontFile() has already logged how to fix it.
-  const font = resolveCaptionFontFile();
+  const font = brandFont ?? resolveCaptionFontFile();
   if (!font) return '';
   const fontOpt = `fontfile='${escapeFontPath(font)}':`;
 
@@ -269,7 +288,7 @@ export function buildCaptionFilter(cues: CaptionCue[], style: CaptionStyle = {})
       // Stack lines upward from the bottom margin.
       const yOffset = marginBottom + (lines.length - 1 - lineIndex) * (fontSize + 8);
       filters.push(
-        `drawtext=${fontOpt}text='${escapeDrawText(line)}':fontsize=${fontSize}:fontcolor=white:` +
+        `drawtext=${fontOpt}text='${escapeDrawText(line)}':fontsize=${fontSize}:fontcolor=${fontColor}:` +
           `borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-${yOffset}:` +
           `enable='between(t\\,${cue.start.toFixed(3)}\\,${cue.end.toFixed(3)})'`,
       );
@@ -277,4 +296,18 @@ export function buildCaptionFilter(cues: CaptionCue[], style: CaptionStyle = {})
   }
 
   return filters.join(',');
+}
+
+/**
+ * A persistent watermark in the top-right corner (free plans).
+ * Returns '' when no font is available, so a missing font never kills a render.
+ */
+export function buildWatermarkFilter(text: string, fontSize = 22): string {
+  const font = resolveCaptionFontFile();
+  if (!font) return '';
+  return (
+    `drawtext=fontfile='${escapeFontPath(font)}':text='${escapeDrawText(text)}':` +
+    `fontsize=${fontSize}:fontcolor=white@0.85:borderw=1:bordercolor=black@0.6:` +
+    `x=w-text_w-20:y=20`
+  );
 }

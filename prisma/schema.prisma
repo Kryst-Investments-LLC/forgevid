@@ -77,6 +77,7 @@ model User {
   auditLogs      AuditLog[]
   supportTickets SupportTicket[]
   betaAccessEntriesCreated BetaAccessEntry[] @relation("BetaAccessCreatedBy")
+  brandKit       BrandKit?
 
   @@map("users")
   @@index([email])
@@ -698,6 +699,34 @@ enum SSOProvider {
   AZURE
   OKTA
   SAML
+}
+
+/// Per-user branding applied at render time. Paid plans only (see lib/plan.ts).
+model BrandKit {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Logo overlaid on the video (CDN url).
+  logoUrl        String?
+  /// 0.0-1.0, corner placement.
+  logoOpacity    Float    @default(0.85)
+  logoPosition   String   @default("bottom-right")
+
+  /// Caption colour, as #RRGGBB.
+  primaryColor   String?
+  /// Absolute path or url of a .ttf used for captions.
+  fontFamily     String?
+
+  /// Short clips prepended/appended to every render (CDN urls).
+  introUrl       String?
+  outroUrl       String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("brand_kits")
+  @@index([userId])
 }
 
 enum VideoStatus {

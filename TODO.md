@@ -77,6 +77,16 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - Dockerfile installs `fontconfig` + `font-dejavu` (falling back to `ttf-dejavu`, since Alpine renamed it). ⚠ **The Docker build is unverified** — no Docker daemon here.
 - `lib/video-export.ts` reuses the shared escaper/font resolver (it had a duplicate escaper with the same bug).
 
+**2026-07-08 — Phase 6 done: brand kit + free-tier watermark.**
+- `lib/plan.ts`: server-side plan resolution. The app only had a *client* `useSubscription()` hook — a watermark enforced in the browser is decoration. Fails closed: an expired/`past_due` subscription is treated as FREE, so it can't keep unlocking clean output.
+- `lib/brand-kit.ts` + `BrandKit` model (migration `20260708130000_add_brand_kit`): logo overlay (opacity, corner), caption colour, brand typeface, intro/outro clips.
+- Branding is resolved **from the video's owner at render time**, never from client input, and re-resolved on re-render so a downgrade re-applies the watermark.
+- `primaryColor` is interpolated into an ffmpeg filtergraph, so it is hex-validated in two places — a value like `red':x=0,drawtext=text='pwned` is rejected.
+- `GET/PUT /api/brand-kit` (PUT is 403 for free plans).
+- **Runtime verified**: the plan gate, filtergraph-injection rejection, a branded render with watermark + logo overlay + intro/outro concatenating to exactly 4.00s (proving duration probing + bookend normalization), and `shiftCues` delaying captions by the intro duration.
+- Bug avoided by testing: an intro prepended to the render would have made every caption fire early — cues are timed relative to the scenes, so they must shift.
+- ⚠ Migration unapplied (no DB here). No brand-kit UI yet; API only.
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)
