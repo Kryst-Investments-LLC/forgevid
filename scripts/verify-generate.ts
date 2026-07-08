@@ -42,6 +42,7 @@ import {
 import { resolveFfmpegPath, supportsFilter } from '../lib/ffmpeg-env';
 import { buildKenBurnsFilter, directionForScene } from '../lib/ken-burns';
 import { hasOpenAiKey, openAiApiKey } from '../lib/openai-key';
+import { applySceneOps, describeScenesForModel, sceneOpsSchema } from '../lib/scene-ops';
 
 const ffmpegPath: string = resolveFfmpegPath();
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-generate');
@@ -472,6 +473,63 @@ async function checkUserMedia(clipA: string, clipB: string) {
   }
 }
 
+/**
+ * Chat-based scene editing. The model only proposes operations; validation and
+ * application are ours. This is the boundary that keeps a hallucinated scene id
+ * or a 900-second scene out of the database.
+ */
+function checkSceneOps(clip: string) {
+  console.log('\nChecking chat-based scene editing (ops layer)...');
+  const scenes: ResolvedScene[] = [scene(0, clip, 5), scene(1, clip, 5), scene(2, clip, 5)];
+
+  // "make scene 2 faster"
+  const faster = applySceneOps(scenes, [{ op: 'set_duration', sceneId: 'scene-2', duration: 2 }]);
+  assert(faster.scenes[1].duration === 2, 'set_duration shortens the right scene');
+  assert(faster.scenes[0].duration === 5, 'other scenes untouched');
+  assert(faster.applied.length === 1 && faster.skipped.length === 0, 'operation applied');
+  assert(scenes[1].duration === 5, 'applySceneOps is pure — the input list is not mutated');
+
+  // A hallucinated scene id must be skipped, not applied.
+  const bogus = applySceneOps(scenes, [{ op: 'set_duration', sceneId: 'scene-99', duration: 2 }]);
+  assert(bogus.applied.length === 0 && bogus.skipped.length === 1, 'unknown scene id is skipped');
+  assert(/No scene/.test(bogus.skipped[0].reason), 'and the reason is reported');
+
+  // Deleting must reindex, or captions and user-media assignment desync.
+  const deleted = applySceneOps(scenes, [{ op: 'delete_scene', sceneId: 'scene-2' }]);
+  assert(deleted.scenes.length === 2, 'scene deleted');
+  assert(deleted.scenes.map((s) => s.index).join(',') === '0,1', 'indexes stay dense after delete');
+  assert(deleted.scenes[1].id === 'scene-3', 'ids stay stable (only index is reassigned)');
+
+  // Never leave a video with zero scenes.
+  const last = applySceneOps([scenes[0]], [{ op: 'delete_scene', sceneId: 'scene-1' }]);
+  assert(last.scenes.length === 1 && last.applied.length === 0, 'cannot delete the last scene');
+  assert(/at least one scene/.test(last.skipped[0].reason), 'and it says why');
+
+  // swap_clip needs a network search, so the pure applier only reports it.
+  const swap = applySceneOps(scenes, [{ op: 'swap_clip', sceneId: 'scene-3' }]);
+  assert(swap.swapSceneIds.join() === 'scene-3', 'swap_clip is deferred to the caller');
+
+  // The zod boundary is what a hallucinating model actually hits.
+  assert(!sceneOpsSchema.safeParse({ operations: [{ op: 'drop_database' }] }).success, 'unknown op rejected');
+  assert(
+    !sceneOpsSchema.safeParse({ operations: [{ op: 'set_duration', sceneId: 's', duration: 900 }] }).success,
+    '900-second scene rejected',
+  );
+  assert(
+    !sceneOpsSchema.safeParse({ operations: [{ op: 'set_duration', sceneId: 's', duration: 0 }] }).success,
+    'zero-second scene rejected',
+  );
+  assert(
+    sceneOpsSchema.safeParse({ reply: 'ok', operations: [{ op: 'swap_clip', sceneId: 'scene-1' }] }).success,
+    'a valid proposal passes',
+  );
+
+  // The model must never be shown clip urls.
+  const digest = describeScenesForModel(scenes);
+  assert(!digest.includes(clip), 'scene digest sent to the model contains no clip urls');
+  assert(digest.includes('scene-2 (scene 2)'), 'digest labels scenes the way the prompt expects');
+}
+
 /** The plan gate is what makes the watermark a business rule, not decoration. */
 function checkPlanGate() {
   console.log('\nChecking plan gate...');
@@ -564,6 +622,7 @@ async function main() {
   await checkMusicDucking(clipA);
   checkOpenAiKeyAlias();
   await checkUserMedia(clipA, clipB);
+  checkSceneOps(clipA);
   checkPlanGate();
   await checkBrandingRender(clipA);
   checkTransitionMath();

@@ -101,6 +101,14 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - `ResolvedScene.mediaType` is optional so scenes persisted before this still load.
 - **Runtime verified**: frame count math, supersampling, and a real render — a still becomes a 3.00s h264 clip at 1920×1080 whose **first and last frames differ**, proving it actually zooms rather than holding static (duration + codec alone would pass for a static hold).
 
+**2026-07-08 — Phase 7 complete, plus the two long-standing items.**
+- **`OPENAI_SECRET_KEY`**: correcting an earlier overstatement — it is *documented* (docs, `ENV_SETUP_INSTRUCTIONS.md`, `docker-compose.prod.yml`), so it works if you set **both** vars; but `.env.example` lists only `OPENAI_API_KEY`, so anyone following it got silently dead feature modules. `lib/openai-key.ts` now resolves `OPENAI_API_KEY || OPENAI_SECRET_KEY`. A rename would have broken existing deployments.
+- **Replicate: DROPPED.** `lib/replicate-video.ts` deleted. Its only consumer built the transcript as the literal string `Transcribed audio from ${size} byte file` and fed *that* to Zeroscope — the feature never transcribed anything. `/api/voice-to-video` now really transcribes with Whisper and enqueues the normal async pipeline, inheriting scenes/captions/music/branding/progress. Fails visibly (503 no key, 422 unusable audio) instead of inventing a transcript. Also removed a hardcoded `Confidence: 95%` stat and fixed base64 encoding that overflowed on recordings longer than a few seconds.
+- **User media** (`lib/user-media.ts`): assets resolve from **ids against the owner** — never urls from the client, or the renderer would fetch arbitrary server-side URLs. They fill scenes in order, so a fully-covered generation **no longer needs `PEXELS_API_KEY`**; a partially-covered one fails visibly and names the coverage. Image assets get Ken Burns.
+- **Chat editing** (`lib/scene-ops.ts`, `POST /api/videos/[id]/scenes/chat`): the model only proposes operations from a closed set; a zod boundary + a **pure** `applySceneOps` do the work. A hallucinated scene id, an unknown op, a 900-second scene — all rejected before the DB. Deleting reindexes (captions/user-media depend on `index`) while ids stay stable, and the last scene can't be deleted. The model is never shown clip urls.
+- **`OneDrive\.git` neutralized**: moved (not deleted) to `C:\Users\yanp0\dev\forgevid-legacy-onedrive-git\.git` — 274MB, tracked only forgevid, would have swept in 409 personal files. A leftover empty `git init` inside the OneDrive project folder was also removed. **Nothing under OneDrive is a git repo any more.** That history is no longer backed up to the OneDrive cloud.
+- Suite is now **104 runtime assertions** (`npm run verify:generate`) + `verify:export`.
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

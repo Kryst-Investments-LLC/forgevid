@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
-import { Shuffle, RefreshCw, Save, Film, Download } from "lucide-react"
+import { Shuffle, RefreshCw, Save, Film, Download, Sparkles, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 interface Scene {
@@ -36,6 +36,8 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
   const [busyScene, setBusyScene] = useState<string | null>(null)
   const [rerendering, setRerendering] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [chatInput, setChatInput] = useState("")
+  const [chatting, setChatting] = useState(false)
 
   const loadScenes = useCallback(async () => {
     setLoading(true)
@@ -92,6 +94,37 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
       toast.error(error instanceof Error ? error.message : "Swap failed")
     } finally {
       setBusyScene(null)
+    }
+  }
+
+  const sendChat = async () => {
+    const message = chatInput.trim()
+    if (!message) return
+    setChatting(true)
+    try {
+      const res = await fetch(`/api/videos/${videoId}/scenes/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "Could not apply that edit")
+
+      setScenes(data.scenes ?? [])
+      setChatInput("")
+      toast.success(data.reply || "Done.")
+
+      // Be honest about anything the assistant asked for but we refused.
+      for (const s of data.skipped ?? []) {
+        toast.warning(s.reason)
+      }
+      if (data.rerenderRequired) {
+        toast.info("Hit Re-render to see the changes in the video.")
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Chat edit failed")
+    } finally {
+      setChatting(false)
     }
   }
 
@@ -190,6 +223,30 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/* Chat editing: the assistant proposes structured edits, we validate them. */}
+        <div className="flex items-center gap-2">
+          <Input
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                sendChat()
+              }
+            }}
+            placeholder="Tell the assistant what to change — e.g. “make scene 2 faster”"
+            disabled={chatting || rerendering}
+          />
+          <Button onClick={sendChat} disabled={chatting || rerendering || !chatInput.trim()}>
+            {chatting ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-2" />
+            )}
+            Ask
+          </Button>
+        </div>
+
         {scenes.map((scene) => (
           <div key={scene.id} className="rounded-lg border p-4 space-y-3">
             <div className="flex items-center justify-between">
