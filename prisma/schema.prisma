@@ -701,6 +701,8 @@ enum SSOProvider {
 }
 
 enum VideoStatus {
+  DRAFT // created (e.g. from a template) but never rendered
+  QUEUED // generation job enqueued, not yet picked up
   PROCESSING
   COMPLETED
   FAILED

@@ -63,6 +63,13 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - Burned in with `drawtext`, deliberately **not** the `subtitles` filter: avoids a libass dependency in the deploy image and avoids escaping a Windows `C:\...` path inside a filtergraph.
 - **Runtime verified**: exact SRT/VTT byte assertions, `wrapText`, and a caption containing `,` `:` `'` and `%` actually rendering — a comma is what separates filters in a filtergraph, so this is the case that would silently break the graph.
 
+**2026-07-08 — Phase 2 complete.**
+- **Thumbnails**: a poster frame is grabbed ~1s in, *before* `persistGeneratedVideo` deletes the local render, uploaded to Cloudinary when configured, and written to `Video.thumbnail`. Best-effort — a failed thumbnail never fails a generation. Runtime-verified in `verify:generate` for all three ratios.
+- **`POST /api/videos`** no longer returns 501: it creates an empty editor project (a `DRAFT`). Generation stays `POST /api/ai`; upload stays `POST /api/videos/upload`.
+- **`VideoStatus` gained `DRAFT` and `QUEUED`** (migration `20260708120000_add_video_status_draft_queued`). Template-instantiated projects are `DRAFT` again (they were mislabelled `PROCESSING`, i.e. "rendering forever"); a generation row starts `QUEUED` and flips to `PROCESSING` when a worker actually picks it up.
+  - ⚠ **The migration has never been applied** — there is no database here. `prisma validate` passes and the SQL is two `ALTER TYPE ... ADD VALUE IF NOT EXISTS` statements, but run `npx prisma migrate deploy` against a real DB before trusting it. Note `ALTER TYPE ... ADD VALUE` requires **PostgreSQL 12+** to run inside a transaction.
+- Fixed a Prisma major-version mismatch: CLI was 5.x while `@prisma/client` was 6.x.
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

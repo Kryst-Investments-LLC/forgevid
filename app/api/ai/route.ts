@@ -88,7 +88,8 @@ async function handleGenerateVideo(body: any, userId: string) {
       data: {
         title: input.prompt.slice(0, 80),
         description: input.prompt,
-        status: 'PROCESSING',
+        // QUEUED until a worker (or the inline runner) actually picks it up.
+        status: 'QUEUED',
         duration: input.duration,
         format: 'mp4',
         userId,

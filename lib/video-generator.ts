@@ -14,7 +14,7 @@
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
-import { uploadVideo as uploadCloudinaryVideo } from './cloudinary';
+import { uploadImage as uploadCloudinaryImage, uploadVideo as uploadCloudinaryVideo } from './cloudinary';
 import { selectMusicPath } from './music-library';
 import { DEFAULT_TTS_MODEL, resolveVoiceId } from './voice-catalog';
 import {
@@ -145,6 +145,47 @@ async function persistGeneratedVideo(outputPath: string, outputFilename: string)
   } catch (uploadError) {
     console.error('[Video Generator] Cloudinary upload failed, keeping local file:', uploadError);
     return localUrl;
+  }
+}
+
+/**
+ * Grab a poster frame from a rendered video and persist it.
+ *
+ * Best-effort: a missing thumbnail must never fail a generation, so every
+ * failure path returns null. Must run before the local render is deleted.
+ */
+async function extractThumbnail(videoPath: string, atSeconds: number): Promise<string | null> {
+  try {
+    const outputDir = path.join(process.cwd(), 'public', 'generated');
+    if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+    const filename = `thumb_${Date.now()}.jpg`;
+    const thumbPath = path.join(outputDir, filename);
+
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(videoPath)
+        .inputOptions([`-ss ${atSeconds.toFixed(2)}`])
+        .outputOptions(['-frames:v 1', '-q:v 3'])
+        .output(thumbPath)
+        .on('end', () => resolve())
+        .on('error', (err: Error) => reject(err))
+        .run();
+    });
+
+    if (!fs.existsSync(thumbPath)) return null;
+
+    if (isCloudinaryConfigured()) {
+      try {
+        const upload = await uploadCloudinaryImage(thumbPath, { folder: 'forgevid/thumbnails' });
+        fs.unlinkSync(thumbPath);
+        return upload.secure_url;
+      } catch (error) {
+        console.error('[Video Generator] Thumbnail upload failed, keeping local:', error);
+      }
+    }
+    return `/generated/${filename}`;
+  } catch (error) {
+    console.error('[Video Generator] Thumbnail extraction failed (non-fatal):', error);
+    return null;
   }
 }
 
@@ -496,6 +537,8 @@ export interface AssembleResult {
   videoUrl: string;
   /** The cues actually burned in — persist these for SRT/VTT export. */
   cues: CaptionCue[];
+  /** Poster frame URL, or null if extraction failed (never fatal). */
+  thumbnailUrl: string | null;
 }
 
 export async function assembleVideo(
@@ -680,8 +723,12 @@ export async function assembleVideo(
         .run();
     });
 
+    // Grab the poster frame BEFORE persisting — persistGeneratedVideo deletes
+    // the local render once it is uploaded. Take it ~1s in, past any fade-in.
+    const thumbnailUrl = await extractThumbnail(outputPath, Math.min(1, timelineDuration / 2));
+
     const videoUrl = await persistGeneratedVideo(outputPath, outputFilename);
-    return { videoUrl, cues };
+    return { videoUrl, cues, thumbnailUrl };
   } finally {
     // Always clean temp artifacts, even on failure. Never the caller's media —
     // a synthesized voiceover is already in tempFiles; an injected one is not,
@@ -703,7 +750,12 @@ export async function assembleVideo(
  */
 export async function generateVideoWithScenes(
   options: GenerationOptions,
-): Promise<{ videoUrl: string; scenes: ResolvedScene[]; cues: CaptionCue[] }> {
+): Promise<{
+  videoUrl: string;
+  scenes: ResolvedScene[];
+  cues: CaptionCue[];
+  thumbnailUrl: string | null;
+}> {
   const { prompt, duration, addOns, aspectRatio = '16:9', mood, voiceId } = options;
 
   const planned = await planScenes(prompt, duration);
@@ -715,7 +767,7 @@ export async function generateVideoWithScenes(
   const wantMusic = !addOns || addOns.length === 0 || addOns.includes('music');
   const musicPath = wantMusic ? selectMusicPath(mood ?? options.style) : null;
 
-  const { videoUrl, cues } = await assembleVideo(resolved, addOns || [], aspectRatio, {
+  const { videoUrl, cues, thumbnailUrl } = await assembleVideo(resolved, addOns || [], aspectRatio, {
     musicPath,
     voiceId,
   });
@@ -723,7 +775,7 @@ export async function generateVideoWithScenes(
   console.log(
     `[Video Generator] ✅ Generated ${duration}s ${aspectRatio} video with ${resolved.length} scenes`,
   );
-  return { videoUrl, scenes: resolved, cues };
+  return { videoUrl, scenes: resolved, cues, thumbnailUrl };
 }
 
 /** Backwards-compatible wrapper returning just the URL. */

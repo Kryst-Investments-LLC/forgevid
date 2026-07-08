@@ -74,7 +74,7 @@ async function renderAndCheck(aspectRatio: AspectRatio, sources: string[]) {
   console.log(`\nRendering ${aspectRatio} (expect ${width}x${height})...`);
 
   // addOns=['subtitles'] => captions on, voiceover off (no ElevenLabs key needed).
-  const { videoUrl: url } = await assembleVideo(
+  const { videoUrl: url, thumbnailUrl } = await assembleVideo(
     [scene(0, sources[0], 2), scene(1, sources[1], 2)],
     ['subtitles'],
     aspectRatio,
@@ -83,6 +83,12 @@ async function renderAndCheck(aspectRatio: AspectRatio, sources: string[]) {
   // Cloudinary is unconfigured, so we get a local /generated/<file> URL.
   const outFile = path.join(process.cwd(), 'public', 'generated', path.basename(url));
   assert(fs.existsSync(outFile), `${aspectRatio}: output rendered`);
+
+  // A poster frame must be extracted before the render is uploaded/deleted.
+  assert(!!thumbnailUrl, `${aspectRatio}: thumbnail extracted`);
+  const thumbFile = path.join(process.cwd(), 'public', 'generated', path.basename(thumbnailUrl!));
+  assert(fs.existsSync(thumbFile) && fs.statSync(thumbFile).size > 500, `${aspectRatio}: thumbnail file is a real image`);
+  fs.unlinkSync(thumbFile);
 
   const info = probe(outFile);
   assert(new RegExp(`${width}x${height}`).test(info), `${aspectRatio}: frame is ${width}x${height}`);

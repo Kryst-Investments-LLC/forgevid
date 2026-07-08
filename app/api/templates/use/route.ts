@@ -42,7 +42,7 @@ async function handlePost(request: NextRequest) {
         title: `${template.name} - ${new Date().toLocaleDateString()}`,
         description: template.description || '',
         userId: session.user.id,
-        status: 'PROCESSING', // TODO(Phase 3): add DRAFT to VideoStatus enum
+        status: 'DRAFT',
         duration: template.duration,
         resolution: template.resolution,
         format: 'mp4',

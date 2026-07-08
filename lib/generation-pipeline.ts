@@ -140,6 +140,10 @@ async function generateScript(input: GenerationInput): Promise<string> {
  */
 export async function runGeneration(videoId: string, input: GenerationInput): Promise<string> {
   try {
+    // The row is created QUEUED; it becomes PROCESSING once work actually starts.
+    await prisma.video
+      .update({ where: { id: videoId }, data: { status: 'PROCESSING' } })
+      .catch(() => {});
     await setStage(videoId, 'script');
     const script = await generateScript(input);
 
@@ -148,7 +152,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     // assembly, and Cloudinary upload — and returns the scene structure so we
     // can persist it for scene-based editing / re-rendering.
     const aspectRatio: AspectRatio = input.aspectRatio ?? '16:9';
-    const { videoUrl, scenes, cues } = await generateVideoWithScenes({
+    const { videoUrl, scenes, cues, thumbnailUrl } = await generateVideoWithScenes({
       prompt: script,
       style: input.style,
       duration: input.duration,
@@ -168,6 +172,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
         url: videoUrl,
         fileUrl: videoUrl,
         resolution: `${width}x${height}`,
+        ...(thumbnailUrl ? { thumbnail: thumbnailUrl } : {}),
       },
     });
     // Persist scenes alongside the script so the editor can load, swap, and
@@ -245,7 +250,7 @@ export async function rerenderVideo(videoId: string): Promise<string> {
 
     // A re-render re-synthesizes the voiceover, so previously-transcribed cues
     // would no longer be aligned; only reuse them when the scenes are unchanged.
-    const { videoUrl, cues } = await assembleVideo(scenes, addOns, aspectRatio, {
+    const { videoUrl, cues, thumbnailUrl } = await assembleVideo(scenes, addOns, aspectRatio, {
       musicPath,
       voiceId: meta.request?.voiceId,
     });
@@ -259,6 +264,7 @@ export async function rerenderVideo(videoId: string): Promise<string> {
         url: videoUrl,
         fileUrl: videoUrl,
         resolution: `${width}x${height}`,
+        ...(thumbnailUrl ? { thumbnail: thumbnailUrl } : {}),
       },
     });
     await writeProgress(
