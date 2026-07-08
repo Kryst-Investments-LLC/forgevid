@@ -61,7 +61,7 @@ async function handlePost(request: NextRequest) {
 
     const outputPath = path.join(outputDir, `${exportId}.${exportSettings.format}`);
     const duration = tracks.length > 0 
-      ? Math.max(...tracks.flatMap(t => t.clips.map(c => c.startTime + c.duration))) 
+      ? Math.max(...tracks.flatMap((t: any) => t.clips.map((c: any) => c.startTime + c.duration))) 
       : 10;
 
     // Save export record to database

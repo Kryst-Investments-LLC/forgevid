@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis';
-import { Logger } from '@/lib/logger';
+import { logger as Logger } from '@/lib/logger';
 
 export interface CacheConfig {
   ttl: number; // Time to live in seconds

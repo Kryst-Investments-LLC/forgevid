@@ -304,9 +304,9 @@ export class SecurityManagerServer {
   // Clean up expired rate limit entries
   cleanupRateLimit() {
     const now = Date.now()
-    for (const [key, value] of this.rateLimitStore) {
+    for (const [key, value] of this.fallbackStore) {
       if (now > value.resetTime) {
-        this.rateLimitStore.delete(key)
+        this.fallbackStore.delete(key)
       }
     }
   }

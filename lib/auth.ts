@@ -107,7 +107,7 @@ async function buildSsoProviders(): Promise<AnyProvider[]> {
             scope: 'openid profile email',
           },
         },
-        profile(profile) {
+        profile(profile): any {
           return {
             id: profile.sub || profile.id,
             email: profile.email || profile.preferred_username,
@@ -125,7 +125,7 @@ async function buildSsoProviders(): Promise<AnyProvider[]> {
         clientId: azureConfig.clientId,
         clientSecret: azureConfig.clientSecret,
         tenantId: azureConfig.tenantId || 'common',
-        profile(profile) {
+        profile(profile): any {
           return {
             id: profile.sub || profile.oid || profile.id,
             email: profile.email || profile.preferred_username,
@@ -203,7 +203,7 @@ let composedProviders: AnyProvider[] = createBaseProviders()
 let providerInitializationPromise: Promise<AnyProvider[]> | null = null
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma) as any,
   providers: composedProviders,
   session: {
     strategy: 'jwt',
@@ -259,7 +259,6 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: '/auth/signin',
-    signUp: '/auth/signup',
   },
   secret: process.env.NEXTAUTH_SECRET,
 }

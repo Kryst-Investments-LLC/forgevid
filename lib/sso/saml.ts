@@ -25,8 +25,8 @@ function createSamlInstance(config: SSOConfiguration) {
   const saml = new SAML({
     entryPoint,
     issuer: config.issuer || metadata.issuer || buildCallbackUrl(),
-    cert: config.certificate || metadata.certificate,
-    privateCert: metadata.privateKey,
+    idpCert: (config.certificate || metadata.certificate) as string,
+    privateKey: metadata.privateKey,
     callbackUrl: metadata.assertionConsumerServiceUrl || buildCallbackUrl(),
     logoutUrl: metadata.logoutUrl,
     audience: config.entityId || metadata.audience,
@@ -46,24 +46,18 @@ function createSamlInstance(config: SSOConfiguration) {
 
 export async function generateSamlMetadata(config: SSOConfiguration) {
   const saml = createSamlInstance(config)
-  return saml.generateServiceProviderMetadata(config.certificate || undefined, (config.metadata as any)?.privateKey)
+  return saml.generateServiceProviderMetadata(config.certificate || null, (config.metadata as any)?.privateKey)
 }
 
 export async function getSamlLoginUrl(config: SSOConfiguration, relayState?: string) {
   const saml = createSamlInstance(config)
-  return saml.getAuthorizeUrlAsync({
-    RelayState: relayState,
-  })
+  return saml.getAuthorizeUrlAsync(relayState ?? '', undefined, {})
 }
 
 export async function validateSamlAssertion(SAMLResponse: string, config: SSOConfiguration) {
   const saml = createSamlInstance(config)
 
-  const { profile } = await saml.validatePostResponseAsync({
-    body: {
-      SAMLResponse,
-    },
-  })
+  const { profile } = await saml.validatePostResponseAsync({ SAMLResponse })
 
   const profileData = profile as Record<string, any>
 

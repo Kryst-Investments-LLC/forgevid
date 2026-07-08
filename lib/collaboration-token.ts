@@ -25,7 +25,7 @@ export function signCollaborationToken(
   expiresIn: string = '15m'
 ): string {
   return jwt.sign({ ...payload, type: 'collaboration' }, getJwtSecret(), {
-    expiresIn,
+    expiresIn: expiresIn as any,
     algorithm: 'HS256',
     issuer: 'forgevid',
     audience: 'forgevid-collaboration',

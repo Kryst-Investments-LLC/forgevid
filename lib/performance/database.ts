@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/database';
-import { Logger } from '@/lib/logger';
+import { logger as Logger } from '@/lib/logger';
 
 export interface QueryOptimization {
   useIndex: boolean;

@@ -13,7 +13,7 @@ import { analyzeEmotion, selectAssetsForEmotion, generateEmotionAwareScript } fr
 const aiGenerationSchema = z.object({
   prompt: z.string().min(1).max(2000),
   type: z.enum(['VIDEO_GENERATION', 'STORYBOARD', 'SCRIPT_WRITING', 'VOICE_SYNTHESIS', 'IMAGE_GENERATION']),
-  settings: z.record(z.any()).optional(),
+  settings: z.record(z.string(), z.any()).optional(),
 });
 
 const openai = new OpenAI({
@@ -92,7 +92,7 @@ async function handleGenerateVideo(body: any, userId: string) {
           ${style === 'cinematic' ? 'Film-like quality with dramatic lighting, wide shots, and epic feel' : ''}
           ${style === 'energetic' ? 'Fast-paced, dynamic movements, vibrant colors, upbeat music' : ''}
           ${style === 'professional' ? 'Corporate, polished, formal, trustworthy, clean presentation' : ''}
-          ${emotionAssets ? `\n\nEmotional tone: ${detectedEmotion.emotion}\nRecommended pacing: ${emotionAssets.pacing}\nRecommended music style: ${emotionAssets.musicTracks.join(', ')}` : ''}`
+          ${emotionAssets ? `\n\nEmotional tone: ${detectedEmotion?.emotion}\nRecommended pacing: ${emotionAssets.pacing}\nRecommended music style: ${emotionAssets.musicTracks.join(', ')}` : ''}`
         },
         {
           role: 'user',

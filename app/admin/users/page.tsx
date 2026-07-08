@@ -25,7 +25,7 @@ export default function UserManagement() {
   const [searchTerm, setSearchTerm] = useState("")
   const [roleFilter, setRoleFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [ssoConfigurations, setSsoConfigurations] = useState<Record<SSOProvider, any>>({})
+  const [ssoConfigurations, setSsoConfigurations] = useState<Record<string, any>>({})
   const [isLoadingSso, setIsLoadingSso] = useState(true)
   const [ssoError, setSsoError] = useState<string | null>(null)
 

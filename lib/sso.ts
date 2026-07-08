@@ -65,7 +65,7 @@ export async function getStoredSsoConfiguration(provider: SSOProvider, organizat
     where: {
       provider_organizationId: {
         provider,
-        organizationId: organizationId ?? null,
+        organizationId: (organizationId ?? null) as string,
       },
     },
   })
@@ -91,7 +91,7 @@ export async function upsertSsoConfiguration(input: SSOConfigInput) {
     where: {
       provider_organizationId: {
         provider,
-        organizationId: organizationId ?? null,
+        organizationId: (organizationId ?? null) as string,
       },
     },
     update: {
@@ -128,7 +128,7 @@ export async function disableSsoConfiguration(provider: SSOProvider, organizatio
     where: {
       provider_organizationId: {
         provider,
-        organizationId: organizationId ?? null,
+        organizationId: (organizationId ?? null) as string,
       },
     },
     data: {

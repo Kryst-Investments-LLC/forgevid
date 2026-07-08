@@ -49,7 +49,7 @@ export function getClientIP(request: NextRequest): string {
 export const SecurityEventSchema = z.object({
   type: z.string(),
   severity: z.enum(['low', 'medium', 'high', 'critical']),
-  details: z.record(z.any()),
+  details: z.record(z.string(), z.any()),
   ip: z.string(),
   userAgent: z.string().optional(),
   userId: z.string().optional(),

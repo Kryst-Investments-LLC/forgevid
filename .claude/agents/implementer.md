@@ -25,6 +25,8 @@ not re-planning.
   commit. Unit tests live in `__tests__/`; API/integration in `__tests__/api`.
 
 ## While working
+- Touching generation provider calls, retries, quotas, moderation, or media
+  metadata? Invoke the cost-content-guard skill FIRST.
 - Smallest change that works. No unrequested refactors, helpers,
   abstractions, or defensive handling for scenarios that cannot happen.
 - New logic gets a test in the matching `__tests__/` area.

@@ -119,7 +119,7 @@ async function handleGenerateTemplate(body: any) {
     return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
   }
   try {
-    const template = await generateTemplateFromPrompt('dev-user');
+    const template = await generateTemplateFromPrompt(prompt, 'dev-user');
     return NextResponse.json({ success: true, data: template });
   } catch (error) {
     console.error('Template generation error:', error);
@@ -133,7 +133,7 @@ async function handleUploadMedia(body: any) {
     return NextResponse.json({ error: 'File is required' }, { status: 400 });
   }
   try {
-    const asset = await uploadMediaAsset(file, 'dev-user');
+    const asset = await uploadMediaAsset(file, metadata, 'dev-user');
     return NextResponse.json({ success: true, data: asset });
   } catch (error) {
     console.error('Media upload error:', error);

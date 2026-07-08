@@ -19,12 +19,12 @@ export const POST = securityConfigs.authenticated(async function POST(request: N
       select: { subscription: true },
     });
 
-    if (!user?.subscription?.stripeCustomerId) {
+    if (!(user?.subscription as any)?.stripeCustomerId) {
       return NextResponse.json({ error: 'No active subscription found' }, { status: 400 });
     }
 
     const portalSession = await stripe.billingPortal.sessions.create({
-      customer: user.subscription.stripeCustomerId,
+      customer: (user!.subscription as any).stripeCustomerId,
       return_url: `${process.env.NEXTAUTH_URL}/dashboard`,
     });
 

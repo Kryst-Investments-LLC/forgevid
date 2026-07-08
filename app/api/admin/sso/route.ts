@@ -79,7 +79,7 @@ export const POST = async (request: NextRequest) => {
   let resolvedMetadata = metadata ?? existing?.metadata ?? undefined
 
   if (providerEnum === 'SAML') {
-    if (!metadataUrl && !existing?.metadata?.entryPoint) {
+    if (!metadataUrl && !(existing?.metadata as any)?.entryPoint) {
       return NextResponse.json(
         { error: 'SAML metadata URL is required to configure the identity provider.' },
         { status: 400 }
@@ -92,8 +92,8 @@ export const POST = async (request: NextRequest) => {
         resolvedMetadata = {
           entryPoint: samlMetadata.entryPoint,
           logoutUrl: samlMetadata.logoutUrl,
-          certificate: samlMetadata.certificate ?? sanitizedCertificate ?? existing?.metadata?.certificate,
-          entityId: samlMetadata.entityId ?? sanitizedEntityId ?? existing?.metadata?.entityId,
+          certificate: samlMetadata.certificate ?? sanitizedCertificate ?? (existing?.metadata as any)?.certificate,
+          entityId: samlMetadata.entityId ?? sanitizedEntityId ?? (existing?.metadata as any)?.entityId,
         }
         sanitizedCertificate = samlMetadata.certificate ?? sanitizedCertificate ?? undefined
         sanitizedIssuer = sanitizedIssuer ?? samlMetadata.issuer ?? samlMetadata.entityId ?? null

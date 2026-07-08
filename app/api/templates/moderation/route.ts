@@ -31,7 +31,7 @@ async function handlePost(request: NextRequest) {
       select: { role: true },
     });
 
-    const isModerator = user?.role === 'ADMIN' || user?.role === 'MODERATOR';
+    const isModerator = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
     // If action is provided, this is a moderation action
     if (action && isModerator) {
@@ -110,7 +110,7 @@ async function handleGet(request: NextRequest) {
     select: { role: true },
   });
 
-  const isModerator = user?.role === 'ADMIN' || user?.role === 'MODERATOR';
+  const isModerator = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   if (!isModerator) {
     return NextResponse.json({ error: 'Permission denied' }, { status: 403 });

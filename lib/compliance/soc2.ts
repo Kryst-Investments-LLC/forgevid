@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/database';
-import { Logger } from '@/lib/logger';
+import { logger as Logger } from '@/lib/logger';
 import { encrypt } from '@/lib/encryption';
 
 export interface SOC2Control {

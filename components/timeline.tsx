@@ -102,7 +102,8 @@ export function Timeline() {
       const timelineElement = event.activatorEvent?.target as HTMLElement;
       if (timelineElement) {
         const rect = timelineElement.getBoundingClientRect();
-        const x = event.activatorEvent?.clientX ? event.activatorEvent.clientX - rect.left : clip.start * 6;
+        const activator = event.activatorEvent as PointerEvent;
+        const x = activator?.clientX ? activator.clientX - rect.left : clip.start * 6;
         const newStart = Math.max(0, x / 6);
         const trackId = clip.id.split('-')[0];
         updateClip(trackId, clip.id, { startTime: newStart });

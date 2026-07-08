@@ -44,7 +44,7 @@ export const POST = securityConfigs.payment(async function POST(request: NextReq
         userId: session.user.id,
         planId: plan.id,
       },
-      customer_email: session.user.email,
+      customer_email: session.user.email ?? undefined,
     });
 
     return NextResponse.json({ url: checkoutSession.url });

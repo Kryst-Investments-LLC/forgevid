@@ -170,7 +170,7 @@ export class SecurityMonitor {
   private async sendEmailAlert(event: SecurityEvent): Promise<void> {
     try {
       const nodemailer = await import('nodemailer');
-      const transporter = nodemailer.createTransporter(productionConfig.monitoring.alerts.email.smtp);
+      const transporter = nodemailer.createTransport(productionConfig.monitoring.alerts.email.smtp);
 
       const mailOptions = {
         from: productionConfig.monitoring.alerts.email.smtp.auth.user,

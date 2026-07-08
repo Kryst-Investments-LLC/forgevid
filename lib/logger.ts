@@ -108,13 +108,16 @@ class Logger {
     }
   }
 
-  error(message: string, error?: Error, metadata?: Record<string, any>): void {
+  error(message: string, error?: unknown, metadata?: Record<string, any>): void {
+    const err = error instanceof Error ? error : undefined;
+    const errorValue = error !== undefined && !(error instanceof Error) ? error : undefined;
     this.log(LogLevel.ERROR, message, {
       ...metadata,
-      error: error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
+      ...(errorValue !== undefined ? { errorValue } : {}),
+      error: err ? {
+        name: err.name,
+        message: err.message,
+        stack: err.stack,
       } : undefined,
     });
   }
@@ -217,9 +220,9 @@ class Logger {
 
   // Close streams
   close(): void {
-    this.errorStream.end();
-    this.accessStream.end();
-    this.auditStream.end();
+    this.errorStream?.end();
+    this.accessStream?.end();
+    this.auditStream?.end();
   }
 }
 

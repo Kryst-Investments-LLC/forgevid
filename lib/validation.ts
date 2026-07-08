@@ -78,7 +78,7 @@ export function withValidation<T extends ZodSchema>(schema: T) {
 
       const result = schema.safeParse(rawData);
       if (!result.success) {
-        const errors = result.error.errors.map(e => ({
+        const errors = result.error.issues.map((e) => ({
           field: e.path.join('.'),
           message: e.message,
         }));

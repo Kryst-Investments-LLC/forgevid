@@ -225,7 +225,7 @@ export async function searchStockVideos(query: string, limit: number = 5): Promi
           duration: video.duration || 5,
           type: 'video' as const
         };
-      }).filter(v => v.url);
+      }).filter((v: { url: string }) => v.url);
     }
   } catch (error) {
     console.error('[Video Generator] Pexels API error:', error);

@@ -97,8 +97,8 @@ export async function POST(request: NextRequest) {
               status: subscription.status === 'active' ? 'ACTIVE' :
                      subscription.status === 'canceled' ? 'CANCELLED' :
                      subscription.status === 'past_due' ? 'PAST_DUE' : 'INCOMPLETE',
-              currentPeriodStart: new Date(subscription.current_period_start * 1000),
-              currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+              currentPeriodStart: new Date((subscription as any).current_period_start * 1000),
+              currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
               cancelAtPeriodEnd: subscription.cancel_at_period_end,
               canceledAt: subscription.canceled_at ? new Date(subscription.canceled_at * 1000) : null,
               metadata: JSON.stringify({

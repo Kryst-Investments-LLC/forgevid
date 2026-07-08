@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/database';
-import { Logger } from '@/lib/logger';
+import { logger as Logger } from '@/lib/logger';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 

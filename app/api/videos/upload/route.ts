@@ -52,7 +52,6 @@ async function handlePost(request: NextRequest) {
       folder: 'forgevid/user-uploads',
       resource_type: 'video',
       quality: 'auto',
-      fetch_format: 'auto',
     });
 
     console.log('[Video Upload] Upload successful:', uploadResult.public_id);

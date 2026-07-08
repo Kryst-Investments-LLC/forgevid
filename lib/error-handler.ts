@@ -256,7 +256,7 @@ export const withRetry = async <T>(
       
       // Wait before retry
       await new Promise(resolve => setTimeout(resolve, delay * attempt));
-      logger.warn(`Retry attempt ${attempt}/${maxRetries}`, { error: error.message });
+      logger.warn(`Retry attempt ${attempt}/${maxRetries}`, { error: error instanceof Error ? error.message : String(error) });
     }
   }
   

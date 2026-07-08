@@ -1,5 +1,5 @@
 import { Cloudinary } from '@cloudinary/url-gen';
-import { Logger } from '@/lib/logger';
+import { logger as Logger } from '@/lib/logger';
 
 export interface CDNOptimization {
   format: 'auto' | 'webp' | 'avif' | 'jpg' | 'png';
