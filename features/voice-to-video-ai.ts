@@ -1,48 +1,68 @@
-// import { generateVideoScript } from '@/lib/ai/openai'; // Disabled for development
-import { generateVideoWithReplicate } from '@/lib/replicate-video';
+/**
+ * Voice-to-video: speak a brief, get a video.
+ *
+ * This used to build a FAKE transcript ("Transcribed audio from N byte file")
+ * and hand it to Replicate's Zeroscope (2023-era, 576p @ 8fps). Both are gone:
+ * the audio is really transcribed with Whisper now, and the transcript feeds the
+ * normal async generation pipeline — the same one the AI Studio uses — so it
+ * inherits scenes, captions, music, branding and the progress endpoint.
+ */
+
+import { writeFile, unlink } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { transcribeAudioToText } from '@/lib/captions';
 
 export interface VoiceToVideoOptions {
-  voiceId: string;
   duration: number;
   style: 'professional' | 'casual' | 'dramatic';
   language: string;
 }
 
-export async function processVoiceToVideo(
-  audioFile: File,
-  options: VoiceToVideoOptions
-): Promise<{ videoUrl: string; transcript: string; duration: number; language: string; confidence: number; processingTime: number }> {
-  const startTime = Date.now();
+/** Spoken styles mapped onto the generation styles the pipeline understands. */
+export const VOICE_STYLE_MAP: Record<
+  VoiceToVideoOptions['style'],
+  'modern' | 'cinematic' | 'energetic' | 'professional'
+> = {
+  professional: 'professional',
+  casual: 'modern',
+  dramatic: 'cinematic',
+};
 
-  // Generate transcript placeholder (in production, use Whisper API)
-  const transcript = `Transcribed audio from ${audioFile.size} byte file.`;
+/**
+ * Transcribe recorded audio. Returns the spoken text, or null when Whisper is
+ * unavailable — the caller must surface that rather than invent a transcript.
+ */
+export async function transcribeVoiceRecording(
+  audio: Buffer,
+  fileExtension = 'webm',
+): Promise<string | null> {
+  const tempPath = join(tmpdir(), `voice_${Date.now()}.${fileExtension}`);
+  try {
+    await writeFile(tempPath, audio);
+    return await transcribeAudioToText(tempPath);
+  } finally {
+    await unlink(tempPath).catch(() => {});
+  }
+}
 
-  // Map style to video generation style
-  const styleMap: Record<string, 'modern' | 'cinematic' | 'energetic' | 'professional'> = {
-    professional: 'professional',
-    casual: 'modern',
-    dramatic: 'cinematic',
-  };
-
-  // Try real video generation
-  const result = await generateVideoWithReplicate({
-    prompt: `Create a ${options.style} video based on this narration: ${transcript}`,
-    style: styleMap[options.style] || 'modern',
-    duration: options.duration,
-  });
-
-  return {
-    videoUrl: result.videoUrl,
-    transcript,
-    duration: options.duration,
-    language: options.language,
-    confidence: 0.95,
-    processingTime: (Date.now() - startTime) / 1000,
-  };
+/** Turn a spoken brief into a prompt for the generation pipeline. */
+export function promptFromTranscript(
+  transcript: string,
+  style: VoiceToVideoOptions['style'],
+): string {
+  return `Create a ${style} video based on this spoken brief: ${transcript}`;
 }
 
 export function validateAudioFormat(file: File): boolean {
-  const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/ogg'];
+  const allowedTypes = [
+    'audio/mpeg',
+    'audio/wav',
+    'audio/mp3',
+    'audio/ogg',
+    'audio/webm',
+    'video/webm', // MediaRecorder frequently labels audio-only webm this way
+  ];
   return allowedTypes.includes(file.type);
 }
 

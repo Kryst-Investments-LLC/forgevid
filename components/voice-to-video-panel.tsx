@@ -21,7 +21,7 @@ interface VoiceToVideoResult {
   videoUrl: string;
   duration: number;
   language: string;
-  confidence: number;
+  /** Seconds from hitting Generate to the video being ready. */
   processingTime: number;
 }
 
@@ -103,35 +103,55 @@ function VoiceToVideoPanel() {
     setIsProcessing(true);
     setResult(null);
 
+    const startedAt = Date.now();
     try {
-      // Convert blob to base64
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      // Convert blob to base64 in chunks — String.fromCharCode(...bytes) blows
+      // the argument limit on anything more than a short recording.
+      const bytes = new Uint8Array(await audioBlob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      }
+      const base64Audio = btoa(binary);
 
-      // For development - bypass authentication
       const response = await fetch('/api/voice-to-video', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Remove auth for development
-          // 'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          audio: base64Audio,
-          options,
-          // Add development flag
-          development: true,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio: base64Audio, options }),
       });
 
+      const data = await response.json();
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to process voice-to-video');
+        throw new Error(data?.error || 'Failed to process voice-to-video');
       }
 
-      const data = await response.json();
-      setResult(data.data);
-      toast.success('Video generated successfully!');
+      const { videoId, transcript } = data.data;
+      toast.success('Transcribed — generating your video…');
+
+      // Generation is async now (same pipeline as the AI Studio): poll for it.
+      const deadline = Date.now() + 15 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const statusRes = await fetch(`/api/ai/jobs/${videoId}`);
+        if (!statusRes.ok) continue;
+        const job = await statusRes.json();
+
+        if (job.status === 'COMPLETED' && job.videoUrl) {
+          setResult({
+            transcript,
+            videoUrl: job.videoUrl,
+            duration: data.data.duration,
+            language: data.data.language,
+            processingTime: Math.round((Date.now() - startedAt) / 1000),
+          });
+          toast.success('Video generated successfully!');
+          return;
+        }
+        if (job.status === 'FAILED') {
+          throw new Error(job.error || 'Video generation failed');
+        }
+      }
+      throw new Error('Generation timed out');
     } catch (error) {
       console.error('Error processing voice-to-video:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to process voice-to-video');
@@ -331,12 +351,8 @@ function VoiceToVideoPanel() {
                 <p>{result.language.toUpperCase()}</p>
               </div>
               <div>
-                <span className="font-medium">Confidence:</span>
-                <p>{Math.round(result.confidence * 100)}%</p>
-              </div>
-              <div>
                 <span className="font-medium">Processing Time:</span>
-                <p>{result.processingTime}ms</p>
+                <p>{result.processingTime}s</p>
               </div>
             </div>
 

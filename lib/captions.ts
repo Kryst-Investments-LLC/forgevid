@@ -80,6 +80,32 @@ export async function transcribeToCues(audioPath: string): Promise<CaptionCue[] 
   }
 }
 
+/**
+ * Transcribe an audio file to plain text with Whisper.
+ * Returns null when unavailable — callers decide how to fail.
+ */
+export async function transcribeAudioToText(audioPath: string): Promise<string | null> {
+  if (!hasOpenAiKey()) return null;
+  if (!fs.existsSync(audioPath)) return null;
+
+  try {
+    const { OpenAI } = await import('openai');
+    const openai = new OpenAI({ apiKey: openAiApiKey() });
+
+    const result: any = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(audioPath) as any,
+      model: 'whisper-1',
+      response_format: 'text',
+    });
+
+    const text = typeof result === 'string' ? result : String(result?.text ?? '');
+    return text.trim() || null;
+  } catch (error) {
+    console.error('[Captions] Audio transcription failed:', error);
+    return null;
+  }
+}
+
 /** Fallback cues: one per scene, spanning that scene. Mirrors the old behaviour. */
 export function cuesFromScenes(
   scenes: Array<{ description: string; duration: number }>,
