@@ -109,6 +109,15 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - **`OneDrive\.git` neutralized**: moved (not deleted) to `C:\Users\yanp0\dev\forgevid-legacy-onedrive-git\.git` — 274MB, tracked only forgevid, would have swept in 409 personal files. A leftover empty `git init` inside the OneDrive project folder was also removed. **Nothing under OneDrive is a git repo any more.** That history is no longer backed up to the OneDrive cloud.
 - Suite is now **104 runtime assertions** (`npm run verify:generate`) + `verify:export`.
 
+**2026-07-08 — END-TO-END VERIFIED against a real PostgreSQL database.**
+- Ran an isolated Postgres 18 cluster on port 55432 (own data dir, trust auth) so nothing touched the user's own server on 5432. Torn down afterwards.
+- **`prisma migrate deploy` applied all migrations cleanly**, including the two hand-written ones (`DRAFT`/`QUEUED`, `brand_kits`). `VideoStatus` really does gain `DRAFT,QUEUED`; `brand_kits` exists with its FK. Those are no longer "unverified".
+- **Found a real, pre-existing bug: the migration history did not match `schema.prisma`.** The project had been evolving with `prisma db push`, which records no migration — so a fresh `migrate deploy` produced a schema missing two whole tables (`sso_configurations`, `beta_access_entries`), two `video_exports` columns (`fileUrl`, `progress`) and ~30 indexes. **A clean production deploy would have crashed** on SSO lookups and editor exports. Fixed by `20260708140000_sync_schema_drift`; `prisma migrate diff --exit-code` now reports **no drift**.
+- `npm run verify:e2e` drives the real pipeline (no external APIs needed — user media covers the scenes, the script falls back to the prompt, the render stays local) and asserts against the database: `QUEUED → PROCESSING → COMPLETED`, url/resolution/thumbnail persisted, the mp4 and thumbnail exist on disk, scenes + captions persisted, the user's own media used instead of stock, re-render honours edited scene durations (2+2+2 = 6.00s), and the plan gate resolves free → watermark, ACTIVE pro → clean, **PAST_DUE → back to watermark (fails closed)**.
+- The fail-visibly path is asserted for real: with no media and no `PEXELS_API_KEY` the job **throws**, the row is `FAILED`, the stored error names the missing key, and **no url is written**.
+- Teardown note: `subscriptions_userId_fkey` is `RESTRICT`, not `CASCADE`, so deleting a user requires deleting its subscriptions first.
+- Still unverified: OpenAI/ElevenLabs/Pexels/Cloudinary calls (no keys), the Docker build (no daemon), and the HTTP routes themselves (need a NextAuth session).
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

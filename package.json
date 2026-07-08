@@ -9,6 +9,7 @@
     "worker": "tsx workers/video-worker.ts",
     "verify:export": "tsx scripts/verify-export.ts",
     "verify:generate": "tsx scripts/verify-generate.ts",
+    "verify:e2e": "tsx scripts/verify-e2e.ts",
     "lint": "next lint",
     "start": "next start",
     "test": "jest",
