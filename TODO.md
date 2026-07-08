@@ -95,6 +95,12 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - Transition persists in `metadata.request.transition` (validated against the allowed list) so re-render matches.
 - **Runtime verified on ffmpeg 6.1.1**: 3×2s scenes with a 0.5s fade render to exactly **6.00s**, hard cuts also 6.00s, plus the padding math and an explicit assertion that the *unpadded* chain would lose 1s (the bug this guards).
 
+**2026-07-08 — Phase 7b done: Ken Burns on stills + photo fallback.**
+- `resolveSceneClip` previously **threw** when no video matched a scene, failing the whole generation. It now falls back to a Pexels **photo**, and stills get Ken Burns motion — a still held for seconds reads as a broken video.
+- `lib/ken-burns.ts`: `zoompan`'s `d` is in **frames, not seconds** (the classic bug), and zooming a frame already at output size stair-steps — so we supersample 2× before zooming and let zoompan emit at the output size. Direction alternates per scene. Degrades to a static fit if `zoompan` is missing.
+- `ResolvedScene.mediaType` is optional so scenes persisted before this still load.
+- **Runtime verified**: frame count math, supersampling, and a real render — a still becomes a 3.00s h264 clip at 1920×1080 whose **first and last frames differ**, proving it actually zooms rather than holding static (duration + codec alone would pass for a static hold).
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

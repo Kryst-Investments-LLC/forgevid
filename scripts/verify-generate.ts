@@ -34,6 +34,7 @@ import {
   xfadeTotalDuration,
 } from '../lib/transitions';
 import { resolveFfmpegPath, supportsFilter } from '../lib/ffmpeg-env';
+import { buildKenBurnsFilter, directionForScene } from '../lib/ken-burns';
 
 const ffmpegPath: string = resolveFfmpegPath();
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-generate');
@@ -340,6 +341,57 @@ async function checkTransitionRender(clipA: string, clipB: string, hasXfade: boo
   fs.rmSync(generated, { recursive: true, force: true });
 }
 
+/**
+ * Ken Burns. A still held for seconds reads as a broken video, so image scenes
+ * get a slow zoom. zoompan's `d` is in FRAMES, not seconds — the classic bug.
+ */
+function checkKenBurnsFilter() {
+  console.log('\nChecking Ken Burns filter construction...');
+  const f = buildKenBurnsFilter({ width: 1920, height: 1080, fps: 30, durationSeconds: 2 });
+  assert(f.includes('d=60'), 'zoompan duration is in frames (2s @ 30fps = 60)');
+  assert(f.includes('s=1920x1080'), 'zoompan emits at the output size');
+  assert(/scale=3840:2160/.test(f), 'supersamples before zooming (avoids stair-stepping)');
+  assert(f.includes('setsar=1'), 'square pixels, so concat/xfade accept it');
+
+  const out = buildKenBurnsFilter({ width: 640, height: 360, fps: 25, durationSeconds: 4, direction: 'out' });
+  assert(out.includes('d=100'), 'frames scale with fps (4s @ 25fps = 100)');
+  assert(directionForScene(0) === 'in' && directionForScene(1) === 'out', 'direction alternates');
+}
+
+/** And a still must actually render as a moving clip of the right shape. */
+async function checkKenBurnsRender() {
+  console.log('\nRendering a still scene with Ken Burns...');
+  assert(supportsFilter('zoompan'), 'ffmpeg has zoompan');
+
+  const photo = path.join(workDir, 'photo.jpg');
+  ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=1', '-frames:v', '1', photo]);
+
+  const still: ResolvedScene = { ...scene(0, photo, 3), mediaType: 'image' };
+  const { videoUrl: url } = await assembleVideo([still], ['subtitles'], '16:9', { transition: null });
+
+  const generated = path.join(process.cwd(), 'public', 'generated');
+  const outFile = path.join(generated, path.basename(url));
+  const info = probe(outFile);
+  const dur = durationSeconds(info);
+  assert(Math.abs(dur - 3) < 0.4, `still rendered for its full 3s (got ${dur.toFixed(2)}s)`);
+  assert(/1920x1080/.test(info), 'still scaled to the 16:9 frame');
+  assert(/Video: h264/.test(info), 'still became a real video stream');
+
+  // Duration and codec would also pass for a static hold. Prove it MOVES:
+  // extract an early and a late frame; a zooming image renders them differently.
+  const early = path.join(workDir, 'kb_early.png');
+  const late = path.join(workDir, 'kb_late.png');
+  ffmpeg(['-ss', '0.2', '-i', outFile, '-frames:v', '1', early]);
+  ffmpeg(['-ss', '2.6', '-i', outFile, '-frames:v', '1', late]);
+  const differs = !fs.readFileSync(early).equals(fs.readFileSync(late));
+  assert(differs, 'first and last frames differ — the image is actually zooming');
+  fs.unlinkSync(early);
+  fs.unlinkSync(late);
+
+  fs.rmSync(generated, { recursive: true, force: true });
+  assert(fs.existsSync(photo), 'source photo not deleted by cleanup');
+}
+
 /** The plan gate is what makes the watermark a business rule, not decoration. */
 function checkPlanGate() {
   console.log('\nChecking plan gate...');
@@ -435,6 +487,8 @@ async function main() {
   checkTransitionMath();
   const hasXfade = checkFfmpegCapabilities();
   await checkTransitionRender(clipA, clipB, hasXfade);
+  checkKenBurnsFilter();
+  await checkKenBurnsRender();
 
   // Regression guard: assembleVideo must not delete media it did not download.
   assert(fs.existsSync(clipA) && fs.existsSync(clipB), 'caller-owned local sources were NOT deleted');

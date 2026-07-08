@@ -36,6 +36,7 @@ import {
   type TransitionConfig,
 } from './transitions';
 import { resolveFfmpegPath, supportsFilter } from './ffmpeg-env';
+import { buildKenBurnsFilter, directionForScene } from './ken-burns';
 
 // Dynamic imports to avoid webpack bundling issues
 let ffmpeg: any;
@@ -79,6 +80,11 @@ export interface PlannedScene {
 export interface ResolvedScene extends PlannedScene {
   clipUrl: string;
   matchedQuery: string;
+  /**
+   * Stills get Ken Burns motion instead of being held static. Optional so scenes
+   * persisted before this existed still load (they were all videos).
+   */
+  mediaType?: 'video' | 'image';
 }
 
 export interface VideoClip {
@@ -353,6 +359,39 @@ export async function searchStockVideos(
 }
 
 /**
+ * Search Pexels photos. Used when no video matches a scene — a still with Ken
+ * Burns motion beats failing the whole generation.
+ */
+export async function searchStockPhotos(
+  query: string,
+  limit: number = 5,
+  orientation: 'landscape' | 'portrait' | 'square' = 'landscape',
+): Promise<VideoClip[]> {
+  await initializeModules();
+
+  const apiKey = process.env.PEXELS_API_KEY;
+  if (!apiKey) return [];
+  if (!pexelsClient && createClient) pexelsClient = createClient(apiKey);
+  if (!pexelsClient) return [];
+
+  try {
+    const response = await pexelsClient.photos.search({ query, per_page: limit, orientation });
+    if ('photos' in response && response.photos) {
+      return response.photos
+        .map((photo: any) => ({
+          url: photo.src?.large2x || photo.src?.large || photo.src?.original || '',
+          duration: 0,
+          type: 'image' as const,
+        }))
+        .filter((p: { url: string }) => p.url);
+    }
+  } catch (error) {
+    console.error('[Video Generator] Pexels photo search error:', error);
+  }
+  return [];
+}
+
+/**
  * Download a remote file into public/temp. A local path is returned as-is,
  * which keeps assembleVideo testable without network access.
  */
@@ -529,10 +568,20 @@ export async function resolveSceneClip(
     const candidates = await searchStockVideos(query, 5, orientation);
     const fresh = candidates.filter((c) => !exclude.has(c.url));
     if (fresh.length > 0) {
-      const pick = fresh[0];
-      return { ...scene, clipUrl: pick.url, matchedQuery: query };
+      return { ...scene, clipUrl: fresh[0].url, matchedQuery: query, mediaType: 'video' };
     }
   }
+
+  // No footage: a still with Ken Burns motion beats failing the generation.
+  for (const query of queries) {
+    const photos = await searchStockPhotos(query, 5, orientation);
+    const fresh = photos.filter((p) => !exclude.has(p.url));
+    if (fresh.length > 0) {
+      console.log(`[Video Generator] Scene ${scene.index + 1}: no video, using a photo`);
+      return { ...scene, clipUrl: fresh[0].url, matchedQuery: query, mediaType: 'image' };
+    }
+  }
+
   return null;
 }
 
@@ -637,7 +686,8 @@ export async function assembleVideo(
       (async () => {
         const paths: string[] = [];
         for (const scene of scenes) {
-          const filename = `scene_${Date.now()}_${scene.index}.mp4`;
+          const ext = scene.mediaType === 'image' ? 'jpg' : 'mp4';
+          const filename = `scene_${Date.now()}_${scene.index}.${ext}`;
           const resolved = await downloadFile(scene.clipUrl, filename);
           paths.push(resolved);
           // Only a downloaded copy is ours to delete; a local source is not.
@@ -681,12 +731,26 @@ export async function assembleVideo(
         : null;
     const clipDurations = paddedClipDurations(sceneDurations, transitionDuration);
 
-    // Trim each clip to its (possibly padded) duration.
+    const { width: outW, height: outH } = aspectPreset(aspectRatio);
+    const kenBurnsAvailable = supportsFilter('zoompan');
+
+    // Trim each clip to its (possibly padded) duration. A still is looped and
+    // given Ken Burns motion — held static it reads as a broken video.
     for (let i = 0; i < scenes.length; i++) {
       const trimmedPath = path.join(tempDir, `trimmed_${Date.now()}_${i}.mp4`);
+      const isStill = scenes[i].mediaType === 'image';
+      const clipDuration = clipDurations[i];
+
       await new Promise<void>((resolve, reject) => {
-        ffmpeg(sources[i])
-          .setDuration(clipDurations[i])
+        const cmd = ffmpeg(sources[i]);
+
+        if (isStill) {
+          // A single image must be looped to fill the clip's duration.
+          cmd.inputOptions(['-loop 1']);
+        }
+
+        cmd
+          .setDuration(clipDuration)
           .outputOptions([
             '-c:v libx264',
             '-preset ultrafast',
@@ -696,7 +760,17 @@ export async function assembleVideo(
             '-pix_fmt yuv420p',
             '-movflags +faststart',
           ])
-          .videoFilters(fit)
+          .videoFilters(
+            isStill && kenBurnsAvailable
+              ? buildKenBurnsFilter({
+                  width: outW,
+                  height: outH,
+                  fps: 30,
+                  durationSeconds: clipDuration,
+                  direction: directionForScene(i),
+                })
+              : fit,
+          )
           .output(trimmedPath)
           .on('end', () => resolve())
           .on('error', (err: Error) => reject(err))
