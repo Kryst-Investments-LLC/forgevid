@@ -190,9 +190,11 @@ async function renderVideoSegment(
         '-an',
         `-r ${enc.fps}`,
         '-pix_fmt yuv420p',
-        '-vf',
-        `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
       ])
+      // videoFilters(), not outputOptions(['-vf', ...]) — see note in the final pass.
+      .videoFilters(
+        `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
+      )
       .output(out),
   );
   return out;
@@ -216,8 +218,8 @@ async function renderBlackSegment(
         '-crf 23',
         '-an',
         '-pix_fmt yuv420p',
-        '-vf setsar=1',
       ])
+      .videoFilters('setsar=1')
       .output(out),
   );
   return out;

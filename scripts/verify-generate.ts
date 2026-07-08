@@ -41,17 +41,31 @@ function assert(cond: boolean, msg: string) {
   console.log(`  ok  ${msg}`);
 }
 
-function scene(index: number, source: string, duration: number): ResolvedScene {
+function scene(index: number, source: string, duration: number, description?: string): ResolvedScene {
   return {
     id: `scene-${index + 1}`,
     index,
-    description: `Test scene ${index + 1}`,
+    description: description ?? `Test scene ${index + 1}`,
     keywords: ['test'],
     duration,
     visualElements: [],
     clipUrl: source,
     matchedQuery: 'test',
   };
+}
+
+/**
+ * Regression: fluent-ffmpeg splits an outputOptions array entry containing
+ * EXACTLY ONE space. A two-word caption made the whole -vf value one-space, so
+ * the drawtext filter was torn in half and ffmpeg failed. Captions with >=2
+ * spaces happened to survive, which is why this hid for so long.
+ */
+async function checkTwoWordCaption(source: string) {
+  console.log('\nRendering with a TWO-WORD caption (one-space filter regression)...');
+  const url = await assembleVideo([scene(0, source, 2, 'Opening shot')], ['subtitles'], '16:9');
+  const outFile = path.join(process.cwd(), 'public', 'generated', path.basename(url));
+  assert(fs.existsSync(outFile), 'two-word caption rendered (filter not torn in half)');
+  fs.unlinkSync(outFile);
 }
 
 async function renderAndCheck(aspectRatio: AspectRatio, sources: string[]) {
@@ -90,6 +104,7 @@ async function main() {
   await renderAndCheck('16:9', [clipA, clipB]);
   await renderAndCheck('9:16', [clipA, clipB]);
   await renderAndCheck('1:1', [clipA, clipB]);
+  await checkTwoWordCaption(clipA);
 
   // Regression guard: assembleVideo must not delete media it did not download.
   assert(fs.existsSync(clipA) && fs.existsSync(clipB), 'caller-owned local sources were NOT deleted');

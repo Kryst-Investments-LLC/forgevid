@@ -542,9 +542,9 @@ export async function assembleVideo(
             '-an',
             '-r 30',
             '-pix_fmt yuv420p',
-            '-vf', fit,
             '-movflags +faststart',
           ])
+          .videoFilters(fit)
           .output(trimmedPath)
           .on('end', () => resolve())
           .on('error', (err: Error) => reject(err))
@@ -574,7 +574,6 @@ export async function assembleVideo(
         '-crf 18',
         '-r 30',
         '-pix_fmt yuv420p',
-        '-vf', videoFilter,
         '-movflags +faststart',
         '-max_muxing_queue_size 1024',
       ];
@@ -586,6 +585,11 @@ export async function assembleVideo(
       }
 
       command
+        // NOT outputOptions(['-vf', videoFilter]): fluent splits an array entry
+        // that contains EXACTLY ONE space (custom.js: `split.length === 2`), so a
+        // two-word caption like "Opening shot" silently tears the filter in half.
+        // videoFilters() passes the graph through untouched.
+        .videoFilters(videoFilter)
         .outputOptions(outputOptions)
         .output(outputPath)
         .on('progress', (p: any) => console.log(`[Video Generator] Assembly ${p.percent?.toFixed(1) || 0}%`))
