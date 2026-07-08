@@ -12,7 +12,13 @@
 import { execFileSync, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { assembleVideo, aspectPreset, type ResolvedScene, type AspectRatio } from '../lib/video-generator';
+import {
+  assembleVideo,
+  aspectPreset,
+  resolveSceneClips,
+  type ResolvedScene,
+  type AspectRatio,
+} from '../lib/video-generator';
 import {
   buildCaptionFilter,
   cuesToSrt,
@@ -419,6 +425,53 @@ function checkOpenAiKeyAlias() {
   else process.env.OPENAI_SECRET_KEY = secret;
 }
 
+/**
+ * "Use my product shots". The user's own media fills scenes in order, and stock
+ * is only needed for what's left — so a fully-covered generation must NOT
+ * require a Pexels key. Runs with PEXELS_API_KEY unset, which is the whole point.
+ */
+async function checkUserMedia(clipA: string, clipB: string) {
+  console.log('\nChecking user media in generations...');
+  const pexels = process.env.PEXELS_API_KEY;
+  delete process.env.PEXELS_API_KEY;
+
+  try {
+    const planned = [
+      { id: 'scene-1', index: 0, description: 'Product hero', keywords: ['x'], duration: 2, visualElements: [] },
+      { id: 'scene-2', index: 1, description: 'Product detail', keywords: ['y'], duration: 2, visualElements: [] },
+    ];
+    const userMedia = [
+      { url: clipA, mediaType: 'video' as const, name: 'hero.mp4' },
+      { url: clipB, mediaType: 'video' as const, name: 'detail.mp4' },
+    ];
+
+    const resolved = await resolveSceneClips(planned, '16:9', userMedia);
+    assert(resolved.length === 2, 'both scenes resolved with no Pexels key');
+    assert(resolved[0].clipUrl === clipA && resolved[1].clipUrl === clipB, 'user media fills scenes in order');
+    assert(resolved[0].matchedQuery === 'hero.mp4', 'the asset name is recorded as the match');
+    assert(resolved.every((s) => s.mediaType === 'video'), 'media type carried through');
+
+    // One scene uncovered + no stock provider => must fail, and say why.
+    let message = '';
+    try {
+      await resolveSceneClips(planned, '16:9', [userMedia[0]]);
+    } catch (err: any) {
+      message = err.message;
+    }
+    assert(/PEXELS_API_KEY/.test(message), 'uncovered scene without a stock key fails visibly');
+    assert(/covers 1 of 2 scenes/.test(message), 'the error says how many scenes your media covered');
+
+    // A still asset must be flagged so it gets Ken Burns, not a static hold.
+    const stillResolved = await resolveSceneClips([planned[0]], '16:9', [
+      { url: clipA, mediaType: 'image', name: 'shot.jpg' },
+    ]);
+    assert(stillResolved[0].mediaType === 'image', 'image assets are marked for Ken Burns');
+  } finally {
+    if (pexels === undefined) delete process.env.PEXELS_API_KEY;
+    else process.env.PEXELS_API_KEY = pexels;
+  }
+}
+
 /** The plan gate is what makes the watermark a business rule, not decoration. */
 function checkPlanGate() {
   console.log('\nChecking plan gate...');
@@ -510,6 +563,7 @@ async function main() {
   await checkCaptionEscaping(clipA);
   await checkMusicDucking(clipA);
   checkOpenAiKeyAlias();
+  await checkUserMedia(clipA, clipB);
   checkPlanGate();
   await checkBrandingRender(clipA);
   checkTransitionMath();

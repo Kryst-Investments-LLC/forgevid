@@ -65,6 +65,9 @@ const generateVideoSchema = z.object({
   addOns: z.array(z.string()).optional(),
   aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
   voiceId: z.string().optional(),
+  // The user's own MediaAsset ids, in scene order. Ownership is checked
+  // server-side; urls are never accepted from the client.
+  mediaAssetIds: z.array(z.string()).max(20).optional(),
   // null = hard cuts. Omitted = the default cross-fade.
   transition: z
     .object({ type: z.enum(TRANSITIONS), duration: z.number().min(0).max(3) })
@@ -110,6 +113,7 @@ async function handleGenerateVideo(body: any, userId: string) {
             aspectRatio: input.aspectRatio,
             voiceId: resolveVoiceId(input.voiceId),
             transition: input.transition === undefined ? DEFAULT_TRANSITION : input.transition,
+            mediaAssetIds: input.mediaAssetIds ?? [],
             // enableEmotionAware is preserved for the pipeline to honor once
             // emotion-aware generation is folded into the worker (TODO Phase 5).
             enableEmotionAware: input.enableEmotionAware ?? false,

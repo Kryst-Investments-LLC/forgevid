@@ -19,6 +19,7 @@ import { aspectPreset, assembleVideo, generateVideoWithScenes } from './video-ge
 import type { AspectRatio, ResolvedScene } from './video-generator';
 import { selectMusicPath } from './music-library';
 import { freeBranding, resolveBranding } from './brand-kit';
+import { resolveUserMedia } from './user-media';
 import { DEFAULT_TRANSITION, isTransitionType, type TransitionConfig } from './transitions';
 
 /** Rebuild a transition from persisted metadata, rejecting unknown types. */
@@ -42,6 +43,20 @@ async function brandingForVideo(videoId: string) {
   return resolveBranding(video.userId);
 }
 
+/**
+ * Resolve the user's media from asset IDS against the video's owner. Never take
+ * urls from the client — the renderer would happily fetch whatever it was given.
+ */
+async function userMediaForVideo(videoId: string, assetIds?: string[]) {
+  if (!assetIds?.length) return [];
+  const video = await prisma.video.findUnique({
+    where: { id: videoId },
+    select: { userId: true },
+  });
+  if (!video) return [];
+  return resolveUserMedia(video.userId, assetIds);
+}
+
 export interface GenerationInput {
   prompt: string;
   style: string;
@@ -52,6 +67,8 @@ export interface GenerationInput {
   voiceId?: string;
   /** Cross-fade between scenes; null means hard cuts. */
   transition?: TransitionConfig | null;
+  /** Ids of the user's own MediaAssets to use, in scene order. */
+  mediaAssetIds?: string[];
   enableEmotionAware?: boolean;
 }
 
@@ -189,6 +206,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       voiceId: input.voiceId,
       branding,
       transition: input.transition,
+      userMedia: await userMediaForVideo(videoId, input.mediaAssetIds),
     });
 
     await setStage(videoId, 'uploading');

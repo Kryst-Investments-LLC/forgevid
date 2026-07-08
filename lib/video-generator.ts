@@ -38,6 +38,7 @@ import {
 } from './transitions';
 import { resolveFfmpegPath, supportsFilter } from './ffmpeg-env';
 import { buildKenBurnsFilter, directionForScene } from './ken-burns';
+import type { UserMediaItem } from './user-media';
 
 // Dynamic imports to avoid webpack bundling issues
 let ffmpeg: any;
@@ -133,6 +134,8 @@ export interface GenerationOptions {
   branding?: Branding | null;
   /** Cross-fade between scenes; null for hard cuts. */
   transition?: TransitionConfig | null;
+  /** The user's own assets, filling scenes in order before stock is searched. */
+  userMedia?: UserMediaItem[];
 }
 
 function sceneId(index: number): string {
@@ -594,15 +597,35 @@ export async function resolveSceneClip(
 export async function resolveSceneClips(
   scenes: PlannedScene[],
   aspectRatio: AspectRatio = '16:9',
+  userMedia: UserMediaItem[] = [],
 ): Promise<ResolvedScene[]> {
-  if (!isStockProviderConfigured()) {
-    throw new Error('No stock footage provider configured. Set PEXELS_API_KEY to generate videos.');
+  // The user's own media fills scenes in order; stock only covers the rest. So
+  // Pexels is only required when there is a scene it must actually cover.
+  const scenesNeedingStock = Math.max(0, scenes.length - userMedia.length);
+  if (scenesNeedingStock > 0 && !isStockProviderConfigured()) {
+    throw new Error(
+      `No stock footage provider configured (PEXELS_API_KEY), and your media only ` +
+        `covers ${userMedia.length} of ${scenes.length} scenes.`,
+    );
   }
 
   const used = new Set<string>();
   const resolved: ResolvedScene[] = [];
 
   for (const scene of scenes) {
+    const own = userMedia[scene.index];
+    if (own) {
+      used.add(own.url);
+      resolved.push({
+        ...scene,
+        clipUrl: own.url,
+        matchedQuery: own.name,
+        mediaType: own.mediaType,
+      });
+      console.log(`[Video Generator] ✓ Scene ${scene.index + 1} uses your media "${own.name}"`);
+      continue;
+    }
+
     const match = await resolveSceneClip(scene, used, aspectRatio);
     if (!match) {
       throw new Error(`No stock footage found for scene ${scene.index + 1}: "${scene.description}"`);
@@ -1026,13 +1049,22 @@ export async function generateVideoWithScenes(
   cues: CaptionCue[];
   thumbnailUrl: string | null;
 }> {
-  const { prompt, duration, addOns, aspectRatio = '16:9', mood, voiceId, branding, transition } =
-    options;
+  const {
+    prompt,
+    duration,
+    addOns,
+    aspectRatio = '16:9',
+    mood,
+    voiceId,
+    branding,
+    transition,
+    userMedia = [],
+  } = options;
 
   const planned = await planScenes(prompt, duration);
   if (planned.length === 0) throw new Error('Failed to plan any scenes from the script');
 
-  const resolved = await resolveSceneClips(planned, aspectRatio);
+  const resolved = await resolveSceneClips(planned, aspectRatio, userMedia);
 
   // Music is opt-out and silently skipped when the library is empty.
   const wantMusic = !addOns || addOns.length === 0 || addOns.includes('music');
