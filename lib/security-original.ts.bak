@@ -1,0 +1,352 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from './database'
+import { z } from 'zod'
+
+// Security headers configuration
+export const securityHeaders = {
+  'X-DNS-Prefetch-Control': 'on',
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'X-XSS-Protection': '1; mode=block',
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+  'Content-Security-Policy': `
+    default-src 'self';
+    script-src 'self' 'unsafe-eval' 'unsafe-inline' *.vercel-insights.com *.vercel-analytics.com;
+    style-src 'self' 'unsafe-inline' fonts.googleapis.com;
+    font-src 'self' fonts.gstatic.com;
+    img-src 'self' data: blob: *.amazonaws.com *.cloudinary.com;
+    media-src 'self' blob: *.amazonaws.com *.cloudinary.com;
+    connect-src 'self' *.vercel-insights.com *.vercel-analytics.com;
+    frame-ancestors 'none';
+    base-uri 'self';
+    form-action 'self';
+  `.replace(/\s+/g, ' ').trim()
+}
+
+// Rate limiting configuration
+export const rateLimitConfig = {
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  skipFailedRequests: false
+}
+
+// Input sanitization
+export class InputSanitizer {
+  static sanitizeString(input: string): string {
+    return input
+      .trim()
+      .replace(/[<>]/g, '') // Remove potential HTML tags
+      .replace(/javascript:/gi, '') // Remove javascript: protocol
+      .replace(/on\w+=/gi, '') // Remove event handlers
+      .substring(0, 1000) // Limit length
+  }
+
+  static sanitizeHtml(input: string): string {
+    return input
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove script tags
+      .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '') // Remove iframe tags
+      .replace(/on\w+="[^"]*"/gi, '') // Remove event handlers
+      .replace(/javascript:/gi, '') // Remove javascript: protocol
+  }
+
+  static sanitizeFilename(filename: string): string {
+    return filename
+      .replace(/[^a-zA-Z0-9.-]/g, '_') // Replace invalid characters
+      .replace(/\.{2,}/g, '.') // Remove multiple dots
+      .substring(0, 255) // Limit length
+  }
+
+  static sanitizeUrl(url: string): string {
+    try {
+      const parsed = new URL(url)
+      // Only allow http and https protocols
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        throw new Error('Invalid protocol')
+      }
+      return parsed.toString()
+    } catch {
+      throw new Error('Invalid URL')
+    }
+  }
+}
+
+// CSRF protection
+export class CSRFProtection {
+  private static tokens = new Map<string, { token: string; expires: number }>()
+
+  static generateToken(sessionId: string): string {
+    const token = crypto.randomUUID()
+    this.tokens.set(sessionId, {
+      token,
+      expires: Date.now() + 3600000 // 1 hour
+    })
+    return token
+  }
+
+  static validateToken(sessionId: string, token: string): boolean {
+    const stored = this.tokens.get(sessionId)
+    if (!stored || stored.expires < Date.now()) {
+      this.tokens.delete(sessionId)
+      return false
+    }
+    return stored.token === token
+  }
+
+  static cleanupExpiredTokens(): void {
+    const now = Date.now()
+    for (const [sessionId, data] of this.tokens) {
+      if (data.expires < now) {
+        this.tokens.delete(sessionId)
+      }
+    }
+  }
+}
+
+// SQL injection protection
+export class SQLInjectionProtection {
+  static sanitizeQuery(query: string): string {
+    // Remove common SQL injection patterns
+    return query
+      .replace(/('|(\\')|(;)|(\-\-)|(\s*\/\*)|(\s*\*\/))/gi, '')
+      .replace(/(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT)\b)/gi, '')
+      .trim()
+  }
+
+  static validateInput(input: string): boolean {
+    const dangerousPatterns = [
+      /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION)\b)/gi,
+      /('|(\\')|(;)|(\-\-)|(\s*\/\*)|(\s*\*\/))/gi,
+      /(<script|javascript:|vbscript:|onload=|onerror=)/gi
+    ]
+
+    return !dangerousPatterns.some(pattern => pattern.test(input))
+  }
+}
+
+// Audit logging
+export class SecurityAuditLogger {
+  static async logSecurityEvent(
+    event: string,
+    details: {
+      userId?: string
+      ip?: string
+      userAgent?: string
+      severity: 'low' | 'medium' | 'high' | 'critical'
+      data?: Record<string, any>
+    }
+  ) {
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: event,
+          resource: 'security',
+          details: JSON.stringify({
+            ...details,
+            timestamp: new Date().toISOString()
+          }),
+          ipAddress: details.ip,
+          userAgent: details.userAgent
+        }
+      })
+
+      // Log critical events to console
+      if (details.severity === 'critical') {
+        console.error(`🚨 CRITICAL SECURITY EVENT: ${event}`, details)
+      }
+    } catch (error) {
+      console.error('Failed to log security event:', error)
+    }
+  }
+
+  static async logAuthenticationAttempt(
+    email: string,
+    success: boolean,
+    ip: string,
+    userAgent: string
+  ) {
+    await this.logSecurityEvent('authentication_attempt', {
+      data: { email, success },
+      severity: success ? 'low' : 'medium',
+      ip,
+      userAgent
+    })
+  }
+
+  static async logSuspiciousActivity(
+    activity: string,
+    details: Record<string, any>,
+    userId?: string,
+    ip?: string
+  ) {
+    await this.logSecurityEvent('suspicious_activity', {
+      userId,
+      ip,
+      severity: 'high',
+      data: { activity, ...details }
+    })
+  }
+}
+
+// IP whitelist/blacklist
+export class IPFilter {
+  private static blacklist = new Set<string>()
+  private static whitelist = new Set<string>()
+
+  static addToBlacklist(ip: string) {
+    this.blacklist.add(ip)
+  }
+
+  static addToWhitelist(ip: string) {
+    this.whitelist.add(ip)
+  }
+
+  static isBlocked(ip: string): boolean {
+    if (this.whitelist.has(ip)) return false
+    return this.blacklist.has(ip)
+  }
+
+  static isAllowed(ip: string): boolean {
+    if (this.whitelist.size > 0) {
+      return this.whitelist.has(ip)
+    }
+    return !this.blacklist.has(ip)
+  }
+}
+
+// Request validation middleware
+export function validateRequest(request: NextRequest): NextResponse | null {
+  const ip = getClientIP(request)
+  const userAgent = request.headers.get('user-agent') || ''
+
+  // Check IP blacklist
+  if (IPFilter.isBlocked(ip)) {
+    SecurityAuditLogger.logSecurityEvent('blocked_request', {
+      ip,
+      userAgent,
+      severity: 'high',
+      data: { reason: 'blacklisted_ip' }
+    })
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  }
+
+  // Check for suspicious user agents
+  const suspiciousPatterns = [
+    /bot/i, /crawler/i, /spider/i, /scraper/i,
+    /curl/i, /wget/i, /python/i, /php/i
+  ]
+
+  if (suspiciousPatterns.some(pattern => pattern.test(userAgent))) {
+    SecurityAuditLogger.logSecurityEvent('suspicious_user_agent', {
+      ip,
+      userAgent,
+      severity: 'medium',
+      data: { userAgent }
+    })
+  }
+
+  // Check request size
+  const contentLength = request.headers.get('content-length')
+  if (contentLength && parseInt(contentLength) > 10 * 1024 * 1024) { // 10MB limit
+    SecurityAuditLogger.logSecurityEvent('oversized_request', {
+      ip,
+      userAgent,
+      severity: 'medium',
+      data: { size: contentLength }
+    })
+    return NextResponse.json({ error: 'Request too large' }, { status: 413 })
+  }
+
+  return null
+}
+
+// Security middleware
+export function securityMiddleware(handler: Function) {
+  return async (request: NextRequest, context?: any) => {
+    // Validate request
+    const validationError = validateRequest(request)
+    if (validationError) {
+      return validationError
+    }
+
+    // Add security headers
+    const response = await handler(request, context)
+    
+    // Add security headers to response
+    Object.entries(securityHeaders).forEach(([key, value]) => {
+      response.headers.set(key, value)
+    })
+
+    return response
+  }
+}
+
+// Utility functions
+export function getClientIP(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for')
+  const realIP = request.headers.get('x-real-ip')
+  const clientIP = request.headers.get('x-client-ip')
+  
+  if (forwarded) {
+    return forwarded.split(',')[0].trim()
+  }
+  
+  return realIP || clientIP || 'unknown'
+}
+
+export function isSecureRequest(request: NextRequest): boolean {
+  const protocol = request.headers.get('x-forwarded-proto') || 'http'
+  return protocol === 'https'
+}
+
+// Password validation
+export const passwordValidationSchema = z.string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(128, 'Password must be less than 128 characters')
+  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+  .regex(/[0-9]/, 'Password must contain at least one number')
+  .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character')
+
+// Session security
+export class SessionSecurity {
+  static generateSecureSessionId(): string {
+    return crypto.randomUUID() + '-' + Date.now().toString(36)
+  }
+
+  static validateSessionId(sessionId: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[a-z0-9]+$/i
+    return uuidRegex.test(sessionId)
+  }
+
+  static async invalidateSession(sessionId: string) {
+    try {
+      await prisma.session.deleteMany({
+        where: { token: sessionId }
+      })
+    } catch (error) {
+      console.error('Failed to invalidate session:', error)
+    }
+  }
+}
+
+// Cleanup expired tokens periodically
+setInterval(() => {
+  CSRFProtection.cleanupExpiredTokens()
+}, 300000) // Every 5 minutes
+
+export function initializeSecurity() {
+  console.log('🔒 Initializing security measures...')
+  
+  // Log security initialization
+  SecurityAuditLogger.logSecurityEvent('security_initialized', {
+    severity: 'low',
+    data: { timestamp: new Date().toISOString() }
+  })
+  
+  console.log('✅ Security initialized')
+}

@@ -1,0 +1,203 @@
+# OWASP ZAP Security Test Configuration
+# Run with: zap-baseline.py -t http://localhost:3000 -J security-report.json
+
+# Target configuration
+target: "http://localhost:3000"
+
+# Authentication configuration
+auth:
+  type: "form"
+  loginUrl: "/auth/login"
+  loginForm:
+    usernameField: "email"
+    passwordField: "password"
+  credentials:
+    username: "test@forgevid.com"
+    password: "testpassword"
+
+# Test scenarios
+scenarios:
+  - name: "Authentication Security"
+    tests:
+      - "SQL Injection in login form"
+      - "XSS in login form"
+      - "CSRF protection"
+      - "Session management"
+      - "Password policy enforcement"
+      - "Account lockout after failed attempts"
+
+  - name: "API Security"
+    tests:
+      - "SQL Injection in API endpoints"
+      - "NoSQL Injection"
+      - "XML/XXE attacks"
+      - "LDAP Injection"
+      - "Command Injection"
+      - "Path Traversal"
+      - "File Upload vulnerabilities"
+      - "Insecure Direct Object References"
+      - "Missing Authentication"
+      - "Insufficient Authorization"
+
+  - name: "Input Validation"
+    tests:
+      - "XSS in all input fields"
+      - "SQL Injection in search parameters"
+      - "Buffer Overflow attempts"
+      - "Format String attacks"
+      - "Integer Overflow"
+      - "Regular Expression DoS"
+
+  - name: "Session Management"
+    tests:
+      - "Session fixation"
+      - "Session hijacking"
+      - "Session timeout"
+      - "Concurrent session limits"
+      - "Secure session cookies"
+      - "Session invalidation on logout"
+
+  - name: "File Upload Security"
+    tests:
+      - "Malicious file upload"
+      - "File type validation bypass"
+      - "Path traversal in file names"
+      - "Virus scanning"
+      - "File size limits"
+      - "Content validation"
+
+  - name: "Video Processing Security"
+    tests:
+      - "Malicious video file upload"
+      - "FFmpeg command injection"
+      - "Resource exhaustion attacks"
+      - "Metadata extraction vulnerabilities"
+      - "Thumbnail generation security"
+
+  - name: "AI Service Security"
+    tests:
+      - "Prompt injection attacks"
+      - "Model extraction attempts"
+      - "Data poisoning"
+      - "Adversarial inputs"
+      - "API key exposure"
+      - "Rate limiting bypass"
+
+# Security headers to check
+securityHeaders:
+  - "Strict-Transport-Security"
+  - "X-Content-Type-Options"
+  - "X-Frame-Options"
+  - "X-XSS-Protection"
+  - "Content-Security-Policy"
+  - "Referrer-Policy"
+  - "Permissions-Policy"
+
+# Vulnerability patterns to test
+vulnerabilityPatterns:
+  - "SQL Injection"
+  - "Cross-Site Scripting (XSS)"
+  - "Cross-Site Request Forgery (CSRF)"
+  - "Insecure Direct Object References"
+  - "Security Misconfiguration"
+  - "Sensitive Data Exposure"
+  - "Missing Function Level Access Control"
+  - "Cross-Site Scripting (XSS)"
+  - "Using Components with Known Vulnerabilities"
+  - "Unvalidated Redirects and Forwards"
+
+# Rate limiting tests
+rateLimitTests:
+  - endpoint: "/api/videos"
+    method: "POST"
+    requests: 100
+    timeWindow: "1m"
+    expectedStatus: 429
+
+  - endpoint: "/api/auth/login"
+    method: "POST"
+    requests: 20
+    timeWindow: "1m"
+    expectedStatus: 429
+
+  - endpoint: "/api/ai/generate"
+    method: "POST"
+    requests: 50
+    timeWindow: "1m"
+    expectedStatus: 429
+
+# Authentication bypass tests
+authBypassTests:
+  - "JWT token manipulation"
+  - "Session token prediction"
+  - "Authentication header bypass"
+  - "Role escalation"
+  - "Privilege escalation"
+  - "API key enumeration"
+
+# Data validation tests
+dataValidationTests:
+  - "Email format validation"
+  - "Password strength validation"
+  - "File type validation"
+  - "Input length limits"
+  - "Special character handling"
+  - "Unicode normalization"
+
+# Error handling tests
+errorHandlingTests:
+  - "Information disclosure in errors"
+  - "Stack trace exposure"
+  - "Database error exposure"
+  - "API error information leakage"
+  - "Debug information exposure"
+
+# Business logic tests
+businessLogicTests:
+  - "Video ownership validation"
+  - "Organization access control"
+  - "Usage quota enforcement"
+  - "Billing validation"
+  - "Resource access permissions"
+  - "Data isolation"
+
+# Performance security tests
+performanceSecurityTests:
+  - "DoS via large file uploads"
+  - "Resource exhaustion attacks"
+  - "Memory exhaustion"
+  - "CPU exhaustion"
+  - "Database connection exhaustion"
+  - "API rate limit bypass"
+
+# Compliance checks
+complianceChecks:
+  - "GDPR data protection"
+  - "SOC2 security controls"
+  - "HIPAA data handling"
+  - "PCI DSS compliance"
+  - "OWASP Top 10"
+  - "CWE/SANS Top 25"
+
+# Reporting configuration
+reporting:
+  format: "json"
+  output: "security-report.json"
+  include:
+    - "vulnerabilities"
+    - "security_headers"
+    - "authentication_tests"
+    - "input_validation"
+    - "rate_limiting"
+    - "compliance"
+  severity:
+    - "critical"
+    - "high"
+    - "medium"
+    - "low"
+    - "info"
+
+
+
+
+

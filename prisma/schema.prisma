@@ -1,0 +1,792 @@
+// Support Tickets
+model SupportTicket {
+  id          String   @id @default(cuid())
+  subject     String
+  description String
+  priority    String   // e.g. "low", "medium", "high"
+  category    String   // e.g. "general", "billing", etc.
+  status      String   @default("open") // "open", "closed", "pending"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+
+  @@map("support_tickets")
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+// ForgeVid Production Database Schema (PostgreSQL)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  name           String?
+  image          String?
+  emailVerified  DateTime?
+  password       String?
+  role           UserRole  @default(USER)
+  status         UserStatus @default(ACTIVE)
+  mfaEnabled     Boolean   @default(false)
+  mfaSecret      String?
+  lastLogin      DateTime?
+  lastLoginAt    DateTime?
+  metadata       String?   // JSON string for additional user data
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Subscription information
+  subscription   Json?     // Stripe subscription data
+
+  // Organization relationship
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+
+  // User relationships
+  videos         Video[]
+  collaborations CollaborationRoom[]
+  collaborationMemberships CollaborationMember[]
+  usageRecords   UsageRecord[]
+  subscriptions  Subscription[]
+  payments       Payment[]
+  analytics      UserAnalytics[]
+  notifications  Notification[]
+  sessions       Session[]
+  apiKeys        ApiKey[]
+  videoEdits     VideoEdit[]
+  aiGenerations  AIGeneration[]
+  collaborationMessages CollaborationMessage[]
+  collaborationEdits CollaborationEdit[]
+  templatesCreated Template[] @relation("TemplateCreatedBy")
+  templateRatings  TemplateRating[] @relation("TemplateRatingUser")
+  templateFavorites TemplateFavorite[] @relation("TemplateFavoriteUser")
+  templateModerations TemplateModeration[] @relation("TemplateModerationUser")
+  mediaAssetsUploaded MediaAsset[] @relation("MediaAssetUploadedBy")
+  auditLogs      AuditLog[]
+  supportTickets SupportTicket[]
+  betaAccessEntriesCreated BetaAccessEntry[] @relation("BetaAccessCreatedBy")
+
+  @@map("users")
+  @@index([email])
+  @@index([organizationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Organization {
+  id          String @id @default(cuid())
+  name        String
+  domain      String? @unique
+  logo        String?
+  ssoEnabled  Boolean @default(false)
+  ssoProvider SSOProvider?
+  settings    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Organization relationships
+  users       User[]
+  videos      Video[]
+  plans       OrganizationPlan[]
+  invoices    Invoice[]
+  ssoConfigurations SSOConfiguration[]
+
+  @@map("organizations")
+  @@index([name])
+  @@index([domain])
+}
+
+model SSOConfiguration {
+  id              String      @id @default(cuid())
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider        SSOProvider
+  enabled         Boolean     @default(false)
+  metadata        Json?
+  metadataUrl     String?
+  issuer          String?
+  clientId        String?
+  clientSecret    String?
+  tenantId        String?
+  entityId        String?
+  certificate     String?
+  defaultRole     UserRole    @default(USER)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("sso_configurations")
+  @@unique([provider, organizationId])
+  @@index([organizationId])
+  @@index([provider])
+}
+
+// Organization Plans
+model OrganizationPlan {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  planType       PlanType
+  name           String
+  description    String?
+  features       String? // JSON string of enabled features
+  userLimit      Int?
+  storageLimitGB Int?
+  videoLimit     Int?
+  priceUSD       Decimal?
+  isActive       Boolean  @default(true)
+  startDate      DateTime @default(now())
+  endDate        DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relationships
+  invoices       Invoice[]
+
+  @@map("organization_plans")
+  @@index([organizationId])
+  @@index([planType])
+  @@index([isActive])
+}
+
+enum PlanType {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+  CUSTOM
+}
+
+// Video Management
+model Video {
+  id              String      @id @default(cuid())
+  title           String
+  description     String?
+  status          VideoStatus @default(PROCESSING)
+  duration        Int?        // in seconds
+  resolution      String?     // "720p", "1080p", "4k"
+  format          String?     // "mp4", "webm", "mov"
+  fileSize        BigInt?     // in bytes
+  thumbnail       String?
+  url             String?
+  fileUrl         String?     // Cloudinary URL
+  transcript      String?     // AI-generated transcript
+  summary         String?     // AI-generated summary
+  metadata        String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relationships
+  userId          String
+  organizationId  String?
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  edits           VideoEdit[]
+  exports         VideoExport[]
+  analytics       VideoAnalytics[]
+
+  @@map("videos")
+  @@index([userId])
+  @@index([organizationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model VideoEdit {
+  id        String   @id @default(cuid())
+  type      String   // "trim", "crop", "filter", "text", "audio"
+  data      String   // JSON string of edit configuration
+  timestamp DateTime @default(now())
+
+  // Relationships
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("video_edits")
+  @@index([videoId])
+  @@index([userId])
+  @@index([timestamp])
+}
+
+model VideoExport {
+  id        String        @id @default(cuid())
+  format    String        // "mp4", "webm", "mov", "gif"
+  quality   String        // "low", "medium", "high", "ultra"
+  status    ExportStatus  @default(PROCESSING)
+  progress  Int           @default(0)
+  url       String?
+  fileUrl   String?       // CDN URL from Cloudinary
+  fileSize  BigInt?
+  createdAt DateTime      @default(now())
+
+  // Relationships
+  videoId   String
+  video     Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@map("video_exports")
+  @@index([videoId])
+  @@index([status])
+}
+
+// AI Features
+model AIGeneration {
+  id          String          @id @default(cuid())
+  type        AIGenerationType
+  prompt      String
+  result      String?
+  status      GenerationStatus @default(PROCESSING)
+  tokensUsed  Int?
+  cost        Decimal?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // Relationships
+  userId      String
+  user        User            @relation(fields: [userId], references: [id])
+
+  @@map("ai_generations")
+  @@index([userId])
+  @@index([createdAt])
+  @@index([type])
+}
+
+// Collaboration
+model CollaborationRoom {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  settings    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  members     CollaborationMember[]
+  messages    CollaborationMessage[]
+  edits       CollaborationEdit[]
+
+  @@map("collaboration_rooms")
+  @@index([createdById])
+  @@index([isActive])
+}
+
+model CollaborationMember {
+  id       String                @id @default(cuid())
+  role     CollaborationRole     @default(VIEWER)
+  joinedAt DateTime              @default(now())
+
+  // Relationships
+  userId   String
+  user     User                  @relation(fields: [userId], references: [id])
+  roomId   String
+  room     CollaborationRoom     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roomId])
+  @@map("collaboration_members")
+}
+
+model CollaborationMessage {
+  id        String   @id @default(cuid())
+  content   String
+  type      MessageType @default(TEXT)
+  createdAt DateTime @default(now())
+
+  // Relationships
+  roomId    String
+  room      CollaborationRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id])
+
+  @@map("collaboration_messages")
+  @@index([roomId])
+}
+
+model CollaborationEdit {
+  id        String   @id @default(cuid())
+  type      String   // "video_edit", "comment", "suggestion"
+  data      String   // JSON string of edit data
+  timestamp DateTime @default(now())
+
+  // Relationships
+  roomId    String
+  room      CollaborationRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id])
+
+  @@map("collaboration_edits")
+  @@index([roomId])
+}
+
+// Templates and Media
+model Template {
+  id          String         @id @default(cuid())
+  name        String
+  description String?
+  category    TemplateCategory
+  duration    Int            // in seconds
+  aspectRatio String         // "16:9", "9:16", "1:1"
+  resolution  String         // "720p", "1080p", "4k"
+  tags        String?
+  thumbnail   String
+  previewUrl  String?
+  templateData String        // JSON string of template configuration
+  usageCount  Int            @default(0)
+  rating      Decimal?
+  isPublic    Boolean        @default(true)
+  moderationStatus String?   @default("approved")  // "pending", "approved", "rejected", "flagged"
+  totalRatings Int           @default(0)
+  averageRating Decimal?
+  favoriteCount Int          @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Relationships
+  createdById String?
+  createdBy   User?          @relation("TemplateCreatedBy", fields: [createdById], references: [id])
+  ratings     TemplateRating[]
+  favorites   TemplateFavorite[]
+  moderation  TemplateModeration?
+  analytics   TemplateAnalytics[]
+
+  @@unique([name])
+  @@map("templates")
+  @@index([moderationStatus])
+  @@index([isPublic, favoriteCount, averageRating, usageCount, createdAt])
+  @@index([category])
+}
+
+model TemplateRating {
+  id        String   @id @default(cuid())
+  rating    Decimal  @db.Decimal(3,2)
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation("TemplateRatingUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, userId])
+  @@map("template_ratings")
+  @@index([templateId])
+  @@index([userId])
+}
+
+model TemplateFavorite {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  // Relationships
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation("TemplateFavoriteUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, userId])
+  @@map("template_favorites")
+  @@index([templateId])
+  @@index([userId])
+}
+
+model TemplateModeration {
+  id             String   @id @default(cuid())
+  status         String   @default("pending")  // "pending", "approved", "rejected", "flagged"
+  moderatorId    String?
+  rejectionReason String?
+  moderatedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relationships
+  templateId  String
+  template    Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  moderator   User?    @relation("TemplateModerationUser", fields: [moderatorId], references: [id])
+
+  @@unique([templateId])
+  @@map("template_moderation")
+  @@index([templateId])
+  @@index([status])
+}
+
+model TemplateAnalytics {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  views     Int      @default(0)
+  clicks    Int      @default(0)
+  uses      Int      @default(0)
+  favorites Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, date])
+  @@map("template_analytics")
+  @@index([templateId])
+  @@index([date])
+}
+
+model MediaAsset {
+  id          String         @id @default(cuid())
+  name        String
+  fileName    String
+  type        MediaType
+  category    String?
+  url         String
+  thumbnail   String?
+  duration    Int?           // for video/audio
+  fileSize    BigInt?
+  resolution  String?        // for images/video
+  metadata    String?
+  isPublic    Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+
+  // Relationships
+  uploadedById String?
+  uploadedBy   User?         @relation("MediaAssetUploadedBy", fields: [uploadedById], references: [id])
+
+  @@unique([name])
+  @@map("media_assets")
+}
+
+model BetaAccessEntry {
+  id          String   @id @default(cuid())
+  email       String?  @unique
+  inviteCode  String?  @unique
+  note        String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  createdById String?
+  createdBy   User?    @relation("BetaAccessCreatedBy", fields: [createdById], references: [id])
+
+  @@map("beta_access_entries")
+  @@index([email])
+  @@index([inviteCode])
+  @@index([isActive])
+}
+
+// Usage and Analytics
+model UsageRecord {
+  id           String      @id @default(cuid())
+  action       String      // "video_created", "ai_generation", "export"
+  resourceType String?     // Type of resource being used
+  quantity     Int         @default(1)
+  metadata     String?
+  cost         Decimal?
+  timestamp    DateTime    @default(now())
+
+  // Relationships
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+
+  @@map("usage_records")
+  @@index([userId])
+  @@index([action])
+  @@index([timestamp])
+  @@index([userId, action, timestamp])
+}
+
+model UserAnalytics {
+  id        String   @id @default(cuid())
+  date      DateTime
+  videosCreated Int  @default(0)
+  aiGenerations Int  @default(0)
+  exportsGenerated Int @default(0)
+  collaborationTime Int @default(0) // in minutes
+  createdAt DateTime @default(now())
+
+  // Relationships
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
+  @@map("user_analytics")
+}
+
+model VideoAnalytics {
+  id        String   @id @default(cuid())
+  views     Int      @default(0)
+  shares    Int      @default(0)
+  downloads Int      @default(0)
+  duration  Int?     // total watch time in seconds
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  videoId   String
+  video     Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@map("video_analytics")
+  @@index([videoId])
+  @@index([views])
+  @@index([shares])
+}
+
+// Subscriptions and Payments
+model Subscription {
+  id                String           @id @default(cuid())
+  status            SubscriptionStatus
+  plan              String           // "free", "starter", "pro", "enterprise"
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd Boolean          @default(false)
+  canceledAt        DateTime?
+  metadata          String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  // Relationships
+  userId            String
+  user              User             @relation(fields: [userId], references: [id])
+  payments          Payment[]
+
+  @@map("subscriptions")
+  @@index([userId])
+  @@index([status])
+  @@index([plan])
+  @@index([canceledAt])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  amount          Decimal
+  currency        String        @default("usd")
+  status          PaymentStatus
+  stripePaymentId String?       @unique
+  description     String?
+  metadata        String?
+  createdAt       DateTime      @default(now())
+
+  // Relationships
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  subscriptionId  String?
+  subscription    Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@map("payments")
+  @@index([userId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model Invoice {
+  id              String      @id @default(cuid())
+  number          String      @unique
+  amount          Decimal
+  currency        String      @default("usd")
+  status          InvoiceStatus
+  dueDate         DateTime
+  paidAt          DateTime?
+  createdAt       DateTime    @default(now())
+
+  // Relationships
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  planId          String?
+  plan            OrganizationPlan? @relation(fields: [planId], references: [id])
+
+  @@map("invoices")
+}
+
+// System Management
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Relationships
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  name      String
+  key       String   @unique
+  lastUsed  DateTime?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  // Relationships
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  title     String
+  message   String
+  type      NotificationType
+  read      Boolean          @default(false)
+  data      String?
+  createdAt DateTime         @default(now())
+
+  // Relationships
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+  @@index([userId])
+  @@index([read])
+  @@index([userId, read])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  resource  String
+  details   String?
+  ipAddress String?
+  userAgent String?
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  // Relationships
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+  @@index([userId])
+  @@index([timestamp])
+  @@index([action])
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  MANAGER
+  USER
+  VIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+  DELETED
+}
+
+enum SSOProvider {
+  GOOGLE
+  AZURE
+  OKTA
+  SAML
+}
+
+enum VideoStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ExportStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AIGenerationType {
+  VIDEO_GENERATION
+  STORYBOARD
+  SCRIPT_WRITING
+  VOICE_SYNTHESIS
+  IMAGE_GENERATION
+}
+
+enum GenerationStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum CollaborationRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum TemplateCategory {
+  BUSINESS
+  SOCIAL
+  EDUCATIONAL
+  MARKETING
+  ENTERTAINMENT
+  PRESENTATION
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  PAST_DUE
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  UNPAID
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  REFUNDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+  SYSTEM
+}
+

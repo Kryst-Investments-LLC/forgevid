@@ -1,0 +1,356 @@
+{
+  "common": {
+    "loading": "로딩 중...",
+    "error": "오류",
+    "success": "성공",
+    "save": "저장",
+    "cancel": "취소",
+    "delete": "삭제",
+    "edit": "편집",
+    "create": "생성",
+    "back": "뒤로",
+    "next": "다음",
+    "previous": "이전",
+    "submit": "제출",
+    "close": "닫기",
+    "open": "열기",
+    "search": "검색",
+    "filter": "필터",
+    "sort": "정렬",
+    "view": "보기",
+    "download": "다운로드",
+    "upload": "업로드",
+    "share": "공유",
+    "copy": "복사",
+    "paste": "붙여넣기",
+    "cut": "잘라내기",
+    "undo": "실행 취소",
+    "redo": "다시 실행",
+    "refresh": "새로고침",
+    "settings": "설정",
+    "profile": "프로필",
+    "logout": "로그아웃",
+    "login": "로그인",
+    "register": "회원가입",
+    "signup": "회원가입",
+    "signin": "로그인",
+    "forgotPassword": "비밀번호를 잊으셨나요?",
+    "rememberMe": "로그인 상태 유지",
+    "email": "이메일",
+    "password": "비밀번호",
+    "confirmPassword": "비밀번호 확인",
+    "firstName": "이름",
+    "lastName": "성",
+    "phone": "전화번호",
+    "address": "주소",
+    "city": "도시",
+    "country": "국가",
+    "zipCode": "우편번호",
+    "website": "웹사이트",
+    "description": "설명",
+    "title": "제목",
+    "name": "이름",
+    "date": "날짜",
+    "time": "시간",
+    "status": "상태",
+    "type": "유형",
+    "category": "카테고리",
+    "tags": "태그",
+    "price": "가격",
+    "currency": "통화",
+    "quantity": "수량",
+    "total": "총계",
+    "subtotal": "소계",
+    "tax": "세금",
+    "discount": "할인",
+    "shipping": "배송",
+    "payment": "결제",
+    "billing": "청구",
+    "order": "주문",
+    "invoice": "송장",
+    "receipt": "영수증",
+    "refund": "환불",
+    "return": "반품",
+    "exchange": "교환",
+    "warranty": "보증",
+    "support": "지원",
+    "help": "도움말",
+    "faq": "자주 묻는 질문",
+    "contact": "연락처",
+    "about": "소개",
+    "privacy": "개인정보처리방침",
+    "terms": "이용약관",
+    "cookies": "쿠키",
+    "language": "언어",
+    "theme": "테마",
+    "darkMode": "다크 모드",
+    "lightMode": "라이트 모드",
+    "autoMode": "자동 모드"
+  },
+  "navigation": {
+    "home": "홈",
+    "dashboard": "대시보드",
+    "videos": "내 비디오",
+    "templates": "템플릿",
+    "media": "미디어 라이브러리",
+    "ai": "AI 스튜디오",
+    "collaborate": "협업",
+    "analytics": "분석",
+    "billing": "청구",
+    "settings": "설정",
+    "help": "도움말 및 지원"
+  },
+  "hero": {
+    "badge": "AI 기반 비디오 제작",
+    "title": "아이디어를",
+    "titleHighlight": "전문 비디오로 변환",
+    "subtitle": "AI 기반 플랫폼으로 몇 분 만에 멋진 비디오를 만드세요. 스크립트 생성부터 최종 내보내기까지, ForgeVid가 복잡성을 처리하여 창의성에 집중할 수 있습니다.",
+    "stats": {
+      "videosCreated": "50,000+개 비디오 제작",
+      "rating": "4.9/5 평점",
+      "setupTime": "2분 내 설정 완료"
+    },
+    "cta": {
+      "startCreating": "무료로 제작 시작",
+      "noCreditCard": "신용카드 불필요",
+      "watchDemo": "데모 보기"
+    },
+    "demoPlaceholder": "데모 비디오 곧 출시"
+  },
+  "features": {
+    "title": "제작에 필요한 모든 것",
+    "subtitle": "통합 플랫폼에서 강력한 AI 도구와 전문 기능을 제공",
+    "aiVideoGenerator": {
+      "title": "AI 비디오 생성기",
+      "description": "고급 AI 기술로 텍스트 프롬프트를 전문 비디오로 변환"
+    },
+    "stockAssets": {
+      "title": "800만+ 스톡 에셋",
+      "description": "수백만 개의 고품질 이미지, 비디오, 오디오 트랙에 액세스"
+    },
+    "collaboration": {
+      "title": "실시간 협업",
+      "description": "라이브 편집과 댓글로 팀과 실시간으로 협업"
+    },
+    "emotionAI": {
+      "title": "감정 인식 AI",
+      "description": "AI가 콘텐츠의 감정을 분석하고 완벽한 효과와 전환을 제안"
+    },
+    "vrPreview": {
+      "title": "VR 미리보기 모드",
+      "description": "몰입형 VR에서 비디오를 미리보고 차세대 콘텐츠 제작 실현"
+    },
+    "multilingual": {
+      "title": "다국어 지원",
+      "description": "AI 음성과 자막으로 50+ 언어의 콘텐츠 제작"
+    },
+    "productPhotoTransform": {
+      "title": "제품 사진을 동영상으로",
+      "description": "제품 사진을 몇 분 만에 고전환율 동영상으로 변환하세요. 이미지를 업로드하면 TikTok과 Instagram용 광고를 즉시 생성 - 스튜디오 불필요, 스트레스 없이, 스크롤을 멈추는 판매 콘텐츠."
+    }
+  },
+  "pricing": {
+    "title": "플랜 선택",
+    "subtitle": "무료로 시작하고 성장에 맞춰 확장하세요. 모든 플랜에 핵심 AI 기능이 포함됩니다.",
+    "billing": {
+      "monthly": "월간",
+      "annual": "연간",
+      "save": "20% 절약"
+    },
+    "plans": {
+      "free": {
+        "title": "무료",
+        "price": "$0",
+        "description": "시작하기에 완벽",
+        "features": [
+          "주 12분 비디오",
+          "주 2개 AI 크레딧",
+          "주 5회 내보내기 (워터마크 포함)",
+          "기본 템플릿",
+          "커뮤니티 지원"
+        ],
+        "button": "시작하기"
+      },
+      "plus": {
+        "title": "Plus",
+        "price": "$25/월",
+        "description": "콘텐츠 크리에이터에게 최적",
+        "features": [
+          "월 60분 비디오",
+          "월 40초 생성 비디오",
+          "3명 사용자, 120GB 저장공간",
+          "무제한 내보내기",
+          "스톡 미디어 액세스",
+          "이메일 지원"
+        ],
+        "button": "무료 체험 시작"
+      },
+      "max": {
+        "title": "Max",
+        "price": "$45/월",
+        "description": "전문가에게 최적",
+        "features": [
+          "월 220분 비디오",
+          "월 130초 생성 비디오",
+          "3명 사용자, 420GB 저장공간",
+          "무제한 내보내기",
+          "전체 AI 스위트 + 협업",
+          "우선 지원"
+        ],
+        "button": "무료 체험 시작"
+      },
+      "generative": {
+        "title": "생성형",
+        "price": "$90/월",
+        "description": "고급 크리에이터에게 최적",
+        "features": [
+          "월 220분 비디오",
+          "월 320초 생성 비디오",
+          "3명 사용자, 420GB 저장공간",
+          "무제한 내보내기",
+          "고급 분석",
+          "우선 지원"
+        ],
+        "button": "무료 체험 시작"
+      },
+      "team": {
+        "title": "팀",
+        "price": "$850/월",
+        "description": "팀과 에이전시에게 최적",
+        "features": [
+          "월 2100분 비디오",
+          "월 55분 생성 비디오",
+          "1석, 4.2TB 저장공간",
+          "무제한 내보내기",
+          "화이트라벨 솔루션",
+          "전담 계정 매니저",
+          "SLA + 전화 지원"
+        ],
+        "button": "영업팀 문의"
+      }
+    },
+    "credits": {
+      "title": "크레딧 작동 방식",
+      "description": [
+        "• 1 크레딧 = 1분 AI 생성 비디오 콘텐츠",
+        "• 스톡 푸티지와 템플릿은 크레딧을 소모하지 않음",
+        "• 미사용 크레딧은 최대 3개월까지 이월",
+        "• 더 필요하신가요? 언제든지 추가 크레딧 팩 구매 가능"
+      ]
+    }
+  },
+  "testimonials": {
+    "title": "고객 후기",
+    "subtitle": "비디오 제작을 혁신한 수천 명의 크리에이터와 함께하세요",
+    "sarah": {
+      "quote": "ForgeVid가 우리의 비디오 제작 시간을 80% 단축했습니다. 이전에 며칠이 걸리던 작업이 이제 몇 분이면 완료됩니다. AI가 우리가 필요한 것을 정확히 이해합니다.",
+      "name": "사라 마르티네스",
+      "position": "마케팅 디렉터, TechCorp"
+    },
+    "michael": {
+      "quote": "협업 기능은 혁신적입니다. 우리 전체 팀이 동시에 비디오 작업을 할 수 있습니다. 비디오 제작을 위한 Google Docs와 같습니다.",
+      "name": "마이클 존슨",
+      "position": "크리에이티브 디렉터, StartupXYZ"
+    },
+    "emily": {
+      "quote": "ROI가 즉시 나타났습니다. 같은 예산으로 10배 더 많은 비디오 콘텐츠를 제작하고 있습니다. AI 제안이 놀랍도록 똑똑합니다.",
+      "name": "에밀리 첸",
+      "position": "CEO, MediaCo"
+    }
+  },
+  "faq": {
+    "title": "자주 묻는 질문",
+    "subtitle": "ForgeVid에 대해 알아야 할 모든 것",
+    "questions": {
+      "aiGeneration": {
+        "question": "AI 비디오 생성은 어떻게 작동하나요?",
+        "answer": "우리의 AI는 텍스트 프롬프트를 분석하고 고급 머신러닝 모델을 사용하여 자동으로 전문 비디오를 생성합니다. 적절한 비주얼을 선택하고, 전환 효과를 추가하며, 심지어 음성 해설도 생성합니다."
+      },
+      "commercialUse": {
+        "question": "비디오를 상업적으로 사용할 수 있나요?",
+        "answer": "네! ForgeVid로 제작된 모든 비디오는 상업적 사용이 가능합니다. 귀하의 플랜에 포함된 모든 생성 콘텐츠와 스톡 미디어에 대한 완전한 상업적 권리를 제공합니다."
+      },
+      "satisfaction": {
+        "question": "만족하지 않으면 어떻게 되나요?",
+        "answer": "14일 무료 체험과 30일 환불 보장을 제공합니다. 완전히 만족하지 않으시면 질문 없이 구독을 환불해드립니다."
+      },
+      "security": {
+        "question": "내 콘텐츠는 얼마나 안전한가요?",
+        "answer": "귀하의 콘텐츠는 암호화되어 안전하게 저장됩니다. SOC 2 인증을 받았으며 GDPR을 준수합니다. 명시적 동의 없이는 귀하의 비디오와 데이터를 AI 모델 훈련에 사용하지 않습니다."
+      }
+    }
+  },
+  "cta": {
+    "title": "비디오 제작을 혁신할 준비가 되셨나요?",
+    "subtitle": "ForgeVid로 이미 비디오 제작을 혁신한 50,000+ 크리에이터와 함께하세요",
+    "buttons": {
+      "startTrial": "무료 체험 시작",
+      "scheduleDemo": "데모 예약"
+    },
+    "guarantees": [
+      "14일 무료 체험",
+      "신용카드 불필요",
+      "언제든지 취소 가능"
+    ]
+  },
+  "footer": {
+    "description": "AI로 아이디어를 전문 비디오로 변환하세요.",
+    "product": {
+      "title": "제품",
+      "links": {
+        "features": "기능",
+        "templates": "템플릿",
+        "pricing": "가격",
+        "api": "API"
+      }
+    },
+    "company": {
+      "title": "회사",
+      "links": {
+        "about": "회사 소개",
+        "blog": "블로그",
+        "careers": "채용",
+        "contact": "연락처"
+      }
+    },
+    "legal": {
+      "title": "법적 정보",
+      "links": {
+        "help": "도움말 센터",
+        "community": "커뮤니티",
+        "privacy": "개인정보처리방침",
+        "terms": "이용약관"
+      }
+    },
+    "copyright": "© 2025 ForgeVid. 모든 권리 보유. ForgeVid는 Kryst Investments LLC가 소유 및 운영합니다."
+  },
+  "trust": {
+    "title": "전 세계 주요 기업의 신뢰",
+    "companies": ["TechCorp", "StartupXYZ", "MediaCo", "CreativeInc"],
+    "certifications": {
+      "soc2": "SOC 2 인증",
+      "gdpr": "GDPR 준수",
+      "uptime": "99.9% 가동 시간"
+    }
+  },
+  "examples": {
+    "title": "ForgeVid 실제 사용 사례",
+    "subtitle": "사용자가 몇 시간이 아닌 몇 분 만에 제작한 실제 예시",
+    "productLaunch": {
+      "title": "제품 출시 비디오",
+      "description": "간단한 텍스트 프롬프트에서 3분 만에 제작",
+      "category": "마케팅"
+    },
+    "socialAd": {
+      "title": "소셜 미디어 광고",
+      "description": "최대 참여를 위한 AI 최적화",
+      "category": "소셜 미디어"
+    },
+    "training": {
+      "title": "교육 튜토리얼",
+      "description": "자동 생성 자막이 포함된 전문가급 품질",
+      "category": "교육"
+    },
+    "viewMore": "더 많은 예시 보기"
+  }
+}

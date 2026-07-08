@@ -1,0 +1,21 @@
+# Ignore node_modules and build output
+node_modules/
+.next/
+.swc/
+coverage/
+logs/
+
+# Ignore environment files
+.env*
+
+# Ignore OS and IDE files
+.DS_Store
+*.swp
+*.swo
+*.bak
+
+# Do NOT ignore temp-api (required for build)
+!temp-api/
+!temp-api/admin/
+!temp-api/admin/revenue/
+!temp-api/admin/revenue/route.ts

@@ -1,0 +1,56 @@
+{
+  "dashboard": {
+    "welcome": "お帰りなさい, {{name}}!",
+    "searchPlaceholder": "動画を検索...",
+    "filter": "フィルター",
+    "newVideo": "新しい動画",
+    "settings": "設定",
+    "logout": "ログアウト"
+  },
+  "sidebar": {
+    "dashboard": "ダッシュボード",
+    "projects": "プロジェクト",
+    "templates": "テンプレート",
+    "analytics": "分析",
+    "settings": "設定",
+    "help": "ヘルプ",
+    "profile": "プロフィール"
+  },
+  "login": {
+    "title": "ForgeVidにサインイン",
+    "email": "メール",
+    "emailPlaceholder": "メールを入力",
+    "password": "パスワード",
+    "passwordPlaceholder": "パスワードを入力",
+    "forgotPassword": "パスワードを忘れましたか?",
+    "loginButton": "サインイン",
+    "noAccount": "アカウントがありませんか?",
+    "signup": "サインアップ"
+  },
+  "pricing": {
+    "title": "プランを選択",
+    "monthly": "月額",
+    "yearly": "年額",
+    "free": "無料",
+    "pro": "プロ",
+    "enterprise": "エンタープライズ",
+    "videoLimit": "動画ごとに最大{{minutes}}分",
+    "featureList": "機能",
+    "selectPlan": "プランを選択"
+  },
+  "languageSwitcher": {
+    "label": "言語",
+    "english": "英語",
+    "spanish": "スペイン語",
+    "hindi": "ヒンディー語",
+    "japanese": "日本語",
+    "chinese": "中国語",
+    "french": "フランス語",
+    "german": "ドイツ語",
+    "italian": "イタリア語",
+    "korean": "韓国語"
+  },
+  "darkMode": {
+    "toggle": "ダークモード切替"
+  }
+}

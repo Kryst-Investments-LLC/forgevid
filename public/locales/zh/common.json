@@ -1,0 +1,56 @@
+{
+  "dashboard": {
+    "welcome": "欢迎回来, {{name}}!",
+    "searchPlaceholder": "搜索您的视频...",
+    "filter": "筛选",
+    "newVideo": "新视频",
+    "settings": "设置",
+    "logout": "登出"
+  },
+  "sidebar": {
+    "dashboard": "仪表盘",
+    "projects": "项目",
+    "templates": "模板",
+    "analytics": "分析",
+    "settings": "设置",
+    "help": "帮助",
+    "profile": "个人资料"
+  },
+  "login": {
+    "title": "登录ForgeVid",
+    "email": "邮箱",
+    "emailPlaceholder": "输入您的邮箱",
+    "password": "密码",
+    "passwordPlaceholder": "输入您的密码",
+    "forgotPassword": "忘记密码?",
+    "loginButton": "登录",
+    "noAccount": "没有账号?",
+    "signup": "注册"
+  },
+  "pricing": {
+    "title": "选择您的套餐",
+    "monthly": "月度",
+    "yearly": "年度",
+    "free": "免费",
+    "pro": "专业版",
+    "enterprise": "企业版",
+    "videoLimit": "每个视频最多{{minutes}}分钟",
+    "featureList": "功能",
+    "selectPlan": "选择套餐"
+  },
+  "languageSwitcher": {
+    "label": "语言",
+    "english": "英语",
+    "spanish": "西班牙语",
+    "hindi": "印地语",
+    "japanese": "日语",
+    "chinese": "中文",
+    "french": "法语",
+    "german": "德语",
+    "italian": "意大利语",
+    "korean": "韩语"
+  },
+  "darkMode": {
+    "toggle": "切换深色模式"
+  }
+}

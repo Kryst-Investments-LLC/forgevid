@@ -1,0 +1,74 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files
+.env*
+!.env.example
+
+# secret backups — never commit
+*.backup
+.env.txt
+env.production.example
+env.example.new
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
+infra/*.tfplan
+infra/production.tfvars
+infra/.terraform.lock.hcl
+
+# logs
+/logs/
+
+# coverage
+/coverage/
+
+# test results
+/test-results/
+/playwright-report/
+
+# tsc error dumps
+tsc-errors.txt
+tsc-out.txt
+tsc_output.txt
+
+# build / audit artifacts
+/exports/
+/uploads/
+cost-log.json
+audit-report.html
+audit-forgevid.json
+quality-analysis.json
+/launch-report/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# generated videos (large files)
+/public/generated/
+/public/temp/

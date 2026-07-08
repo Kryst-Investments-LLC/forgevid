@@ -1,0 +1,185 @@
+config:
+  target: 'http://localhost:3000'
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up"
+    - duration: 120
+      arrivalRate: 20
+      name: "Ramp up load"
+    - duration: 300
+      arrivalRate: 50
+      name: "Sustained load"
+    - duration: 60
+      arrivalRate: 100
+      name: "Peak load"
+    - duration: 120
+      arrivalRate: 10
+      name: "Cool down"
+  defaults:
+    headers:
+      Content-Type: 'application/json'
+  plugins:
+    metrics-by-endpoint:
+      useOnlyRequestNames: true
+    publish-metrics:
+      - type: datadog
+        host: localhost
+        port: 8125
+        prefix: forgevid.loadtest
+
+scenarios:
+  - name: "User Registration and Login"
+    weight: 20
+    flow:
+      - post:
+          url: "/api/auth/register"
+          json:
+            email: "{{ $randomString() }}@test.com"
+            password: "TestPassword123!"
+            name: "{{ $randomString() }}"
+          capture:
+            - json: "$.user.id"
+              as: "userId"
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "{{ $randomString() }}@test.com"
+            password: "TestPassword123!"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+
+  - name: "Video Upload and Processing"
+    weight: 30
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "test@forgevid.com"
+            password: "testpassword"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+      - post:
+          url: "/api/videos"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          formData:
+            title: "Load Test Video {{ $randomString() }}"
+            description: "Load test video description"
+            file: "@test-files/sample-video.mp4"
+          capture:
+            - json: "$.video.id"
+              as: "videoId"
+      - get:
+          url: "/api/videos/{{ videoId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      - put:
+          url: "/api/videos"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            videoId: "{{ videoId }}"
+            action: "transcribe"
+
+  - name: "Template and AI Operations"
+    weight: 25
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "test@forgevid.com"
+            password: "testpassword"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+      - get:
+          url: "/api/templates"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      - post:
+          url: "/api/ai/generate"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            type: "transcript"
+            videoId: "test-video-id"
+            prompt: "Generate a transcript for this video"
+
+  - name: "Dashboard and Analytics"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "test@forgevid.com"
+            password: "testpassword"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+      - get:
+          url: "/api/dashboard/stats"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      - get:
+          url: "/api/videos"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+            qs:
+              page: 1
+              limit: 10
+      - get:
+          url: "/api/analytics/usage"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+
+  - name: "Health and Monitoring"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/health"
+      - get:
+          url: "/api/metrics"
+      - get:
+          url: "/api/status"
+
+# Custom functions for data generation
+functions:
+  generateRandomEmail: |
+    function() {
+      return Math.random().toString(36).substring(2, 15) + '@test.com';
+    }
+  
+  generateRandomName: |
+    function() {
+      const names = ['John', 'Jane', 'Bob', 'Alice', 'Charlie', 'Diana'];
+      return names[Math.floor(Math.random() * names.length)] + Math.floor(Math.random() * 1000);
+    }
+
+# Custom metrics
+customMetrics:
+  - name: "video_processing_time"
+    type: "histogram"
+    unit: "ms"
+  - name: "ai_generation_time"
+    type: "histogram"
+    unit: "ms"
+  - name: "database_query_time"
+    type: "histogram"
+    unit: "ms"
+
+# Performance thresholds
+ensure:
+  thresholds:
+    - http.response_time.p95: 2000
+    - http.response_time.p99: 5000
+    - http.codes.200: 0.95
+    - http.codes.4xx: 0.05
+    - http.codes.5xx: 0.01
+
+
+
+
+
