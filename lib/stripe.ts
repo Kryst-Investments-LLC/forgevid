@@ -1,12 +1,17 @@
 import Stripe from 'stripe';
+import { lazyClient } from './lazy-client';
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY is not set');
-}
-
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2025-09-30.clover',
-  typescript: true,
+// Constructed on first use, not at import: `next build` imports every route to
+// collect page data, and secrets may only exist at runtime.
+export const stripe = lazyClient<Stripe>(() => {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) {
+    throw new Error('STRIPE_SECRET_KEY is not set');
+  }
+  return new Stripe(secretKey, {
+    apiVersion: '2025-09-30.clover',
+    typescript: true,
+  });
 });
 
 export const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!;

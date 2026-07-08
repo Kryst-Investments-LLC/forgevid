@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { getGlobalSsoConfiguration } from '@/lib/sso'
 import { generateSamlMetadata } from '@/lib/sso/saml'
 
+// Reads SSO config from the DB — must not be prerendered at build time.
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   const config = await getGlobalSsoConfiguration('SAML')
 

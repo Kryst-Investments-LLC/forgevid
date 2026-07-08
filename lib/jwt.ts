@@ -2,9 +2,13 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import Redis from 'ioredis';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is required');
+// Resolved on first use, not at import (see lib/lazy-client.ts rationale).
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required');
+  }
+  return secret;
 }
 
 const ACCESS_TOKEN_EXPIRY = '15m';
@@ -47,7 +51,7 @@ function getRedis(): Redis | null {
  * Sign an access token with typed payload.
  */
 export function signAccessToken(payload: Omit<AccessTokenPayload, 'type'>): string {
-  return jwt.sign({ ...payload, type: 'access' }, JWT_SECRET!, {
+  return jwt.sign({ ...payload, type: 'access' }, getJwtSecret(), {
     expiresIn: ACCESS_TOKEN_EXPIRY,
     algorithm: 'HS256',
     issuer: 'forgevid',
@@ -62,7 +66,7 @@ export function signRefreshToken(userId: string, family?: string): string {
   const crypto = require('crypto');
   return jwt.sign(
     { sub: userId, type: 'refresh', family: family || crypto.randomUUID() },
-    JWT_SECRET!,
+    getJwtSecret(),
     {
       expiresIn: REFRESH_TOKEN_EXPIRY,
       algorithm: 'HS256',
@@ -76,7 +80,7 @@ export function signRefreshToken(userId: string, family?: string): string {
  */
 export function verifyAccessToken(token: string): AccessTokenPayload | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET!, {
+    const decoded = jwt.verify(token, getJwtSecret(), {
       algorithms: ['HS256'],
       issuer: 'forgevid',
       audience: 'forgevid-api',
@@ -93,7 +97,7 @@ export function verifyAccessToken(token: string): AccessTokenPayload | null {
  */
 export function verifyRefreshToken(token: string): RefreshTokenPayload | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET!, {
+    const decoded = jwt.verify(token, getJwtSecret(), {
       algorithms: ['HS256'],
       issuer: 'forgevid',
     });
@@ -148,9 +152,9 @@ export async function isTokenRevoked(token: string): Promise<boolean> {
 
 // Backward compatibility
 export function signToken(payload: object): string {
-  return jwt.sign(payload, JWT_SECRET!, { expiresIn: '1h', algorithm: 'HS256' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '1h', algorithm: 'HS256' });
 }
 
 export function verifyToken(token: string): unknown {
-  return jwt.verify(token, JWT_SECRET!, { algorithms: ['HS256'] });
+  return jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] });
 }

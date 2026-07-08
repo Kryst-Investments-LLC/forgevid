@@ -37,7 +37,13 @@ function loadEncryptionKey(): Buffer {
   return keyBuffer;
 }
 
-const key = loadEncryptionKey();
+// Resolved on first use, not at import: `next build` imports every route to
+// collect page data, where runtime-only secrets are absent.
+let cachedKey: Buffer | null = null;
+function getKey(): Buffer {
+  if (!cachedKey) cachedKey = loadEncryptionKey();
+  return cachedKey;
+}
 
 export interface EncryptedData {
   encrypted: string;
@@ -47,7 +53,7 @@ export interface EncryptedData {
 
 export function encrypt(text: string): EncryptedData {
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(algorithm, key, iv);
+  const cipher = crypto.createCipheriv(algorithm, getKey(), iv);
   
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
@@ -64,7 +70,7 @@ export function encrypt(text: string): EncryptedData {
 export function decrypt(encryptedData: EncryptedData): string {
   const { encrypted, iv, tag } = encryptedData;
   
-  const decipher = crypto.createDecipheriv(algorithm, key, Buffer.from(iv, 'hex'));
+  const decipher = crypto.createDecipheriv(algorithm, getKey(), Buffer.from(iv, 'hex'));
   decipher.setAuthTag(Buffer.from(tag, 'hex'));
   
   let decrypted = decipher.update(encrypted, 'hex', 'utf8');
@@ -116,7 +122,7 @@ export function generateAPIKey(): string {
 // Encrypt file data
 export function encryptFile(buffer: Buffer): EncryptedData {
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(algorithm, key, iv);
+  const cipher = crypto.createCipheriv(algorithm, getKey(), iv);
   
   let encrypted = cipher.update(buffer);
   encrypted = Buffer.concat([encrypted, cipher.final()]);
@@ -133,7 +139,7 @@ export function encryptFile(buffer: Buffer): EncryptedData {
 export function decryptFile(encryptedData: EncryptedData): Buffer {
   const { encrypted, iv, tag } = encryptedData;
   
-  const decipher = crypto.createDecipheriv(algorithm, key, Buffer.from(iv, 'hex'));
+  const decipher = crypto.createDecipheriv(algorithm, getKey(), Buffer.from(iv, 'hex'));
   decipher.setAuthTag(Buffer.from(tag, 'hex'));
   
   let decrypted = decipher.update(Buffer.from(encrypted, 'hex'));

@@ -1,13 +1,14 @@
 // AI-Powered Video Editing - Production Implementation
 import OpenAI from 'openai';
+import { lazyClient } from '@/lib/lazy-client';
 import { createReadStream } from 'fs';
 import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-const openai = new OpenAI({
+const openai = lazyClient<OpenAI>(() => new OpenAI({
   apiKey: process.env.OPENAI_SECRET_KEY,
-});
+}));
 
 export interface VideoEditRequest {
   videoUrl: string;

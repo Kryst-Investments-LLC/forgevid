@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, Eye, EyeOff } from 'lucide-react'
 import { withCsrfHeaders } from '@/lib/csrf-client'
 
-export default function SignUpPage() {
+function SignUpForm() {
   const betaMode = process.env.NEXT_PUBLIC_BETA_MODE === 'true'
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -266,5 +266,14 @@ export default function SignUpPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+// useSearchParams() requires a Suspense boundary during static prerender.
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignUpForm />
+    </Suspense>
   )
 }
