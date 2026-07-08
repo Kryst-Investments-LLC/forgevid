@@ -18,6 +18,7 @@ interface Scene {
   duration: number
   clipUrl: string
   matchedQuery: string
+  thumbnailUrl?: string
 }
 
 interface SceneEditorPanelProps {
@@ -249,10 +250,21 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
 
         {scenes.map((scene) => (
           <div key={scene.id} className="rounded-lg border p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <Badge variant="secondary">Scene {scene.index + 1}</Badge>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                {/* Poster frame extracted at assembly time — see what you're editing */}
+                {scene.thumbnailUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={scene.thumbnailUrl}
+                    alt={`Scene ${scene.index + 1}`}
+                    className="h-12 w-20 shrink-0 rounded object-cover border"
+                  />
+                )}
+                <Badge variant="secondary">Scene {scene.index + 1}</Badge>
+              </div>
               {scene.matchedQuery && (
-                <span className="text-xs text-muted-foreground truncate max-w-[50%]">
+                <span className="text-xs text-muted-foreground truncate max-w-[45%]">
                   footage: “{scene.matchedQuery}”
                 </span>
               )}

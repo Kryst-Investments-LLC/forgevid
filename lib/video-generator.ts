@@ -39,6 +39,12 @@ import {
 import { resolveFfmpegPath, supportsFilter } from './ffmpeg-env';
 import { buildKenBurnsFilter, directionForScene } from './ken-burns';
 import type { UserMediaItem } from './user-media';
+import {
+  concatSceneVoiceovers,
+  pacedDuration,
+  synthesizeSceneVoiceovers,
+  type SceneVoiceover,
+} from './voiceover';
 
 // Dynamic imports to avoid webpack bundling issues
 let ffmpeg: any;
@@ -87,6 +93,8 @@ export interface ResolvedScene extends PlannedScene {
    * persisted before this existed still load (they were all videos).
    */
   mediaType?: 'video' | 'image';
+  /** Poster frame of this scene, extracted at assembly time. */
+  thumbnailUrl?: string;
 }
 
 export interface VideoClip {
@@ -111,9 +119,23 @@ export function aspectPreset(aspectRatio: AspectRatio = '16:9') {
   return ASPECT_PRESETS[aspectRatio] ?? ASPECT_PRESETS['16:9'];
 }
 
-/** scale+pad filter that fits source footage into the target frame. */
-function fitFilter(aspectRatio: AspectRatio): string {
+/**
+ * Actual output frame for a render. Draft mode halves each dimension —
+ * quarter the pixels, so previews encode several times faster.
+ */
+export function renderDims(
+  aspectRatio: AspectRatio,
+  quality: 'draft' | 'full' = 'full',
+): { width: number; height: number } {
   const { width, height } = aspectPreset(aspectRatio);
+  if (quality === 'draft') {
+    return { width: Math.round(width / 2), height: Math.round(height / 2) };
+  }
+  return { width, height };
+}
+
+/** scale+pad filter that fits source footage into the target frame. */
+function fitFilterFor(width: number, height: number): string {
   return (
     `scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
     `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1`
@@ -136,6 +158,8 @@ export interface GenerationOptions {
   transition?: TransitionConfig | null;
   /** The user's own assets, filling scenes in order before stock is searched. */
   userMedia?: UserMediaItem[];
+  /** 'draft' = half-resolution fast preview; 'full' (default) = export quality. */
+  renderQuality?: 'draft' | 'full';
 }
 
 function sceneId(index: number): string {
@@ -220,11 +244,15 @@ async function normalizeClip(source: string, fit: string, outPath: string): Prom
  * Best-effort: a missing thumbnail must never fail a generation, so every
  * failure path returns null. Must run before the local render is deleted.
  */
-async function extractThumbnail(videoPath: string, atSeconds: number): Promise<string | null> {
+async function extractThumbnail(
+  videoPath: string,
+  atSeconds: number,
+  label = '',
+): Promise<string | null> {
   try {
     const outputDir = path.join(process.cwd(), 'public', 'generated');
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-    const filename = `thumb_${Date.now()}.jpg`;
+    const filename = `thumb_${Date.now()}${label ? `_${label}` : ''}.jpg`;
     const thumbPath = path.join(outputDir, filename);
 
     await new Promise<void>((resolve, reject) => {
@@ -664,6 +692,15 @@ export interface AssembleOptions {
   branding?: Branding | null;
   /** Cross-fade between scenes. Pass null for hard cuts. */
   transition?: TransitionConfig | null;
+  /**
+   * Pre-synthesized per-scene narration (test injection). When present — or
+   * when per-scene TTS succeeds — the AUDIO decides each scene's duration.
+   */
+  sceneVoiceovers?: SceneVoiceover[] | null;
+  /** Set false to keep GPT's scene durations even when narration is per-scene. */
+  paceToNarration?: boolean;
+  /** 'draft' renders at half resolution with fast encoding for quick previews. */
+  renderQuality?: 'draft' | 'full';
 }
 
 export interface AssembleResult {
@@ -672,20 +709,26 @@ export interface AssembleResult {
   cues: CaptionCue[];
   /** Poster frame URL, or null if extraction failed (never fatal). */
   thumbnailUrl: string | null;
+  /**
+   * The scenes as actually rendered: narration-paced durations and per-scene
+   * thumbnails. Persist THESE, not the input, or the editor drifts from the video.
+   */
+  scenes: ResolvedScene[];
 }
 
 export async function assembleVideo(
-  scenes: ResolvedScene[],
+  inputScenes: ResolvedScene[],
   addOns: string[] = [],
   aspectRatio: AspectRatio = '16:9',
   options: AssembleOptions = {},
 ): Promise<AssembleResult> {
   await initializeModules();
 
-  if (scenes.length === 0) throw new Error('Cannot assemble a video with no scenes');
+  if (inputScenes.length === 0) throw new Error('Cannot assemble a video with no scenes');
 
-  const fit = fitFilter(aspectRatio);
-  const scenesDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
+  const renderQuality = options.renderQuality ?? 'full';
+  const { width: outW, height: outH } = renderDims(aspectRatio, renderQuality);
+  const fit = fitFilterFor(outW, outH);
   const musicVolume = options.musicVolume ?? 0.25;
   const branding = options.branding ?? null;
 
@@ -694,7 +737,10 @@ export async function assembleVideo(
 
   const wantVoiceover = addOns.length === 0 || addOns.includes('voiceover');
   const wantSubtitles = addOns.length === 0 || addOns.includes('subtitles');
-  const narration = scenes.map((s) => s.description).join('. ').replace(/\s+/g, ' ').trim();
+
+  // Work on a copy: pacing and thumbnails mutate durations/urls, and the
+  // caller persists whatever we return.
+  let scenes = inputScenes.map((s) => ({ ...s }));
 
   /** Source media handed to ffmpeg (may be a caller-owned local path). */
   const sources: string[] = [];
@@ -705,6 +751,41 @@ export async function assembleVideo(
   let fileListPath = '';
 
   try {
+    // ---- Narration-paced scenes (per-scene TTS, cached) ---------------------
+    // The audio decides each scene's duration: scenes are cut to speech instead
+    // of speech being trimmed/padded to GPT's guessed durations.
+    let sceneCues: CaptionCue[] | null = null;
+    if (wantVoiceover && !options.voiceoverPath) {
+      const segments =
+        options.sceneVoiceovers ??
+        (await synthesizeSceneVoiceovers(
+          scenes.map((s) => ({ id: s.id, description: s.description })),
+          options.voiceId,
+        ));
+
+      if (segments && segments.length === scenes.length) {
+        if (options.paceToNarration !== false) {
+          scenes = scenes.map((s, i) => ({ ...s, duration: pacedDuration(segments[i]) }));
+        }
+        const concatPath = path.join(tempDir, `narration_${Date.now()}.m4a`);
+        voiceoverPath = await concatSceneVoiceovers(segments, concatPath);
+        tempFiles.push(concatPath);
+
+        // Exact per-scene cues: each line spans its own (audio-derived) scene.
+        let t = 0;
+        sceneCues = scenes.map((s, i) => {
+          const cue = { start: t, end: t + segments[i].durationSeconds, text: s.description };
+          t += s.duration;
+          return cue;
+        });
+        console.log(
+          `[Video Generator] Narration-paced: ${segments.filter((s) => s.cached).length}/${segments.length} segments from cache`,
+        );
+      }
+    }
+
+    const scenesDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
+    const narration = scenes.map((s) => s.description).join('. ').replace(/\s+/g, ' ').trim();
     // Fetch footage and synthesize narration in parallel.
     const [clipPaths, vo] = await Promise.all([
       (async () => {
@@ -719,17 +800,22 @@ export async function assembleVideo(
         }
         return paths;
       })(),
-      // An injected voiceover wins: re-renders reuse it instead of paying for TTS again.
+      // Priority: injected file > per-scene narration (already concatenated
+      // above) > whole-narration fallback synthesis.
       options.voiceoverPath
         ? Promise.resolve(options.voiceoverPath)
-        : wantVoiceover
-          ? generateVoiceover(narration, options.voiceId ?? undefined)
-          : Promise.resolve(null),
+        : voiceoverPath
+          ? Promise.resolve(voiceoverPath)
+          : wantVoiceover
+            ? generateVoiceover(narration, options.voiceId ?? undefined)
+            : Promise.resolve(null),
     ]);
     sources.push(...clipPaths);
+    const isFallbackSynth = !options.voiceoverPath && !voiceoverPath && !!vo;
     voiceoverPath = vo;
-    // Only a voiceover we synthesized is ours to delete.
-    if (voiceoverPath && !options.voiceoverPath) tempFiles.push(voiceoverPath);
+    // Only a whole-narration file we synthesized here is ours to delete; the
+    // per-scene concat is already in tempFiles, cache segments never are.
+    if (isFallbackSynth && voiceoverPath) tempFiles.push(voiceoverPath);
 
     // Cross-fades overlap clips, so each clip but the last is rendered longer by
     // the transition duration — that keeps the total equal to sum(sceneDurations),
@@ -755,7 +841,6 @@ export async function assembleVideo(
         : null;
     const clipDurations = paddedClipDurations(sceneDurations, transitionDuration);
 
-    const { width: outW, height: outH } = aspectPreset(aspectRatio);
     const kenBurnsAvailable = supportsFilter('zoompan');
 
     // Trim each clip to its (possibly padded) duration. A still is looped and
@@ -801,6 +886,15 @@ export async function assembleVideo(
           .run();
       });
       trimmed.push(trimmedPath);
+    }
+
+    // Per-scene poster frames, so the editor shows what each scene looks like
+    // instead of a text-only list. Best-effort; taken from the trimmed clips
+    // BEFORE the cross-fade pass merges them into one file.
+    for (let i = 0; i < scenes.length; i++) {
+      const at = Math.min(0.5, Math.max(0.1, scenes[i].duration / 2));
+      const thumb = await extractThumbnail(trimmed[i], at, `s${i + 1}`);
+      if (thumb) scenes[i] = { ...scenes[i], thumbnailUrl: thumb };
     }
 
     // Cross-fade the scenes into ONE clip, so the rest of the pipeline (bookend
@@ -884,8 +978,11 @@ export async function assembleVideo(
     // (or without an OpenAI key) fall back to one cue per scene.
     let cues: CaptionCue[] = [];
     if (wantSubtitles) {
+      // Per-scene narration cues are already speech-aligned AND free — prefer
+      // them over a paid Whisper pass; Whisper covers whole-narration fallback.
       cues =
         options.cues ??
+        sceneCues ??
         (voiceoverPath ? await transcribeToCues(voiceoverPath) : null) ??
         cuesFromScenes(scenes);
 
@@ -989,8 +1086,9 @@ export async function assembleVideo(
         // unreliable for streams coming out of filter_complex.
         '-t', String(timelineDuration),
         '-c:v', 'libx264',
-        '-preset', 'slow',
-        '-crf', '18',
+        // Draft previews trade quality for speed; exports stay slow/18.
+        '-preset', renderQuality === 'draft' ? 'ultrafast' : 'slow',
+        '-crf', renderQuality === 'draft' ? '30' : '18',
         '-r', '30',
         '-pix_fmt', 'yuv420p',
         '-movflags', '+faststart',
@@ -1021,7 +1119,7 @@ export async function assembleVideo(
     const thumbnailUrl = await extractThumbnail(outputPath, Math.min(1, timelineDuration / 2));
 
     const videoUrl = await persistGeneratedVideo(outputPath, outputFilename);
-    return { videoUrl, cues, thumbnailUrl };
+    return { videoUrl, cues, thumbnailUrl, scenes };
   } finally {
     // Always clean temp artifacts, even on failure. Never the caller's media —
     // a synthesized voiceover is already in tempFiles; an injected one is not,
@@ -1070,17 +1168,25 @@ export async function generateVideoWithScenes(
   const wantMusic = !addOns || addOns.length === 0 || addOns.includes('music');
   const musicPath = wantMusic ? selectMusicPath(mood ?? options.style) : null;
 
-  const { videoUrl, cues, thumbnailUrl } = await assembleVideo(resolved, addOns || [], aspectRatio, {
+  const assembled = await assembleVideo(resolved, addOns || [], aspectRatio, {
     musicPath,
     voiceId,
     branding,
     transition,
+    renderQuality: options.renderQuality,
   });
 
   console.log(
-    `[Video Generator] ✅ Generated ${duration}s ${aspectRatio} video with ${resolved.length} scenes`,
+    `[Video Generator] ✅ Generated ${aspectRatio} video with ${assembled.scenes.length} scenes`,
   );
-  return { videoUrl, scenes: resolved, cues, thumbnailUrl };
+  // Return the scenes as RENDERED (narration-paced durations, per-scene thumbs)
+  // so what gets persisted matches the video.
+  return {
+    videoUrl: assembled.videoUrl,
+    scenes: assembled.scenes,
+    cues: assembled.cues,
+    thumbnailUrl: assembled.thumbnailUrl,
+  };
 }
 
 /** Backwards-compatible wrapper returning just the URL. */

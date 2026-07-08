@@ -44,6 +44,10 @@ import { buildKenBurnsFilter, directionForScene } from '../lib/ken-burns';
 import { hasOpenAiKey, openAiApiKey } from '../lib/openai-key';
 import { applySceneOps, describeScenesForModel, sceneOpsSchema } from '../lib/scene-ops';
 import { withRenderSlot, activeRenders, queuedRenders } from '../lib/render-semaphore';
+import { SCENE_AUDIO_PADDING_SECONDS, synthesizeSceneVoiceovers } from '../lib/voiceover';
+
+/** Unique per run, so a previous run's TTS cache can't fake a "first pass". */
+const stampTag = Date.now().toString(36);
 
 const ffmpegPath: string = resolveFfmpegPath();
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-generate');
@@ -104,11 +108,21 @@ async function renderAndCheck(aspectRatio: AspectRatio, sources: string[]) {
   console.log(`\nRendering ${aspectRatio} (expect ${width}x${height})...`);
 
   // addOns=['subtitles'] => captions on, voiceover off (no ElevenLabs key needed).
-  const { videoUrl: url, thumbnailUrl } = await assembleVideo(
+  const { videoUrl: url, thumbnailUrl, scenes: rendered } = await assembleVideo(
     [scene(0, sources[0], 2), scene(1, sources[1], 2)],
     ['subtitles'],
     aspectRatio,
   );
+
+  // Every scene must come back with its own poster frame for the editor.
+  assert(
+    rendered.every((s) => !!s.thumbnailUrl),
+    `${aspectRatio}: per-scene thumbnails attached`,
+  );
+  for (const s of rendered) {
+    const f = path.join(process.cwd(), 'public', 'generated', path.basename(s.thumbnailUrl!));
+    assert(fs.existsSync(f) && fs.statSync(f).size > 500, `${aspectRatio}: ${s.id} thumbnail is a real image`);
+  }
 
   // Cloudinary is unconfigured, so we get a local /generated/<file> URL.
   const outFile = path.join(process.cwd(), 'public', 'generated', path.basename(url));
@@ -531,6 +545,95 @@ function checkSceneOps(clip: string) {
   assert(digest.includes('scene-2 (scene 2)'), 'digest labels scenes the way the prompt expects');
 }
 
+/** Draft previews render at half resolution so iteration is cheap. */
+async function checkDraftMode(clipA: string, clipB: string) {
+  console.log('\nRendering a draft preview (expect 960x540)...');
+  const { videoUrl: url } = await assembleVideo(
+    [scene(0, clipA, 2), scene(1, clipB, 2)],
+    ['subtitles'],
+    '16:9',
+    { renderQuality: 'draft', transition: null },
+  );
+  const outFile = path.join(process.cwd(), 'public', 'generated', path.basename(url));
+  const info = probe(outFile);
+  assert(/960x540/.test(info), 'draft renders at half resolution (960x540)');
+  assert(Math.abs(durationSeconds(info) - 4) < 0.5, 'draft keeps the full duration');
+  fs.rmSync(path.join(process.cwd(), 'public', 'generated'), { recursive: true, force: true });
+}
+
+/**
+ * Narration-paced scenes + the per-scene TTS cache (one mechanism, two wins).
+ * The AUDIO decides each scene's duration, and a re-render after editing one
+ * scene only re-synthesizes that scene.
+ */
+async function checkNarrationPacing(clipA: string, clipB: string) {
+  console.log('\nChecking narration pacing + per-scene TTS cache...');
+
+  // Fake synthesizer: writes real mp3 tones of known lengths (1s and 2s), and
+  // counts calls so cache hits are observable.
+  let synthCalls = 0;
+  const fakeSynth = async (text: string): Promise<Buffer> => {
+    synthCalls += 1;
+    const seconds = /LONG/.test(text) ? 2 : 1;
+    const f = path.join(workDir, `synth_${synthCalls}.mp3`);
+    ffmpeg(['-f', 'lavfi', '-i', `sine=frequency=500:duration=${seconds}`, '-c:a', 'libmp3lame', f]);
+    return fs.readFileSync(f);
+  };
+
+  const lines = [
+    { id: 'scene-1', description: `pacing test A ${stampTag}` },
+    { id: 'scene-2', description: `pacing test LONG B ${stampTag}` },
+  ];
+
+  const first = await synthesizeSceneVoiceovers(lines, undefined, fakeSynth as any);
+  assert(!!first && first.length === 2, 'per-scene synthesis produced both segments');
+  assert(synthCalls === 2, 'first pass synthesized both scenes');
+  assert(Math.abs(first![0].durationSeconds - 1) < 0.2, `segment 1 ~1s (${first![0].durationSeconds}s)`);
+  assert(Math.abs(first![1].durationSeconds - 2) < 0.2, `segment 2 ~2s (${first![1].durationSeconds}s)`);
+  assert(first!.every((s) => !s.cached), 'first pass was not cached');
+
+  // Second pass: everything must come from cache — the re-render cost win.
+  const second = await synthesizeSceneVoiceovers(lines, undefined, fakeSynth as any);
+  assert(synthCalls === 2, 'second pass made ZERO synth calls (cache hit)');
+  assert(second!.every((s) => s.cached), 'second pass served from cache');
+
+  // Editing ONE scene only re-synthesizes that one.
+  const edited = [lines[0], { id: 'scene-2', description: `pacing test LONG B edited ${stampTag}` }];
+  await synthesizeSceneVoiceovers(edited, undefined, fakeSynth as any);
+  assert(synthCalls === 3, 'editing one scene re-synthesizes only that scene');
+
+  // Now the pacing: scenes REQUEST 5s+5s, but the audio (1s and 2s + padding)
+  // must decide the cut.
+  const requested = [scene(0, clipA, 5, lines[0].description), scene(1, clipB, 5, lines[1].description)];
+  const result = await assembleVideo(requested, [], '16:9', {
+    sceneVoiceovers: first,
+    transition: null,
+  });
+
+  const expected = 1 + 2 + 2 * SCENE_AUDIO_PADDING_SECONDS;
+  const paced = result.scenes.map((s) => s.duration);
+  assert(
+    Math.abs(paced[0] - (1 + SCENE_AUDIO_PADDING_SECONDS)) < 0.25 &&
+      Math.abs(paced[1] - (2 + SCENE_AUDIO_PADDING_SECONDS)) < 0.25,
+    `scene durations follow the audio (${paced.join(', ')})`,
+  );
+
+  const outFile = path.join(process.cwd(), 'public', 'generated', path.basename(result.videoUrl));
+  const dur = durationSeconds(probe(outFile));
+  assert(Math.abs(dur - expected) < 0.6, `video is speech-length ~${expected.toFixed(2)}s (got ${dur.toFixed(2)}s), not the requested 10s`);
+  assert(/Stream .*Audio: aac/.test(probe(outFile)), 'concatenated narration made it into the mux');
+
+  // Cues came from the segments, not Whisper: each spans its own scene.
+  assert(result.cues.length === 2, 'one cue per scene');
+  assert(result.cues[0].start === 0 && Math.abs(result.cues[0].end - 1) < 0.2, 'cue 1 spans its audio');
+  assert(
+    Math.abs(result.cues[1].start - paced[0]) < 0.01,
+    'cue 2 starts exactly where scene 2 starts',
+  );
+
+  fs.rmSync(path.join(process.cwd(), 'public', 'generated'), { recursive: true, force: true });
+}
+
 /**
  * Inline renders must be throttled: with no Redis, N clicks used to fork N
  * parallel multi-minute ffmpeg chains.
@@ -649,12 +752,14 @@ async function main() {
   await renderAndCheck('16:9', [clipA, clipB]);
   await renderAndCheck('9:16', [clipA, clipB]);
   await renderAndCheck('1:1', [clipA, clipB]);
+  await checkDraftMode(clipA, clipB);
   await checkTwoWordCaption(clipA);
   checkFontResolution();
   checkCaptionFormats();
   await checkCaptionEscaping(clipA);
   await checkMusicDucking(clipA);
   checkOpenAiKeyAlias();
+  await checkNarrationPacing(clipA, clipB);
   await checkRenderSemaphore();
   await checkUserMedia(clipA, clipB);
   checkSceneOps(clipA);

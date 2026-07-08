@@ -76,3 +76,6 @@ next-env.d.ts
 /public/music/*
 !/public/music/README.md
 !/public/music/tracks.json
+
+# per-scene TTS cache
+/.cache/

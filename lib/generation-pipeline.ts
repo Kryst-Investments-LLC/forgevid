@@ -15,7 +15,7 @@
 
 import { prisma } from './prisma';
 import { hasOpenAiKey, openAiApiKey } from './openai-key';
-import { aspectPreset, assembleVideo, generateVideoWithScenes } from './video-generator';
+import { assembleVideo, generateVideoWithScenes, renderDims } from './video-generator';
 import type { AspectRatio, ResolvedScene } from './video-generator';
 import { selectMusicPath } from './music-library';
 import { freeBranding, resolveBranding } from './brand-kit';
@@ -70,6 +70,8 @@ export interface GenerationInput {
   transition?: TransitionConfig | null;
   /** Ids of the user's own MediaAssets to use, in scene order. */
   mediaAssetIds?: string[];
+  /** 'draft' = fast half-resolution preview; 'full' (default) = export quality. */
+  renderQuality?: 'draft' | 'full';
   enableEmotionAware?: boolean;
 }
 
@@ -241,12 +243,13 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       branding,
       transition: input.transition,
       userMedia: await userMediaForVideo(videoId, input.mediaAssetIds),
+      renderQuality: input.renderQuality,
     });
     ledgerScenes = scenes;
 
     await setStage(videoId, 'uploading');
 
-    const { width, height } = aspectPreset(aspectRatio);
+    const { width, height } = renderDims(aspectRatio, input.renderQuality ?? 'full');
     await prisma.video.update({
       where: { id: videoId },
       data: {
@@ -337,16 +340,19 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     // Re-resolve branding: the user's plan may have changed since generation.
     const branding = await brandingForVideo(videoId);
 
-    const { videoUrl, cues, thumbnailUrl } = await assembleVideo(scenes, addOns, aspectRatio, {
+    const renderQuality: 'draft' | 'full' = meta.request?.renderQuality === 'draft' ? 'draft' : 'full';
+    const assembled = await assembleVideo(scenes, addOns, aspectRatio, {
       musicPath,
       voiceId: meta.request?.voiceId,
       branding,
       // Re-render must reuse the same transition, or the output changes shape.
       transition: transitionFromMetadata(meta.request?.transition),
+      renderQuality,
     });
+    const { videoUrl, cues, thumbnailUrl } = assembled;
 
     await setStage(videoId, 'uploading');
-    const { width, height } = aspectPreset(aspectRatio);
+    const { width, height } = renderDims(aspectRatio, renderQuality);
     await prisma.video.update({
       where: { id: videoId },
       data: {
@@ -357,6 +363,9 @@ export async function rerenderVideo(videoId: string): Promise<string> {
         ...(thumbnailUrl ? { thumbnail: thumbnailUrl } : {}),
       },
     });
+    // Persist the scenes as rendered: narration pacing may have re-timed them
+    // and each now carries a poster frame. Otherwise the editor drifts.
+    await saveScenes(videoId, assembled.scenes);
     await writeProgress(
       videoId,
       { stage: 'done', percent: 100, videoUrl, provider: 'stock-assembler' },

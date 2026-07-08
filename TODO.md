@@ -124,6 +124,12 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - **Render semaphore** (`lib/render-semaphore.ts`, `RENDER_CONCURRENCY`, default 2): throttles the no-Redis inline path on all three routes (generate, re-render, voice-to-video). Verified: 5 concurrent jobs never exceed 2 active, FIFO order, failed job releases its slot.
 - **Cost ledger** (`lib/cost-ledger.ts`): every generation writes an `AIGeneration` row with an estimated cost (GPT tokens from the real response, TTS chars, Whisper minutes, render minutes; rates in `RATES`). Recorded in the *pipeline*, so worker and inline both book. Admin revenue now returns `aiCosts` (period/all-time spend, generation counts, gross margin vs MRR). Verified: the e2e generation booked $0.006917 for a 6s render.
 
+**2026-07-08 — Tier 2 output-quality multipliers.**
+- **Narration-paced scenes + per-scene TTS cache** (`lib/voiceover.ts`) — items #5 and #7 as one mechanism. Each scene's line is synthesized separately (cached by `sha256(description|voice|model)` in `.cache/tts/`), and **the audio decides the scene's duration** (`audio + 0.35s`), so scenes are cut to speech instead of speech being trimmed/padded to GPT's guesses. Cues come per-scene for free (no Whisper charge on this path). Verified with an injectable synth: 10s requested → 3.80s speech-length video; **zero synth calls on an unchanged re-render**; editing one scene re-synthesizes only that scene; cue 2 starts exactly at scene 2. Falls back to whole-narration synthesis (and Whisper cues) when per-scene fails.
+- **Per-scene thumbnails**: extracted from the trimmed clips before the xfade pass merges them; persisted on each scene; shown in the scene editor panel. Verified for all three aspect ratios.
+- **Draft previews** (`renderQuality: 'draft'`): half resolution + `ultrafast`/crf 30 (exports stay `slow`/18). "Fast draft preview" checkbox in the AI Studio; re-render reuses the stored quality. Verified: 960×540, full duration kept.
+- `assembleVideo` now returns the scenes **as rendered** (paced durations + thumbs) and both generate and re-render persist those — otherwise the editor drifts from the video.
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

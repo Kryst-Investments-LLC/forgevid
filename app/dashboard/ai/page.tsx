@@ -25,6 +25,7 @@ export default function AIFeaturesPage() {
   const [voices, setVoices] = useState<Array<{ id: string; name: string; gender: string; description: string }>>([])
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>("")
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([])
+  const [draftMode, setDraftMode] = useState(false)
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null)
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
@@ -83,6 +84,7 @@ export default function AIFeaturesPage() {
           aspectRatio: selectedAspectRatio,
           ...(selectedVoiceId ? { voiceId: selectedVoiceId } : {}),
           ...(selectedMediaIds.length ? { mediaAssetIds: selectedMediaIds } : {}),
+          renderQuality: draftMode ? "draft" : "full",
         }),
       })
 
@@ -308,6 +310,23 @@ export default function AIFeaturesPage() {
                             </div>
                           </div>
                         ))}
+                      </div>
+                    </div>
+
+                    {/* Fast draft: half resolution, quick encode — iterate cheaply, export in full */}
+                    <div className="flex items-center space-x-3">
+                      <Checkbox
+                        id="draftMode"
+                        checked={draftMode}
+                        onCheckedChange={(checked) => setDraftMode(checked as boolean)}
+                      />
+                      <div className="flex-1">
+                        <label htmlFor="draftMode" className="text-sm font-medium cursor-pointer">
+                          Fast draft preview
+                        </label>
+                        <p className="text-xs text-muted-foreground">
+                          Renders in half resolution, much faster. Re-render in full quality when you&apos;re happy.
+                        </p>
                       </div>
                     </div>
 
