@@ -49,6 +49,13 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
   2. the cleanup block unlinked `voiceoverPath` unconditionally, deleting a caller-injected voiceover.
   Ducking is *measured*, not assumed: `volumedetect` shows −40 dB under narration vs −36.1 dB after it ends.
 
+**2026-07-08 — Phase 5d done: voice catalog + selection.**
+- `lib/voice-catalog.ts` is now the single source of voices and the TTS model. The hardcoded voice id (`ErXwobaYiN019PkySvjV`) appeared in two places and the model was the deprecated `eleven_monolingual_v1` → now `eleven_multilingual_v2`.
+- 8 ElevenLabs voices, `GET /api/voices` (static catalog, so the UI populates before a key exists), voice picker in the AI Studio shown when the Voiceover add-on is on. Unknown ids fall back to the default rather than being sent to the API.
+- Default stays Antoni, so existing projects don't silently change voice.
+- `voiceId` persists in `metadata.request` so re-render reuses it.
+- Verified by type-check + build + the renderer suites; **not** runtime-verified end-to-end (needs an `ELEVENLABS_API_KEY`).
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

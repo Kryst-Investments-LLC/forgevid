@@ -8,6 +8,7 @@ import { lazyClient } from '@/lib/lazy-client';
 import { securityConfigs } from '@/lib/api-security';
 import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
+import { DEFAULT_TTS_MODEL, resolveVoiceId } from '@/lib/voice-catalog';
 
 const aiGenerationSchema = z.object({
   prompt: z.string().min(1).max(2000),
@@ -19,9 +20,9 @@ const openai = lazyClient<OpenAI>(() => new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 }));
 
-async function synthesizeWithElevenLabs(text: string, voiceId: string = 'ErXwobaYiN019PkySvjV') {
+async function synthesizeWithElevenLabs(text: string, voiceId?: string) {
   try {
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${resolveVoiceId(voiceId)}`, {
       method: 'POST',
       headers: {
         'Accept': 'audio/mpeg',
@@ -30,7 +31,7 @@ async function synthesizeWithElevenLabs(text: string, voiceId: string = 'ErXwoba
       },
       body: JSON.stringify({
         text,
-        model_id: 'eleven_monolingual_v1',
+        model_id: DEFAULT_TTS_MODEL,
         voice_settings: {
           stability: 0.5,
           similarity_boost: 0.5
@@ -61,6 +62,7 @@ const generateVideoSchema = z.object({
   duration: z.number().int().min(3).max(600).default(60),
   addOns: z.array(z.string()).optional(),
   aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
+  voiceId: z.string().optional(),
   enableEmotionAware: z.boolean().optional(),
 });
 
@@ -96,8 +98,9 @@ async function handleGenerateVideo(body: any, userId: string) {
             style: input.style,
             duration: input.duration,
             addOns: input.addOns ?? [],
-            // Re-render and scene-swap read this back so they keep the shape.
+            // Re-render and scene-swap read these back so they stay consistent.
             aspectRatio: input.aspectRatio,
+            voiceId: resolveVoiceId(input.voiceId),
             // enableEmotionAware is preserved for the pipeline to honor once
             // emotion-aware generation is folded into the worker (TODO Phase 5).
             enableEmotionAware: input.enableEmotionAware ?? false,

@@ -21,11 +21,27 @@ export default function AIFeaturesPage() {
   const [generationProgress, setGenerationProgress] = useState(0)
   const [selectedStyle, setSelectedStyle] = useState("modern")
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9")
+  const [voices, setVoices] = useState<Array<{ id: string; name: string; gender: string; description: string }>>([])
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("")
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null)
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false)
   const [generatedScript, setGeneratedScript] = useState<string | null>(null)
+
+  // Load the narration voice catalog (static — works without an ElevenLabs key).
+  useEffect(() => {
+    fetch('/api/voices')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.voices) return
+        setVoices(data.voices)
+        setSelectedVoiceId((current) => current || data.defaultVoiceId || '')
+      })
+      .catch(() => {
+        /* voice selection is optional; the server falls back to the default */
+      })
+  }, [])
 
   // Handle escape key to close video modal
   useEffect(() => {
@@ -63,6 +79,7 @@ export default function AIFeaturesPage() {
           duration: videoLength[0],
           addOns: selectedAddOns,
           aspectRatio: selectedAspectRatio,
+          ...(selectedVoiceId ? { voiceId: selectedVoiceId } : {}),
         }),
       })
 
@@ -283,6 +300,27 @@ export default function AIFeaturesPage() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Narration voice — only relevant when the voiceover add-on is on */}
+                    {selectedAddOns.includes("voiceover") && voices.length > 0 && (
+                      <div className="space-y-3">
+                        <label htmlFor="voice" className="text-sm font-medium">
+                          Narration Voice
+                        </label>
+                        <select
+                          id="voice"
+                          value={selectedVoiceId}
+                          onChange={(e) => setSelectedVoiceId(e.target.value)}
+                          className="w-full rounded-md border border-gray-600 bg-gray-800/50 p-2 text-sm text-gray-200"
+                        >
+                          {voices.map((voice) => (
+                            <option key={voice.id} value={voice.id}>
+                              {voice.name} — {voice.gender}, {voice.description}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
                     {/* Generate Button */}
                     <Button

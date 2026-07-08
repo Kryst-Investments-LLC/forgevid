@@ -16,6 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import { uploadVideo as uploadCloudinaryVideo } from './cloudinary';
 import { selectMusicPath } from './music-library';
+import { DEFAULT_TTS_MODEL, resolveVoiceId } from './voice-catalog';
 
 // Dynamic imports to avoid webpack bundling issues
 let ffmpeg: any;
@@ -96,6 +97,8 @@ export interface GenerationOptions {
   aspectRatio?: AspectRatio;
   /** Mood tag used to pick a music track; defaults to `style`. */
   mood?: string;
+  /** ElevenLabs voice id for the narration. */
+  voiceId?: string;
 }
 
 function sceneId(index: number): string {
@@ -142,7 +145,7 @@ async function persistGeneratedVideo(outputPath: string, outputFilename: string)
  * Generate voiceover audio via ElevenLabs. Returns the .mp3 path, or null when
  * no key is configured (voiceover is optional — the video still renders).
  */
-async function generateVoiceover(narration: string): Promise<string | null> {
+async function generateVoiceover(narration: string, voiceId?: string): Promise<string | null> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
     console.log('[Video Generator] No ElevenLabs API key — skipping voiceover');
@@ -151,10 +154,11 @@ async function generateVoiceover(narration: string): Promise<string | null> {
 
   try {
     const textToSpeak = narration.slice(0, 2000);
-    console.log(`[Video Generator] Generating voiceover (${textToSpeak.length} chars)...`);
+    const voice = resolveVoiceId(voiceId);
+    console.log(`[Video Generator] Generating voiceover (${textToSpeak.length} chars, voice ${voice})...`);
 
     const response = await fetch(
-      'https://api.elevenlabs.io/v1/text-to-speech/ErXwobaYiN019PkySvjV',
+      `https://api.elevenlabs.io/v1/text-to-speech/${voice}`,
       {
         method: 'POST',
         headers: {
@@ -164,7 +168,7 @@ async function generateVoiceover(narration: string): Promise<string | null> {
         },
         body: JSON.stringify({
           text: textToSpeak,
-          model_id: 'eleven_monolingual_v1',
+          model_id: DEFAULT_TTS_MODEL,
           voice_settings: { stability: 0.6, similarity_boost: 0.6 },
         }),
       }
@@ -497,6 +501,8 @@ export interface AssembleOptions {
    * re-render skip a paid TTS call — and makes the assembler testable offline.
    */
   voiceoverPath?: string | null;
+  /** ElevenLabs voice id; unknown ids fall back to the default. */
+  voiceId?: string | null;
 }
 
 export async function assembleVideo(
@@ -546,7 +552,7 @@ export async function assembleVideo(
       options.voiceoverPath
         ? Promise.resolve(options.voiceoverPath)
         : wantVoiceover
-          ? generateVoiceover(narration)
+          ? generateVoiceover(narration, options.voiceId ?? undefined)
           : Promise.resolve(null),
     ]);
     sources.push(...clipPaths);
@@ -694,7 +700,7 @@ export async function assembleVideo(
 export async function generateVideoWithScenes(
   options: GenerationOptions,
 ): Promise<{ videoUrl: string; scenes: ResolvedScene[] }> {
-  const { prompt, duration, addOns, aspectRatio = '16:9', mood } = options;
+  const { prompt, duration, addOns, aspectRatio = '16:9', mood, voiceId } = options;
 
   const planned = await planScenes(prompt, duration);
   if (planned.length === 0) throw new Error('Failed to plan any scenes from the script');
@@ -705,7 +711,7 @@ export async function generateVideoWithScenes(
   const wantMusic = !addOns || addOns.length === 0 || addOns.includes('music');
   const musicPath = wantMusic ? selectMusicPath(mood ?? options.style) : null;
 
-  const videoUrl = await assembleVideo(resolved, addOns || [], aspectRatio, { musicPath });
+  const videoUrl = await assembleVideo(resolved, addOns || [], aspectRatio, { musicPath, voiceId });
 
   console.log(
     `[Video Generator] ✅ Generated ${duration}s ${aspectRatio} video with ${resolved.length} scenes`,

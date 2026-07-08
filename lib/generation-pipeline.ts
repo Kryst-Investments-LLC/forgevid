@@ -24,6 +24,8 @@ export interface GenerationInput {
   duration: number;
   addOns?: string[];
   aspectRatio?: AspectRatio;
+  /** ElevenLabs voice id for the narration. */
+  voiceId?: string;
   enableEmotionAware?: boolean;
 }
 
@@ -153,6 +155,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       addOns: input.addOns ?? [],
       aspectRatio,
       mood: input.style,
+      voiceId: input.voiceId,
     });
 
     await setStage(videoId, 'uploading');
@@ -239,7 +242,10 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     const wantMusic = addOns.length === 0 || addOns.includes('music');
     const musicPath = wantMusic ? selectMusicPath(meta.request?.style) : null;
 
-    const videoUrl = await assembleVideo(scenes, addOns, aspectRatio, { musicPath });
+    const videoUrl = await assembleVideo(scenes, addOns, aspectRatio, {
+      musicPath,
+      voiceId: meta.request?.voiceId,
+    });
 
     await setStage(videoId, 'uploading');
     const { width, height } = aspectPreset(aspectRatio);
