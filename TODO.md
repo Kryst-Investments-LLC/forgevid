@@ -56,6 +56,13 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - `voiceId` persists in `metadata.request` so re-render reuses it.
 - Verified by type-check + build + the renderer suites; **not** runtime-verified end-to-end (needs an `ELEVENLABS_API_KEY`).
 
+**2026-07-08 — Phase 5c done: real captions + SRT/VTT export.**
+- `lib/captions.ts`: `transcribeToCues()` (Whisper `verbose_json` segments) → timed cues aligned to the *spoken narration*, replacing the old "burn in the scene description" behaviour. Degrades cleanly: no voiceover or no `OPENAI_API_KEY` ⇒ falls back to one cue per scene (the old behaviour), never fails the job.
+- Word wrap, multi-line stacking, and `CAPTION_PRESETS` (default / large / subtle).
+- Cues persist to `metadata.captions`; `GET /api/videos/[id]/captions?format=srt|vtt|json` downloads them, with SRT/VTT buttons in the scene panel.
+- Burned in with `drawtext`, deliberately **not** the `subtitles` filter: avoids a libass dependency in the deploy image and avoids escaping a Windows `C:\...` path inside a filtergraph.
+- **Runtime verified**: exact SRT/VTT byte assertions, `wrapText`, and a caption containing `,` `:` `'` and `%` actually rendering — a comma is what separates filters in a filtergraph, so this is the case that would silently break the graph.
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

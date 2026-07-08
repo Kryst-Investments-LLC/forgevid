@@ -13,6 +13,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { assembleVideo, aspectPreset, type ResolvedScene, type AspectRatio } from '../lib/video-generator';
+import { cuesToSrt, cuesToVtt, wrapText, type CaptionCue } from '../lib/captions';
 
 const ffmpegPath: string = require('@ffmpeg-installer/ffmpeg').path;
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-generate');
@@ -62,7 +63,7 @@ function scene(index: number, source: string, duration: number, description?: st
  */
 async function checkTwoWordCaption(source: string) {
   console.log('\nRendering with a TWO-WORD caption (one-space filter regression)...');
-  const url = await assembleVideo([scene(0, source, 2, 'Opening shot')], ['subtitles'], '16:9');
+  const { videoUrl: url } = await assembleVideo([scene(0, source, 2, 'Opening shot')], ['subtitles'], '16:9');
   const outFile = path.join(process.cwd(), 'public', 'generated', path.basename(url));
   assert(fs.existsSync(outFile), 'two-word caption rendered (filter not torn in half)');
   fs.unlinkSync(outFile);
@@ -73,7 +74,7 @@ async function renderAndCheck(aspectRatio: AspectRatio, sources: string[]) {
   console.log(`\nRendering ${aspectRatio} (expect ${width}x${height})...`);
 
   // addOns=['subtitles'] => captions on, voiceover off (no ElevenLabs key needed).
-  const url = await assembleVideo(
+  const { videoUrl: url } = await assembleVideo(
     [scene(0, sources[0], 2), scene(1, sources[1], 2)],
     ['subtitles'],
     aspectRatio,
@@ -136,7 +137,7 @@ async function checkMusicDucking(clip: string) {
   ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=300:duration=6', '-c:a', 'aac', music]);
   ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=800:duration=2', '-af', 'volume=0.2', '-c:a', 'aac', voice]);
 
-  const url = await assembleVideo([scene(0, clip, 4)], ['subtitles'], '16:9', {
+  const { videoUrl: url } = await assembleVideo([scene(0, clip, 4)], ['subtitles'], '16:9', {
     musicPath: music,
     voiceoverPath: voice,
   });
@@ -162,6 +163,49 @@ async function checkMusicDucking(clip: string) {
   fs.unlinkSync(outFile);
 }
 
+/** SRT/VTT serialisation is pure — assert the exact bytes. */
+function checkCaptionFormats() {
+  console.log('\nChecking SRT/VTT serialisation...');
+  const cues: CaptionCue[] = [
+    { start: 0, end: 1.5, text: 'Hello there' },
+    { start: 1.5, end: 3.25, text: 'Second line' },
+  ];
+
+  const srt = cuesToSrt(cues);
+  assert(
+    srt.startsWith('1\n00:00:00,000 --> 00:00:01,500\nHello there'),
+    'SRT: index, comma-separated ms, text',
+  );
+  assert(srt.includes('2\n00:00:01,500 --> 00:00:03,250\nSecond line'), 'SRT: second cue');
+
+  const vtt = cuesToVtt(cues);
+  assert(vtt.startsWith('WEBVTT\n\n'), 'VTT: header');
+  assert(vtt.includes('00:00:01.500 --> 00:00:03.250'), 'VTT: dot-separated ms');
+
+  const wrapped = wrapText('one two three four five six seven', 12);
+  assert(wrapped.length > 1 && wrapped.every((l) => l.length <= 12), 'wrapText respects max width');
+}
+
+/**
+ * Captions must survive ffmpeg's filtergraph escaping. A comma separates
+ * filters, a colon separates filter options, `%` starts strftime expansion,
+ * and an apostrophe would close the quoted text — all in one caption here.
+ */
+async function checkCaptionEscaping(clip: string) {
+  console.log('\nBurning a caption with , : \' and % ...');
+  const cues: CaptionCue[] = [
+    { start: 0, end: 2, text: "He said: go, now — it's 50% done" },
+  ];
+  const { videoUrl: url } = await assembleVideo([scene(0, clip, 2)], ['subtitles'], '16:9', {
+    cues,
+  });
+  const outFile = path.join(process.cwd(), 'public', 'generated', path.basename(url));
+  assert(fs.existsSync(outFile), 'caption with special characters rendered');
+  const dur = durationSeconds(probe(outFile));
+  assert(Math.abs(dur - 2) < 0.5, `escaped-caption video duration ~2s (got ${dur.toFixed(2)}s)`);
+  fs.unlinkSync(outFile);
+}
+
 async function main() {
   fs.mkdirSync(workDir, { recursive: true });
   const clipA = path.join(workDir, 'a.mp4');
@@ -176,6 +220,8 @@ async function main() {
   await renderAndCheck('9:16', [clipA, clipB]);
   await renderAndCheck('1:1', [clipA, clipB]);
   await checkTwoWordCaption(clipA);
+  checkCaptionFormats();
+  await checkCaptionEscaping(clipA);
   await checkMusicDucking(clipA);
 
   // Regression guard: assembleVideo must not delete media it did not download.

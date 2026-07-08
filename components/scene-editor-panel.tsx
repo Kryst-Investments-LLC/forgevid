@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
-import { Shuffle, RefreshCw, Save, Film } from "lucide-react"
+import { Shuffle, RefreshCw, Save, Film, Download } from "lucide-react"
 import { toast } from "sonner"
 
 interface Scene {
@@ -166,10 +166,25 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
               Edit a line, retime it, or swap the footage — then re-render. Total {totalDuration}s.
             </CardDescription>
           </div>
-          <Button onClick={rerender} disabled={rerendering}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${rerendering ? "animate-spin" : ""}`} />
-            {rerendering ? "Re-rendering…" : "Re-render"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Captions are burned in; these serve the same cues as sidecar files. */}
+            <Button variant="outline" size="sm" asChild>
+              <a href={`/api/videos/${videoId}/captions?format=srt`} download>
+                <Download className="h-4 w-4 mr-2" />
+                SRT
+              </a>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <a href={`/api/videos/${videoId}/captions?format=vtt`} download>
+                <Download className="h-4 w-4 mr-2" />
+                VTT
+              </a>
+            </Button>
+            <Button onClick={rerender} disabled={rerendering}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${rerendering ? "animate-spin" : ""}`} />
+              {rerendering ? "Re-rendering…" : "Re-render"}
+            </Button>
+          </div>
         </div>
         {rerendering && <Progress value={progress} className="mt-3" />}
       </CardHeader>

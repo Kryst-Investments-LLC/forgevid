@@ -17,6 +17,13 @@ import path from 'path';
 import { uploadVideo as uploadCloudinaryVideo } from './cloudinary';
 import { selectMusicPath } from './music-library';
 import { DEFAULT_TTS_MODEL, resolveVoiceId } from './voice-catalog';
+import {
+  buildCaptionFilter,
+  cuesFromScenes,
+  transcribeToCues,
+  type CaptionCue,
+  type CaptionStyle,
+} from './captions';
 
 // Dynamic imports to avoid webpack bundling issues
 let ffmpeg: any;
@@ -190,32 +197,6 @@ async function generateVoiceover(narration: string, voiceId?: string): Promise<s
     console.error('[Video Generator] Voiceover generation failed:', error);
     return null;
   }
-}
-
-/** Build an FFmpeg drawtext filter showing each scene's caption over its span. */
-function buildTextOverlayFilter(scenes: Array<{ description: string; duration: number }>): string {
-  const filters: string[] = [];
-  let currentTime = 0;
-
-  for (const scene of scenes) {
-    const text = scene.description
-      .substring(0, 60)
-      .replace(/'/g, '')
-      .replace(/:/g, '\\:')
-      .replace(/\\/g, '\\\\')
-      .replace(/%/g, '%%');
-
-    const startTime = currentTime;
-    const endTime = currentTime + scene.duration;
-
-    filters.push(
-      `drawtext=text='${text}':fontsize=28:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-60:enable='between(t\\,${startTime}\\,${endTime})'`
-    );
-
-    currentTime += scene.duration;
-  }
-
-  return filters.join(',');
 }
 
 export function isStockProviderConfigured(): boolean {
@@ -503,6 +484,18 @@ export interface AssembleOptions {
   voiceoverPath?: string | null;
   /** ElevenLabs voice id; unknown ids fall back to the default. */
   voiceId?: string | null;
+  /**
+   * Pre-computed caption cues. When omitted, the voiceover is transcribed with
+   * Whisper; failing that we fall back to one cue per scene.
+   */
+  cues?: CaptionCue[] | null;
+  captionStyle?: CaptionStyle;
+}
+
+export interface AssembleResult {
+  videoUrl: string;
+  /** The cues actually burned in — persist these for SRT/VTT export. */
+  cues: CaptionCue[];
 }
 
 export async function assembleVideo(
@@ -510,7 +503,7 @@ export async function assembleVideo(
   addOns: string[] = [],
   aspectRatio: AspectRatio = '16:9',
   options: AssembleOptions = {},
-): Promise<string> {
+): Promise<AssembleResult> {
   await initializeModules();
 
   if (scenes.length === 0) throw new Error('Cannot assemble a video with no scenes');
@@ -592,7 +585,17 @@ export async function assembleVideo(
     if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, outputFilename);
 
-    const textFilter = wantSubtitles ? buildTextOverlayFilter(scenes) : '';
+    // Real captions come from transcribing the narration. Without a voiceover
+    // (or without an OpenAI key) fall back to one cue per scene.
+    let cues: CaptionCue[] = [];
+    if (wantSubtitles) {
+      cues =
+        options.cues ??
+        (voiceoverPath ? await transcribeToCues(voiceoverPath) : null) ??
+        cuesFromScenes(scenes);
+    }
+
+    const textFilter = cues.length > 0 ? buildCaptionFilter(cues, options.captionStyle) : '';
     const videoFilter = textFilter ? `${fit},${textFilter}` : fit;
 
     const musicPath = options.musicPath ?? null;
@@ -677,7 +680,8 @@ export async function assembleVideo(
         .run();
     });
 
-    return await persistGeneratedVideo(outputPath, outputFilename);
+    const videoUrl = await persistGeneratedVideo(outputPath, outputFilename);
+    return { videoUrl, cues };
   } finally {
     // Always clean temp artifacts, even on failure. Never the caller's media —
     // a synthesized voiceover is already in tempFiles; an injected one is not,
@@ -699,7 +703,7 @@ export async function assembleVideo(
  */
 export async function generateVideoWithScenes(
   options: GenerationOptions,
-): Promise<{ videoUrl: string; scenes: ResolvedScene[] }> {
+): Promise<{ videoUrl: string; scenes: ResolvedScene[]; cues: CaptionCue[] }> {
   const { prompt, duration, addOns, aspectRatio = '16:9', mood, voiceId } = options;
 
   const planned = await planScenes(prompt, duration);
@@ -711,12 +715,15 @@ export async function generateVideoWithScenes(
   const wantMusic = !addOns || addOns.length === 0 || addOns.includes('music');
   const musicPath = wantMusic ? selectMusicPath(mood ?? options.style) : null;
 
-  const videoUrl = await assembleVideo(resolved, addOns || [], aspectRatio, { musicPath, voiceId });
+  const { videoUrl, cues } = await assembleVideo(resolved, addOns || [], aspectRatio, {
+    musicPath,
+    voiceId,
+  });
 
   console.log(
     `[Video Generator] ✅ Generated ${duration}s ${aspectRatio} video with ${resolved.length} scenes`,
   );
-  return { videoUrl, scenes: resolved };
+  return { videoUrl, scenes: resolved, cues };
 }
 
 /** Backwards-compatible wrapper returning just the URL. */
@@ -724,6 +731,8 @@ export async function generateVideoFromPrompt(options: GenerationOptions): Promi
   const { videoUrl } = await generateVideoWithScenes(options);
   return videoUrl;
 }
+
+export type { CaptionCue } from './captions';
 
 /** Remove generated/temp files older than 24h. */
 export function cleanupOldVideos() {

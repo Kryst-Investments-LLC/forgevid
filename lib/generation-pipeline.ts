@@ -148,7 +148,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     // assembly, and Cloudinary upload — and returns the scene structure so we
     // can persist it for scene-based editing / re-rendering.
     const aspectRatio: AspectRatio = input.aspectRatio ?? '16:9';
-    const { videoUrl, scenes } = await generateVideoWithScenes({
+    const { videoUrl, scenes, cues } = await generateVideoWithScenes({
       prompt: script,
       style: input.style,
       duration: input.duration,
@@ -175,7 +175,8 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     await writeProgress(
       videoId,
       { stage: 'done', percent: 100, videoUrl, provider: 'stock-assembler' },
-      { script, scenes },
+      // captions are persisted so they can be downloaded as SRT/VTT.
+      { script, scenes, captions: cues },
     );
 
     return videoUrl;
@@ -242,7 +243,9 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     const wantMusic = addOns.length === 0 || addOns.includes('music');
     const musicPath = wantMusic ? selectMusicPath(meta.request?.style) : null;
 
-    const videoUrl = await assembleVideo(scenes, addOns, aspectRatio, {
+    // A re-render re-synthesizes the voiceover, so previously-transcribed cues
+    // would no longer be aligned; only reuse them when the scenes are unchanged.
+    const { videoUrl, cues } = await assembleVideo(scenes, addOns, aspectRatio, {
       musicPath,
       voiceId: meta.request?.voiceId,
     });
@@ -258,12 +261,11 @@ export async function rerenderVideo(videoId: string): Promise<string> {
         resolution: `${width}x${height}`,
       },
     });
-    await writeProgress(videoId, {
-      stage: 'done',
-      percent: 100,
-      videoUrl,
-      provider: 'stock-assembler',
-    });
+    await writeProgress(
+      videoId,
+      { stage: 'done', percent: 100, videoUrl, provider: 'stock-assembler' },
+      { captions: cues },
+    );
 
     return videoUrl;
   } catch (error) {
