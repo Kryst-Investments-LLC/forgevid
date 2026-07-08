@@ -14,6 +14,7 @@ import {
   describeScenesForModel,
   sceneOpsSchema,
 } from '@/lib/scene-ops';
+import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
 
 /**
  * POST /api/videos/[videoId]/scenes/chat — "make scene 2 faster"
@@ -113,6 +114,10 @@ export async function POST(req: NextRequest, { params }: { params: { videoId: st
 
   if (result.applied.length > 0) {
     await saveScenes(params.videoId, result.scenes);
+    await recordProductEvent(access.userId, PRODUCT_ACTIONS.chatEdit, {
+      videoId: params.videoId,
+      operations: result.applied.length,
+    });
   }
 
   return NextResponse.json({

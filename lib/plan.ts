@@ -54,6 +54,11 @@ export function requiresWatermark(plan: Plan): boolean {
   return !isPaidPlan(plan);
 }
 
+/** 4K rendering is a pro-tier feature (4x the pixels, ~4x the compute). */
+export function allows4k(plan: Plan): boolean {
+  return plan === 'pro' || plan === 'enterprise' || plan === 'custom';
+}
+
 /** Custom branding (logo overlay, intro/outro) is a paid feature. */
 export function allowsCustomBranding(plan: Plan): boolean {
   return isPaidPlan(plan);

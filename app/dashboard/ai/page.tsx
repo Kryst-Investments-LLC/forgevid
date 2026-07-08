@@ -25,7 +25,8 @@ export default function AIFeaturesPage() {
   const [voices, setVoices] = useState<Array<{ id: string; name: string; gender: string; description: string }>>([])
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>("")
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([])
-  const [draftMode, setDraftMode] = useState(false)
+  const [quality, setQuality] = useState<"draft" | "full" | "4k">("full")
+  const [transitionType, setTransitionType] = useState<string>("fade")
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null)
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
@@ -44,6 +45,35 @@ export default function AIFeaturesPage() {
       .catch(() => {
         /* voice selection is optional; the server falls back to the default */
       })
+  }, [])
+
+  // The platform's memory of this user: open pre-set to what they actually use.
+  // Explicit template params (?prompt=&style=&aspect=) win over learned defaults.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const qpPrompt = params.get('prompt')
+    const qpStyle = params.get('style')
+    const qpAspect = params.get('aspect')
+    if (qpPrompt) setPrompt(qpPrompt)
+    if (qpStyle) setSelectedStyle(qpStyle)
+    if (qpAspect === '16:9' || qpAspect === '9:16' || qpAspect === '1:1') {
+      setSelectedAspectRatio(qpAspect)
+    }
+
+    fetch('/api/me/defaults')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((d) => {
+        if (!d || d.basedOnVideos === 0) return
+        if (!qpStyle && d.style) setSelectedStyle(d.style)
+        if (!qpAspect && (d.aspectRatio === '16:9' || d.aspectRatio === '9:16' || d.aspectRatio === '1:1')) {
+          setSelectedAspectRatio(d.aspectRatio)
+        }
+        if (d.voiceId) setSelectedVoiceId((current) => current || d.voiceId)
+      })
+      .catch(() => {
+        /* defaults are a convenience, never a blocker */
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Handle escape key to close video modal
@@ -84,7 +114,9 @@ export default function AIFeaturesPage() {
           aspectRatio: selectedAspectRatio,
           ...(selectedVoiceId ? { voiceId: selectedVoiceId } : {}),
           ...(selectedMediaIds.length ? { mediaAssetIds: selectedMediaIds } : {}),
-          renderQuality: draftMode ? "draft" : "full",
+          renderQuality: quality,
+          transition:
+            transitionType === "none" ? null : { type: transitionType, duration: 0.5 },
         }),
       })
 
@@ -313,20 +345,40 @@ export default function AIFeaturesPage() {
                       </div>
                     </div>
 
-                    {/* Fast draft: half resolution, quick encode — iterate cheaply, export in full */}
-                    <div className="flex items-center space-x-3">
-                      <Checkbox
-                        id="draftMode"
-                        checked={draftMode}
-                        onCheckedChange={(checked) => setDraftMode(checked as boolean)}
-                      />
-                      <div className="flex-1">
-                        <label htmlFor="draftMode" className="text-sm font-medium cursor-pointer">
-                          Fast draft preview
-                        </label>
-                        <p className="text-xs text-muted-foreground">
-                          Renders in half resolution, much faster. Re-render in full quality when you&apos;re happy.
-                        </p>
+                    {/* Render quality + scene transition */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <label htmlFor="quality" className="text-sm font-medium">Quality</label>
+                        <select
+                          id="quality"
+                          value={quality}
+                          onChange={(e) => setQuality(e.target.value as "draft" | "full" | "4k")}
+                          className="w-full rounded-md border border-gray-600 bg-gray-800/50 p-2 text-sm text-gray-200"
+                        >
+                          <option value="draft">Draft — fast preview (half res)</option>
+                          <option value="full">Full — 1080p export</option>
+                          <option value="4k">4K — Pro plan</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="transition" className="text-sm font-medium">Transition</label>
+                        <select
+                          id="transition"
+                          value={transitionType}
+                          onChange={(e) => setTransitionType(e.target.value)}
+                          className="w-full rounded-md border border-gray-600 bg-gray-800/50 p-2 text-sm text-gray-200"
+                        >
+                          <option value="none">Hard cuts</option>
+                          <option value="fade">Cross-fade</option>
+                          <option value="fadeblack">Fade through black</option>
+                          <option value="fadewhite">Fade through white</option>
+                          <option value="wipeleft">Wipe left</option>
+                          <option value="wiperight">Wipe right</option>
+                          <option value="slideleft">Slide left</option>
+                          <option value="slideright">Slide right</option>
+                          <option value="circleopen">Circle open</option>
+                          <option value="dissolve">Dissolve</option>
+                        </select>
                       </div>
                     </div>
 

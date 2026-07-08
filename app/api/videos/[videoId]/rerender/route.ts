@@ -3,6 +3,7 @@ import { requireVideoOwner } from '@/lib/video-access';
 import { enqueueRerender } from '@/lib/video-queue';
 import { loadScenes, rerenderVideo, setStage } from '@/lib/generation-pipeline';
 import { withRenderSlot } from '@/lib/render-semaphore';
+import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
 
 /**
  * Re-encode a video from its (possibly edited) persisted scenes.
@@ -36,6 +37,8 @@ export async function POST(_req: NextRequest, { params }: { params: { videoId: s
       );
     });
   }
+
+  await recordProductEvent(access.userId, PRODUCT_ACTIONS.rerender, { videoId: params.videoId });
 
   return NextResponse.json({
     videoId: params.videoId,

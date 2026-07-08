@@ -130,6 +130,19 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - **Draft previews** (`renderQuality: 'draft'`): half resolution + `ultrafast`/crf 30 (exports stay `slow`/18). "Fast draft preview" checkbox in the AI Studio; re-render reuses the stored quality. Verified: 960×540, full duration kept.
 - `assembleVideo` now returns the scenes **as rendered** (paced durations + thumbs) and both generate and re-render persist those — otherwise the editor drifts from the video.
 
+**2026-07-08 — Tier 3 growth loop + the product loop (platform memory).**
+- **Product loop** (`lib/product-loop.ts`) — record → recall → reflect:
+  - *Record*: re-renders, scene edits, chat edits, clip swaps, caption downloads and share-enables all land in `UsageRecord` (generations already did via quota).
+  - *Recall*: `GET /api/me/defaults` learns the user's most-used style/aspect/voice from their own videos; the AI Studio opens pre-set to it. **The platform remembers how each user works.**
+  - *Reflect*: `GET /api/admin/product-insights` — failure rate, re-render rate, hand-edit volume, style demand, unit cost. The numbers that say what to fix next, and the labelled usage dataset a future model for this platform trains on.
+  - Verified against the real DB: events land, defaults learned (`modern`/`16:9` from real videos), insights count generations/re-renders/edits and expose $0.006917/gen.
+- **Share pages**: `/v/[videoId]` (server-rendered, real OG tags) + `POST /api/videos/[id]/share` toggle + Share button. **Opt-in per video** — never id-guessable. The free-tier watermark is now a growth channel.
+- **Completion email**: pipeline sends "your video is ready" on COMPLETED (best-effort; SMTP optional).
+- **Template → AI bridge**: "Generate with AI" on template cards prefills the AI Studio via query params; explicit params beat learned defaults.
+- **Transition picker** (9 xfade types + hard cuts) and **4K** (`renderQuality: '4k'`, 3840×2160 / 2160×3840 / 2160², **Pro-plan gated server-side**). Draft/full/4K select in the Studio. Dims verified.
+- **Provider-blocked, deliberately NOT built**: AI avatars and voice cloning need external providers (HeyGen-class / ElevenLabs voice-add) with keys this environment doesn't have — stubbing them would violate the fail-visibly rule. Team-collaboration polish deferred (Socket.IO server exists).
+- ⚠ Lesson: the scratch-Postgres port (55432) collided with another Claude session's scratch server (SHAREDRIVER BOT); the later e2e runs transparently used that instance. Results remain valid (same PG 18, own database, dropped afterwards) — but future runs should pick a random high port.
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

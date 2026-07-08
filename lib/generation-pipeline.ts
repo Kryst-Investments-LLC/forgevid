@@ -21,6 +21,42 @@ import { selectMusicPath } from './music-library';
 import { freeBranding, resolveBranding } from './brand-kit';
 import { resolveUserMedia } from './user-media';
 import { estimateGenerationCost, recordGenerationCost } from './cost-ledger';
+import { sendExportCompleteEmail } from './email';
+
+/**
+ * "Your video is ready" — the come-back-to-a-finished-video loop. Best-effort:
+ * an unconfigured SMTP or a bounced address never fails a finished render.
+ */
+async function notifyRenderComplete(videoId: string): Promise<void> {
+  try {
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: {
+        title: true,
+        duration: true,
+        resolution: true,
+        url: true,
+        fileUrl: true,
+        user: { select: { email: true, name: true } },
+      },
+    });
+    const url = video?.fileUrl || video?.url;
+    if (!video?.user?.email || !url) return;
+    await sendExportCompleteEmail(
+      video.user.email,
+      video.user.name || 'Creator',
+      video.title || 'Your video',
+      url,
+      {
+        duration: `${video.duration ?? '?'}s`,
+        resolution: video.resolution ?? '',
+        fileSize: '',
+      },
+    );
+  } catch (error) {
+    console.error('[Pipeline] Completion email failed (non-fatal):', error);
+  }
+}
 import { DEFAULT_TRANSITION, isTransitionType, type TransitionConfig } from './transitions';
 
 /** Rebuild a transition from persisted metadata, rejecting unknown types. */
@@ -70,8 +106,8 @@ export interface GenerationInput {
   transition?: TransitionConfig | null;
   /** Ids of the user's own MediaAssets to use, in scene order. */
   mediaAssetIds?: string[];
-  /** 'draft' = fast half-resolution preview; 'full' (default) = export quality. */
-  renderQuality?: 'draft' | 'full';
+  /** 'draft' = fast preview, 'full' (default), '4k' = paid plans. */
+  renderQuality?: import('./video-generator').RenderQuality;
   enableEmotionAware?: boolean;
 }
 
@@ -270,6 +306,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     );
 
     await settle(true, input.prompt);
+    notifyRenderComplete(videoId).catch(() => {});
     return videoUrl;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Video generation failed';
@@ -340,7 +377,10 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     // Re-resolve branding: the user's plan may have changed since generation.
     const branding = await brandingForVideo(videoId);
 
-    const renderQuality: 'draft' | 'full' = meta.request?.renderQuality === 'draft' ? 'draft' : 'full';
+    const renderQuality: import('./video-generator').RenderQuality =
+      meta.request?.renderQuality === 'draft' || meta.request?.renderQuality === '4k'
+        ? meta.request.renderQuality
+        : 'full';
     const assembled = await assembleVideo(scenes, addOns, aspectRatio, {
       musicPath,
       voiceId: meta.request?.voiceId,

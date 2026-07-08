@@ -184,6 +184,20 @@ export default function TemplatesPage() {
                         Preview
                       </Button>
                       <Button
+                        onClick={() => {
+                          // Template -> generation bridge: prefill the AI Studio.
+                          const q = new URLSearchParams({
+                            prompt: `${template.name}: ${template.description ?? ''}`.trim(),
+                            style: template.category === 'business' ? 'professional' : 'modern',
+                          })
+                          window.location.href = `/dashboard/ai?${q.toString()}`
+                        }}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Generate with AI
+                      </Button>
+                      <Button
                         onClick={() => handleUseTemplate(template)}
                         className="bg-gradient-to-r from-indigo-500 to-cyan-400 text-white font-semibold px-4 py-2 rounded-lg shadow hover:from-indigo-600 hover:to-cyan-500"
                         size="sm"

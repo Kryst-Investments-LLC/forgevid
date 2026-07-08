@@ -12,6 +12,7 @@ import { runGeneration } from '@/lib/generation-pipeline';
 import { DEFAULT_TTS_MODEL, resolveVoiceId } from '@/lib/voice-catalog';
 import { DEFAULT_TRANSITION, TRANSITIONS } from '@/lib/transitions';
 import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
+import { allows4k } from '@/lib/plan';
 import { withRenderSlot } from '@/lib/render-semaphore';
 
 const aiGenerationSchema = z.object({
@@ -71,7 +72,7 @@ const generateVideoSchema = z.object({
   // server-side; urls are never accepted from the client.
   mediaAssetIds: z.array(z.string()).max(20).optional(),
   // 'draft' renders at half resolution with fast encoding for quick previews.
-  renderQuality: z.enum(['draft', 'full']).default('full'),
+  renderQuality: z.enum(['draft', 'full', '4k']).default('full'),
   // null = hard cuts. Omitted = the default cross-fade.
   transition: z
     .object({ type: z.enum(TRANSITIONS), duration: z.number().min(0).max(3) })
@@ -109,6 +110,18 @@ async function handleGenerateVideo(body: any, userId: string) {
         upgradeRequired: quota.upgradeRequired ?? false,
       },
       { status: 429 },
+    );
+  }
+
+  // 4K quadruples the pixels and roughly the compute — pro tier and above.
+  if (input.renderQuality === '4k' && !allows4k(quota.plan)) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `4K rendering requires the Pro plan (you are on ${quota.plan})`,
+        upgradeRequired: true,
+      },
+      { status: 403 },
     );
   }
 

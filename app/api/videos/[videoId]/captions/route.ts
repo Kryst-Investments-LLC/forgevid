@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireVideoOwner } from '@/lib/video-access';
 import { cuesToSrt, cuesToVtt, type CaptionCue } from '@/lib/captions';
+import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
 
 /**
  * GET /api/videos/[videoId]/captions?format=srt|vtt|json
@@ -36,6 +37,11 @@ export async function GET(req: NextRequest, { params }: { params: { videoId: str
   }
 
   if (format === 'json') return NextResponse.json({ cues });
+
+  await recordProductEvent(access.userId, PRODUCT_ACTIONS.captionsDownload, {
+    videoId: params.videoId,
+    format,
+  });
 
   const body = format === 'vtt' ? cuesToVtt(cues) : cuesToSrt(cues);
   const filename = `${(video?.title ?? 'captions').replace(/[^\w.-]+/g, '_').slice(0, 60)}.${format}`;

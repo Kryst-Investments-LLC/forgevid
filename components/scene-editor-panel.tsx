@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
-import { Shuffle, RefreshCw, Save, Film, Download, Sparkles, Loader2 } from "lucide-react"
+import { Shuffle, RefreshCw, Save, Film, Download, Sparkles, Loader2, Share2 } from "lucide-react"
 import { toast } from "sonner"
 
 interface Scene {
@@ -39,6 +39,7 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
   const [progress, setProgress] = useState(0)
   const [chatInput, setChatInput] = useState("")
   const [chatting, setChatting] = useState(false)
+  const [sharing, setSharing] = useState(false)
 
   const loadScenes = useCallback(async () => {
     setLoading(true)
@@ -129,6 +130,26 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
     }
   }
 
+  const shareVideo = async () => {
+    setSharing(true)
+    try {
+      const res = await fetch(`/api/videos/${videoId}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: true }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "Could not enable sharing")
+      const url = `${window.location.origin}${data.shareUrl}`
+      await navigator.clipboard.writeText(url).catch(() => {})
+      toast.success(`Share link copied: ${url}`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not enable sharing")
+    } finally {
+      setSharing(false)
+    }
+  }
+
   const rerender = async () => {
     setRerendering(true)
     setProgress(0)
@@ -202,6 +223,10 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
           </div>
           <div className="flex items-center gap-2">
             {/* Captions are burned in; these serve the same cues as sidecar files. */}
+            <Button variant="outline" size="sm" onClick={shareVideo} disabled={sharing}>
+              <Share2 className="h-4 w-4 mr-2" />
+              {sharing ? "Sharing…" : "Share"}
+            </Button>
             <Button variant="outline" size="sm" asChild>
               <a href={`/api/videos/${videoId}/captions?format=srt`} download>
                 <Download className="h-4 w-4 mr-2" />

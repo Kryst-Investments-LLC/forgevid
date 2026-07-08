@@ -21,6 +21,12 @@ import { resolveFfmpegPath } from '../lib/ffmpeg-env';
 import { runGeneration, rerenderVideo, loadScenes, saveScenes } from '../lib/generation-pipeline';
 import { resolveBranding } from '../lib/brand-kit';
 import { checkGenerationQuota, recordGenerationUsage } from '../lib/quota';
+import {
+  PRODUCT_ACTIONS,
+  computeUserDefaults,
+  getProductInsights,
+  recordProductEvent,
+} from '../lib/product-loop';
 import { WATERMARK_TEXT } from '../lib/plan';
 import type { ResolvedScene } from '../lib/video-generator';
 
@@ -214,6 +220,29 @@ async function main() {
     assert(ledger.length >= 1, 'the generation wrote an AIGeneration cost row');
     assert(Number(ledger[0].cost) > 0, `estimated cost recorded (${ledger[0].cost} USD)`);
     assert(ledger[0].result === video.id, 'cost row points back at the video');
+
+    // ---- 4d. The product loop: record -> recall -> reflect --------------------
+    console.log('\n4d. Checking the product loop (memory + insights)...');
+    await recordProductEvent(userId, PRODUCT_ACTIONS.rerender, { videoId: video.id });
+    await recordProductEvent(userId, PRODUCT_ACTIONS.sceneEdit, { videoId: video.id });
+    const eventRows = await prisma.usageRecord.count({
+      where: { userId, action: { in: [PRODUCT_ACTIONS.rerender, PRODUCT_ACTIONS.sceneEdit] } },
+    });
+    assert(eventRows === 2, 'product events land in UsageRecord');
+
+    // RECALL: the platform remembers how this user works.
+    const defaults = await computeUserDefaults(userId);
+    assert(defaults.basedOnVideos >= 1, 'defaults are learned from real videos');
+    assert(defaults.style === 'modern', `learned the user's style (${defaults.style})`);
+    assert(defaults.aspectRatio === '16:9', 'learned the aspect ratio');
+
+    // REFLECT: the numbers that say what to fix next.
+    const insights = await getProductInsights(30);
+    assert(insights.generations >= 3, `insights count generations (${insights.generations})`);
+    assert(insights.rerenders >= 1, 'insights count re-renders');
+    assert(insights.sceneEdits >= 1, 'insights count manual edits');
+    assert(insights.avgCostPerGenerationUsd > 0, `insights expose unit cost ($${insights.avgCostPerGenerationUsd}/gen)`);
+    assert(insights.topStyles.some((s) => s.style === 'modern'), 'insights rank style demand');
 
     // ---- 5. Fail visibly -----------------------------------------------------
     console.log('\n5. A generation that cannot find footage must fail visibly...');

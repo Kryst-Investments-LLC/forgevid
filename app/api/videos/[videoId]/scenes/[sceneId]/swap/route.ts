@@ -4,6 +4,7 @@ import { requireVideoOwner } from '@/lib/video-access';
 import { loadScenes, saveScenes } from '@/lib/generation-pipeline';
 import { resolveSceneClip, isStockProviderConfigured } from '@/lib/video-generator';
 import type { AspectRatio } from '@/lib/video-generator';
+import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
 
 /**
  * Swap one scene's stock clip for a different match.
@@ -60,6 +61,10 @@ export async function POST(
 
   scenes[index] = replacement;
   await saveScenes(params.videoId, scenes);
+  await recordProductEvent(access.userId, PRODUCT_ACTIONS.clipSwap, {
+    videoId: params.videoId,
+    sceneId: params.sceneId,
+  });
 
   return NextResponse.json({ scene: replacement });
 }

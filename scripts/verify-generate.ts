@@ -15,6 +15,7 @@ import path from 'path';
 import {
   assembleVideo,
   aspectPreset,
+  renderDims,
   resolveSceneClips,
   type ResolvedScene,
   type AspectRatio,
@@ -545,6 +546,17 @@ function checkSceneOps(clip: string) {
   assert(digest.includes('scene-2 (scene 2)'), 'digest labels scenes the way the prompt expects');
 }
 
+/** Quality tiers are pure math — assert all of them. */
+function checkRenderDims() {
+  console.log('\nChecking render quality dimensions...');
+  const d = (a: any, q: any) => renderDims(a, q);
+  assert(d('16:9', 'full').width === 1920, 'full 16:9 is 1920x1080');
+  assert(d('16:9', 'draft').width === 960 && d('16:9', 'draft').height === 540, 'draft halves 16:9');
+  assert(d('16:9', '4k').width === 3840 && d('16:9', '4k').height === 2160, '4k doubles 16:9 to 3840x2160');
+  assert(d('9:16', '4k').width === 2160 && d('9:16', '4k').height === 3840, '4k vertical is 2160x3840');
+  assert(d('1:1', 'draft').width === 540, 'draft square is 540x540');
+}
+
 /** Draft previews render at half resolution so iteration is cheap. */
 async function checkDraftMode(clipA: string, clipB: string) {
   console.log('\nRendering a draft preview (expect 960x540)...');
@@ -749,6 +761,7 @@ async function main() {
   ffmpeg(['-f', 'lavfi', '-i', 'color=blue:s=640x360:r=24', '-t', '5', '-pix_fmt', 'yuv420p', clipB]);
   assert(fs.existsSync(clipA) && fs.existsSync(clipB), 'source clips created');
 
+  checkRenderDims();
   await renderAndCheck('16:9', [clipA, clipB]);
   await renderAndCheck('9:16', [clipA, clipB]);
   await renderAndCheck('1:1', [clipA, clipB]);

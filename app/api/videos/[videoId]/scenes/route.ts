@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireVideoOwner } from '@/lib/video-access';
 import { loadScenes, saveScenes } from '@/lib/generation-pipeline';
+import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
 
 /**
  * Scene list for a generated video.
@@ -56,6 +57,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { videoId: s
   };
   scenes[index] = updated;
   await saveScenes(params.videoId, scenes);
+  await recordProductEvent(access.userId, PRODUCT_ACTIONS.sceneEdit, {
+    videoId: params.videoId,
+    sceneId,
+  });
 
   return NextResponse.json({ scene: updated });
 }

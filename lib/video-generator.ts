@@ -125,14 +125,20 @@ export function aspectPreset(aspectRatio: AspectRatio = '16:9') {
  */
 export function renderDims(
   aspectRatio: AspectRatio,
-  quality: 'draft' | 'full' = 'full',
+  quality: RenderQuality = 'full',
 ): { width: number; height: number } {
   const { width, height } = aspectPreset(aspectRatio);
   if (quality === 'draft') {
     return { width: Math.round(width / 2), height: Math.round(height / 2) };
   }
+  if (quality === '4k') {
+    // 16:9 -> 3840x2160, 9:16 -> 2160x3840, 1:1 -> 2160x2160.
+    return { width: width * 2, height: height * 2 };
+  }
   return { width, height };
 }
+
+export type RenderQuality = 'draft' | 'full' | '4k';
 
 /** scale+pad filter that fits source footage into the target frame. */
 function fitFilterFor(width: number, height: number): string {
@@ -158,8 +164,8 @@ export interface GenerationOptions {
   transition?: TransitionConfig | null;
   /** The user's own assets, filling scenes in order before stock is searched. */
   userMedia?: UserMediaItem[];
-  /** 'draft' = half-resolution fast preview; 'full' (default) = export quality. */
-  renderQuality?: 'draft' | 'full';
+  /** 'draft' = fast preview, 'full' (default), '4k' = paid plans. */
+  renderQuality?: RenderQuality;
 }
 
 function sceneId(index: number): string {
@@ -699,8 +705,8 @@ export interface AssembleOptions {
   sceneVoiceovers?: SceneVoiceover[] | null;
   /** Set false to keep GPT's scene durations even when narration is per-scene. */
   paceToNarration?: boolean;
-  /** 'draft' renders at half resolution with fast encoding for quick previews. */
-  renderQuality?: 'draft' | 'full';
+  /** 'draft' = fast half-res preview, '4k' = double resolution (paid plans). */
+  renderQuality?: RenderQuality;
 }
 
 export interface AssembleResult {
