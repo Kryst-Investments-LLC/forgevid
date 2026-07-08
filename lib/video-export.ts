@@ -24,15 +24,16 @@ import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import { escapeDrawText, escapeFontPath, resolveCaptionFontFile } from './captions';
+import { resolveFfmpegPath } from './ffmpeg-env';
 
 let ffmpeg: any;
 
 async function getFFmpeg() {
   if (!ffmpeg) {
     const fluentFfmpeg = await import('fluent-ffmpeg');
-    const ffmpegInstaller = await import('@ffmpeg-installer/ffmpeg');
     ffmpeg = fluentFfmpeg.default;
-    ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+    // Prefer a system ffmpeg over the bundled 2018 build (see lib/ffmpeg-env.ts).
+    ffmpeg.setFfmpegPath(resolveFfmpegPath());
   }
   return ffmpeg;
 }

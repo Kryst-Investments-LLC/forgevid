@@ -9,6 +9,7 @@ import { securityConfigs } from '@/lib/api-security';
 import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
 import { DEFAULT_TTS_MODEL, resolveVoiceId } from '@/lib/voice-catalog';
+import { DEFAULT_TRANSITION, TRANSITIONS } from '@/lib/transitions';
 
 const aiGenerationSchema = z.object({
   prompt: z.string().min(1).max(2000),
@@ -63,6 +64,11 @@ const generateVideoSchema = z.object({
   addOns: z.array(z.string()).optional(),
   aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
   voiceId: z.string().optional(),
+  // null = hard cuts. Omitted = the default cross-fade.
+  transition: z
+    .object({ type: z.enum(TRANSITIONS), duration: z.number().min(0).max(3) })
+    .nullable()
+    .optional(),
   enableEmotionAware: z.boolean().optional(),
 });
 
@@ -102,6 +108,7 @@ async function handleGenerateVideo(body: any, userId: string) {
             // Re-render and scene-swap read these back so they stay consistent.
             aspectRatio: input.aspectRatio,
             voiceId: resolveVoiceId(input.voiceId),
+            transition: input.transition === undefined ? DEFAULT_TRANSITION : input.transition,
             // enableEmotionAware is preserved for the pipeline to honor once
             // emotion-aware generation is folded into the worker (TODO Phase 5).
             enableEmotionAware: input.enableEmotionAware ?? false,

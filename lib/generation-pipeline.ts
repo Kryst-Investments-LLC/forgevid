@@ -18,6 +18,15 @@ import { aspectPreset, assembleVideo, generateVideoWithScenes } from './video-ge
 import type { AspectRatio, ResolvedScene } from './video-generator';
 import { selectMusicPath } from './music-library';
 import { freeBranding, resolveBranding } from './brand-kit';
+import { DEFAULT_TRANSITION, isTransitionType, type TransitionConfig } from './transitions';
+
+/** Rebuild a transition from persisted metadata, rejecting unknown types. */
+function transitionFromMetadata(raw: any): TransitionConfig | null {
+  if (raw === null) return null;
+  if (!raw || !isTransitionType(raw.type)) return DEFAULT_TRANSITION;
+  const duration = Number(raw.duration);
+  return { type: raw.type, duration: Number.isFinite(duration) ? duration : DEFAULT_TRANSITION.duration };
+}
 
 /**
  * Branding is resolved from the video's OWNER on the server, never from client
@@ -40,6 +49,8 @@ export interface GenerationInput {
   aspectRatio?: AspectRatio;
   /** ElevenLabs voice id for the narration. */
   voiceId?: string;
+  /** Cross-fade between scenes; null means hard cuts. */
+  transition?: TransitionConfig | null;
   enableEmotionAware?: boolean;
 }
 
@@ -176,6 +187,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       mood: input.style,
       voiceId: input.voiceId,
       branding,
+      transition: input.transition,
     });
 
     await setStage(videoId, 'uploading');
@@ -273,6 +285,8 @@ export async function rerenderVideo(videoId: string): Promise<string> {
       musicPath,
       voiceId: meta.request?.voiceId,
       branding,
+      // Re-render must reuse the same transition, or the output changes shape.
+      transition: transitionFromMetadata(meta.request?.transition),
     });
 
     await setStage(videoId, 'uploading');

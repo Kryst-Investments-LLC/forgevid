@@ -28,6 +28,14 @@ import {
   type CaptionStyle,
 } from './captions';
 import { overlayPosition, type Branding } from './brand-kit';
+import {
+  DEFAULT_TRANSITION,
+  buildXfadeChain,
+  clampTransitionDuration,
+  paddedClipDurations,
+  type TransitionConfig,
+} from './transitions';
+import { resolveFfmpegPath, supportsFilter } from './ffmpeg-env';
 
 // Dynamic imports to avoid webpack bundling issues
 let ffmpeg: any;
@@ -39,9 +47,10 @@ let ffmpegBin = '';
 async function initializeModules() {
   if (!ffmpeg) {
     const fluentFfmpeg = await import('fluent-ffmpeg');
-    const ffmpegInstaller = await import('@ffmpeg-installer/ffmpeg');
     ffmpeg = fluentFfmpeg.default;
-    ffmpegBin = ffmpegInstaller.path;
+    // Prefer a system ffmpeg: the bundled installer pins a 2018 build with no
+    // xfade. See lib/ffmpeg-env.ts.
+    ffmpegBin = resolveFfmpegPath();
     ffmpeg.setFfmpegPath(ffmpegBin);
   }
   if (!createClient) {
@@ -115,6 +124,8 @@ export interface GenerationOptions {
   voiceId?: string;
   /** Plan-gated branding (watermark / logo / intro / outro). */
   branding?: Branding | null;
+  /** Cross-fade between scenes; null for hard cuts. */
+  transition?: TransitionConfig | null;
 }
 
 function sceneId(index: number): string {
@@ -578,6 +589,8 @@ export interface AssembleOptions {
   captionStyle?: CaptionStyle;
   /** Plan-gated branding: watermark, logo, intro/outro, caption colour/font. */
   branding?: Branding | null;
+  /** Cross-fade between scenes. Pass null for hard cuts. */
+  transition?: TransitionConfig | null;
 }
 
 export interface AssembleResult {
@@ -644,12 +657,36 @@ export async function assembleVideo(
     // Only a voiceover we synthesized is ours to delete.
     if (voiceoverPath && !options.voiceoverPath) tempFiles.push(voiceoverPath);
 
-    // Trim each clip to its scene duration.
+    // Cross-fades overlap clips, so each clip but the last is rendered longer by
+    // the transition duration — that keeps the total equal to sum(sceneDurations),
+    // which keeps the narration in sync and caption cues valid.
+    const sceneDurations = scenes.map((s) => s.duration);
+    let requested = options.transition === null ? null : options.transition ?? DEFAULT_TRANSITION;
+
+    // xfade needs ffmpeg >= 4.3. Degrade to hard cuts rather than failing.
+    if (requested && !supportsFilter('xfade')) {
+      console.warn(
+        `[Video Generator] This ffmpeg has no xfade filter (needs >= 4.3) — ` +
+          `rendering hard cuts. Install a newer ffmpeg or set FFMPEG_PATH.`,
+      );
+      requested = null;
+    }
+
+    const transitionDuration = requested
+      ? clampTransitionDuration(requested.duration, sceneDurations)
+      : 0;
+    const transition: TransitionConfig | null =
+      requested && transitionDuration > 0
+        ? { type: requested.type, duration: transitionDuration }
+        : null;
+    const clipDurations = paddedClipDurations(sceneDurations, transitionDuration);
+
+    // Trim each clip to its (possibly padded) duration.
     for (let i = 0; i < scenes.length; i++) {
       const trimmedPath = path.join(tempDir, `trimmed_${Date.now()}_${i}.mp4`);
       await new Promise<void>((resolve, reject) => {
         ffmpeg(sources[i])
-          .setDuration(scenes[i].duration)
+          .setDuration(clipDurations[i])
           .outputOptions([
             '-c:v libx264',
             '-preset ultrafast',
@@ -666,6 +703,40 @@ export async function assembleVideo(
           .run();
       });
       trimmed.push(trimmedPath);
+    }
+
+    // Cross-fade the scenes into ONE clip, so the rest of the pipeline (bookend
+    // concat, captions, audio) is untouched. Skipped for a single scene.
+    if (transition && trimmed.length > 1) {
+      const chain = buildXfadeChain(clipDurations, transition);
+      const fadedPath = path.join(tempDir, `xfade_${Date.now()}.mp4`);
+
+      await new Promise<void>((resolve, reject) => {
+        const cmd = ffmpeg();
+        for (const clip of trimmed) cmd.input(clip);
+        cmd
+          .complexFilter(chain.filters.join(';'), [chain.outputLabel])
+          .outputOptions([
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '23',
+            '-an',
+            '-r', '30',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+          ])
+          .output(fadedPath)
+          .on('end', () => resolve())
+          .on('error', (err: Error) => reject(err))
+          .run();
+      });
+
+      tempFiles.push(...trimmed);
+      trimmed.length = 0;
+      trimmed.push(fadedPath);
+      console.log(
+        `[Video Generator] Applied ${transition.type} transitions (${transition.duration}s)`,
+      );
     }
 
     // Brand intro/outro bookend the scenes. They must be normalized to the same
@@ -880,7 +951,8 @@ export async function generateVideoWithScenes(
   cues: CaptionCue[];
   thumbnailUrl: string | null;
 }> {
-  const { prompt, duration, addOns, aspectRatio = '16:9', mood, voiceId, branding } = options;
+  const { prompt, duration, addOns, aspectRatio = '16:9', mood, voiceId, branding, transition } =
+    options;
 
   const planned = await planScenes(prompt, duration);
   if (planned.length === 0) throw new Error('Failed to plan any scenes from the script');
@@ -895,6 +967,7 @@ export async function generateVideoWithScenes(
     musicPath,
     voiceId,
     branding,
+    transition,
   });
 
   console.log(

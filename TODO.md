@@ -85,7 +85,15 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - `GET/PUT /api/brand-kit` (PUT is 403 for free plans).
 - **Runtime verified**: the plan gate, filtergraph-injection rejection, a branded render with watermark + logo overlay + intro/outro concatenating to exactly 4.00s (proving duration probing + bookend normalization), and `shiftCues` delaying captions by the intro duration.
 - Bug avoided by testing: an intro prepended to the render would have made every caption fire early — cues are timed relative to the scenes, so they must shift.
-- ⚠ Migration unapplied (no DB here). No brand-kit UI yet; API only.
+- ⚠ Migration unapplied (no DB here).
+- Brand-kit UI shipped as a "Branding" tab in dashboard settings, plus `POST /api/brand-kit/logo` (multipart → Cloudinary). Needed because `/api/media` never actually uploaded anything — it records a url and falls back to a literal `placeholder-<type>-url`.
+
+**2026-07-08 — Phase 7a done: scene transitions (xfade).**
+- **Found a bigger bug than the feature.** `@ffmpeg-installer/ffmpeg` pins a **2018 build (N-92722)** with no `xfade` (added in ffmpeg 4.3). And `setFfmpegPath(installer.path)` was called unconditionally, so the Dockerfile's `apk add ffmpeg` was overridden — that ancient binary ran in production too.
+- `lib/ffmpeg-env.ts`: resolve `FFMPEG_PATH` → `ffmpeg-static` (6.1.1) → system `ffmpeg` → the bundled 2018 build, and **probe filter capabilities** instead of assuming them. `ffmpeg-static` is now a runtime dependency. Transitions degrade to hard cuts with a clear warning on an old binary rather than failing the render.
+- `lib/transitions.ts`: xfade **overlaps** clips, so a naive chain of N scenes loses `(N-1)×D` seconds — the fixed-length narration would then outrun the video and every caption would land late. Each clip but the last is padded by `D`, so the total stays `sum(sceneDurations)` and cue times need no adjustment. Duration clamped to half the shortest scene; <100ms is treated as a cut.
+- Transition persists in `metadata.request.transition` (validated against the allowed list) so re-render matches.
+- **Runtime verified on ffmpeg 6.1.1**: 3×2s scenes with a 0.5s fade render to exactly **6.00s**, hard cuts also 6.00s, plus the padding math and an explicit assertion that the *unpadded* chain would lose 1s (the bug this guards).
 
 ---
 

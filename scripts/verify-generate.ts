@@ -27,8 +27,15 @@ import {
 } from '../lib/captions';
 import { allowsCustomBranding, requiresWatermark, WATERMARK_TEXT } from '../lib/plan';
 import { freeBranding, isValidHexColor, overlayPosition } from '../lib/brand-kit';
+import {
+  buildXfadeChain,
+  clampTransitionDuration,
+  paddedClipDurations,
+  xfadeTotalDuration,
+} from '../lib/transitions';
+import { resolveFfmpegPath, supportsFilter } from '../lib/ffmpeg-env';
 
-const ffmpegPath: string = require('@ffmpeg-installer/ffmpeg').path;
+const ffmpegPath: string = resolveFfmpegPath();
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-generate');
 
 function ffmpeg(args: string[]) {
@@ -254,6 +261,85 @@ async function checkCaptionEscaping(clip: string) {
   fs.unlinkSync(outFile);
 }
 
+/**
+ * xfade OVERLAPS clips. Chained naively, N scenes lose (N-1)*D seconds — the
+ * narration (fixed length) would then run past the video and every caption
+ * would land late. Padding each clip but the last by D keeps the total exact.
+ */
+function checkTransitionMath() {
+  console.log('\nChecking transition duration math...');
+  const scenes = [2, 2, 2];
+  const D = 0.5;
+
+  assert(clampTransitionDuration(D, [2]) === 0, 'single scene => no transition');
+  assert(clampTransitionDuration(5, [2, 2]) === 1, 'clamped to half the shortest scene');
+  assert(clampTransitionDuration(0.05, [2, 2]) === 0, 'sub-100ms transition is treated as a cut');
+
+  const padded = paddedClipDurations(scenes, D);
+  assert(
+    padded[0] === 2.5 && padded[1] === 2.5 && padded[2] === 2,
+    'every clip but the last is padded by the transition duration',
+  );
+  assert(
+    xfadeTotalDuration(padded, D) === 6,
+    'padded chain preserves total duration (6s, not 5s)',
+  );
+  // The naive version is exactly the bug this guards against.
+  assert(xfadeTotalDuration(scenes, D) === 5, 'unpadded chain would LOSE 1s (the bug)');
+
+  const chain = buildXfadeChain(padded, { type: 'fade', duration: D });
+  assert(chain.filters.length === 2, '3 clips => 2 xfade statements');
+  assert(chain.filters[0].includes('offset=2.000'), 'first fade starts at the first scene boundary');
+  assert(chain.outputLabel === 'vxout', 'chain terminates in a mappable label');
+}
+
+/**
+ * ffmpeg capability probing. @ffmpeg-installer pins a 2018 build with no xfade
+ * (ffmpeg >= 4.3), so transitions must degrade rather than blow up the render.
+ */
+function checkFfmpegCapabilities(): boolean {
+  console.log('\nChecking ffmpeg capabilities...');
+  const bin = resolveFfmpegPath();
+  assert(!!bin, `resolved an ffmpeg binary (${bin})`);
+  assert(supportsFilter('drawtext'), 'capability probe finds a filter that exists (drawtext)');
+  assert(!supportsFilter('definitely_not_a_real_filter'), 'capability probe rejects a fake filter');
+
+  const hasXfade = supportsFilter('xfade');
+  console.log(`      xfade supported: ${hasXfade}`);
+  return hasXfade;
+}
+
+/** The duration invariant must hold whichever path ffmpeg takes. */
+async function checkTransitionRender(clipA: string, clipB: string, hasXfade: boolean) {
+  const scenes = [scene(0, clipA, 2), scene(1, clipB, 2), scene(2, clipA, 2)];
+  const generated = path.join(process.cwd(), 'public', 'generated');
+
+  console.log(
+    hasXfade
+      ? '\nRendering 3 scenes with cross-fades...'
+      : '\nRendering 3 scenes; xfade unsupported, expecting a graceful fall back to cuts...',
+  );
+  const { videoUrl: url } = await assembleVideo(scenes, ['subtitles'], '16:9', {
+    transition: { type: 'fade', duration: 0.5 },
+  });
+  const dur = durationSeconds(probe(path.join(generated, path.basename(url))));
+  assert(
+    Math.abs(dur - 6) < 0.4,
+    hasXfade
+      ? `cross-faded video keeps its 6s duration (got ${dur.toFixed(2)}s) — narration stays in sync`
+      : `fell back to hard cuts and still rendered 6s (got ${dur.toFixed(2)}s)`,
+  );
+  fs.rmSync(generated, { recursive: true, force: true });
+
+  console.log('Rendering the same scenes with transitions explicitly disabled...');
+  const { videoUrl: cutUrl } = await assembleVideo(scenes, ['subtitles'], '16:9', {
+    transition: null,
+  });
+  const cutDur = durationSeconds(probe(path.join(generated, path.basename(cutUrl))));
+  assert(Math.abs(cutDur - 6) < 0.4, `hard-cut video is also 6s (got ${cutDur.toFixed(2)}s)`);
+  fs.rmSync(generated, { recursive: true, force: true });
+}
+
 /** The plan gate is what makes the watermark a business rule, not decoration. */
 function checkPlanGate() {
   console.log('\nChecking plan gate...');
@@ -346,6 +432,9 @@ async function main() {
   await checkMusicDucking(clipA);
   checkPlanGate();
   await checkBrandingRender(clipA);
+  checkTransitionMath();
+  const hasXfade = checkFfmpegCapabilities();
+  await checkTransitionRender(clipA, clipB, hasXfade);
 
   // Regression guard: assembleVideo must not delete media it did not download.
   assert(fs.existsSync(clipA) && fs.existsSync(clipB), 'caller-owned local sources were NOT deleted');

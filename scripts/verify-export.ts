@@ -12,9 +12,10 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { resolveFfmpegPath } from '../lib/ffmpeg-env';
 import { exportTimelineVideo, type ExportTrack } from '../lib/video-export';
 
-const ffmpegPath: string = require('@ffmpeg-installer/ffmpeg').path;
+const ffmpegPath: string = resolveFfmpegPath();
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-export');
 
 function ffmpeg(args: string[]) {
