@@ -7,6 +7,7 @@
     "build": "next build",
     "dev": "node server.js",
     "worker": "tsx workers/video-worker.ts",
+    "verify:export": "tsx scripts/verify-export.ts",
     "lint": "next lint",
     "start": "next start",
     "test": "jest",

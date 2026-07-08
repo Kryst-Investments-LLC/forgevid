@@ -24,6 +24,14 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 - **`npm run build` now exits 0** (was a hard failure). Root cause: OpenAI/Stripe clients constructed at module scope, plus `ENCRYPTION_KEY`/`JWT_SECRET` throws at import — all deferred via `lib/lazy-client.ts`. Also fixed two prerender errors.
 - Caution: `npx tsc` resolves an unrelated `tsc` binary here. **Verify with `npm run type-check` and check the exit code**, not by grepping output.
 
+**2026-07-08 — Phase 4 done (decision: keep FFmpeg, no Remotion/Creatomate).**
+- Decision rationale: we already have a working FFmpeg assembler that handles remote assets. Remotion means running a React render farm; Creatomate is per-render cost and ships user content to a third party. Neither is warranted — the timeline export is the same problem the generator already solves.
+- `lib/video-export.ts` rewritten: resolves remote assets (was: treated `assetId` as a filesystem path and silently skipped everything), fills timeline gaps with black to preserve timing, mixes audio tracks with `adelay`/`amix`, renders text clips as `drawtext`, cleans temp files in `finally`. Deleted `createPlaceholderVideo` (last Phase 8 placeholder).
+- `/api/editor/export` now resolves `assetId` → `MediaAsset.url` and returns 422 for unresolvable clips / empty timelines instead of exporting a blue placeholder.
+- **Runtime verified**: `npm run verify:export` renders a real timeline with ffmpeg (gap filler, audio mix, text overlay) and asserts duration/streams/resolution. This is the first behavior-verified component.
+- Two real bugs that only running it could find: fluent-ffmpeg splits `outputOptions` entries on whitespace (broke `drawtext` values containing spaces — use `.complexFilter()`), and `-shortest` never terminates against `apad` from `filter_complex` (bound output with `-t` instead).
+- Known scope limits: audio embedded in video clips is dropped (audio comes from audio tracks); no multi-video-track layering; `drawtext` relies on a system font (may fail in a bare Linux container — bundle a font before deploying).
+
 ---
 
 ## Phase 0 — Repo hygiene (do before any feature work)

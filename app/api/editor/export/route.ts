@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { securityConfigs } from '@/lib/api-security';
-import { createPlaceholderVideo, exportTimelineVideo } from '@/lib/video-export';
+import { exportTimelineVideo, type ExportTrack } from '@/lib/video-export';
 import { uploadVideo } from '@/lib/cloudinary';
 import { sendExportCompleteEmail } from '@/lib/email';
 import crypto from 'crypto';
@@ -42,6 +42,64 @@ async function handlePost(request: NextRequest) {
     // Get timeline state from metadata
     const projectData = video.metadata ? JSON.parse(video.metadata) : null;
     const tracks = projectData?.tracks || [];
+
+    if (tracks.length === 0) {
+      return NextResponse.json(
+        { error: 'This project has no timeline to export' },
+        { status: 422 },
+      );
+    }
+
+    // Clips reference MediaAsset ids; the renderer needs real media URLs.
+    const assetIds: string[] = Array.from(
+      new Set(
+        tracks.flatMap((t: any) => (t.clips || []).map((c: any) => c.assetId).filter(Boolean)),
+      ),
+    );
+    const assets = assetIds.length
+      ? await prisma.mediaAsset.findMany({
+          where: { id: { in: assetIds } },
+          select: { id: true, url: true },
+        })
+      : [];
+    const urlByAssetId = new Map(assets.map((a) => [a.id, a.url]));
+
+    const exportTracks: ExportTrack[] = tracks.map((t: any) => ({
+      id: t.id,
+      type: t.type,
+      muted: t.muted,
+      clips: (t.clips || []).map((c: any) => ({
+        id: c.id,
+        source: c.assetId ? urlByAssetId.get(c.assetId) : undefined,
+        startTime: c.startTime,
+        duration: c.duration,
+        trimStart: c.trimStart,
+        muted: c.muted,
+        text: c.text,
+      })),
+    }));
+
+    // Fail visibly rather than silently skipping clips we cannot resolve.
+    const unresolved = exportTracks
+      .filter((t) => t.type !== 'text')
+      .flatMap((t) => t.clips)
+      .filter((c) => !c.source);
+    if (unresolved.length > 0) {
+      return NextResponse.json(
+        {
+          error: 'Some clips reference media that no longer exists',
+          clipIds: unresolved.map((c) => c.id),
+        },
+        { status: 422 },
+      );
+    }
+
+    if (!exportTracks.some((t) => t.type === 'video' && t.clips.length > 0)) {
+      return NextResponse.json(
+        { error: 'Timeline has no video clips to export' },
+        { status: 422 },
+      );
+    }
 
     // Create export record
     const exportId = `export-${crypto.randomUUID()}`;
@@ -82,16 +140,12 @@ async function handlePost(request: NextRequest) {
       try {
         console.log(`[Editor Export] Starting export ${exportId}...`);
         
-        // Generate video using either real export or placeholder
-        let finalVideoPath: string;
-        if (tracks.length > 0) {
-          // Use real video export with timeline
-          finalVideoPath = await exportTimelineVideo(tracks, exportSettings, outputPath);
-        } else {
-          // Use placeholder for testing
-          finalVideoPath = await createPlaceholderVideo(duration, outputPath, exportSettings);
-        }
-        
+        const finalVideoPath = await exportTimelineVideo(
+          exportTracks,
+          exportSettings,
+          outputPath,
+        );
+
         console.log(`[Editor Export] Video rendered: ${finalVideoPath}`);
         
         // Upload to Cloudinary for CDN delivery
