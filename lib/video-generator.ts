@@ -18,7 +18,7 @@ import { spawnSync } from 'child_process';
 import { openAiApiKey } from './openai-key';
 import { uploadImage as uploadCloudinaryImage, uploadVideo as uploadCloudinaryVideo } from './cloudinary';
 import { selectMusicPath } from './music-library';
-import { DEFAULT_TTS_MODEL, resolveVoiceId } from './voice-catalog';
+import { DEFAULT_TTS_MODEL, DEFAULT_VOICE_ID } from './voice-catalog';
 import {
   buildCaptionFilter,
   buildWatermarkFilter,
@@ -302,7 +302,8 @@ async function generateVoiceover(narration: string, voiceId?: string): Promise<s
 
   try {
     const textToSpeak = narration.slice(0, 2000);
-    const voice = resolveVoiceId(voiceId);
+    // Validated upstream (catalog or cloned voice) — use verbatim.
+    const voice = voiceId || DEFAULT_VOICE_ID;
     console.log(`[Video Generator] Generating voiceover (${textToSpeak.length} chars, voice ${voice})...`);
 
     const response = await fetch(

@@ -22,7 +22,7 @@ import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { resolveFfmpegPath } from './ffmpeg-env';
-import { DEFAULT_TTS_MODEL, resolveVoiceId } from './voice-catalog';
+import { DEFAULT_TTS_MODEL, DEFAULT_VOICE_ID } from './voice-catalog';
 
 export interface SceneLine {
   id: string;
@@ -108,7 +108,8 @@ export async function synthesizeSceneVoiceovers(
   synth: SceneSynth = elevenLabsSynth,
 ): Promise<SceneVoiceover[] | null> {
   if (scenes.length === 0) return null;
-  const voice = resolveVoiceId(voiceId ?? undefined);
+  // Validated upstream (catalog or the user's cloned voice) — use verbatim.
+  const voice = voiceId || DEFAULT_VOICE_ID;
   const out: SceneVoiceover[] = [];
 
   for (const scene of scenes) {

@@ -78,6 +78,7 @@ model User {
   supportTickets SupportTicket[]
   betaAccessEntriesCreated BetaAccessEntry[] @relation("BetaAccessCreatedBy")
   brandKit       BrandKit?
+  clonedVoices   ClonedVoice[]
 
   @@map("users")
   @@index([email])
@@ -699,6 +700,21 @@ enum SSOProvider {
   AZURE
   OKTA
   SAML
+}
+
+/// A voice cloned from the user's own recording via ElevenLabs voice-add.
+/// providerVoiceId is the ElevenLabs voice id used for TTS. Pro plans only.
+model ClonedVoice {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerVoiceId String
+  name            String
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, providerVoiceId])
+  @@map("cloned_voices")
+  @@index([userId])
 }
 
 /// Per-user branding applied at render time. Paid plans only (see lib/plan.ts).

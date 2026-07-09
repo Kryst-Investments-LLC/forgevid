@@ -59,6 +59,16 @@ export function allows4k(plan: Plan): boolean {
   return plan === 'pro' || plan === 'enterprise' || plan === 'custom';
 }
 
+/** Voice cloning stores biometric-adjacent data and bills per clone — Pro+. */
+export function allowsVoiceCloning(plan: Plan): boolean {
+  return plan === 'pro' || plan === 'enterprise' || plan === 'custom';
+}
+
+/** Avatar videos bill per render minute on the provider — Pro+. */
+export function allowsAvatars(plan: Plan): boolean {
+  return plan === 'pro' || plan === 'enterprise' || plan === 'custom';
+}
+
 /** Custom branding (logo overlay, intro/outro) is a paid feature. */
 export function allowsCustomBranding(plan: Plan): boolean {
   return isPaidPlan(plan);

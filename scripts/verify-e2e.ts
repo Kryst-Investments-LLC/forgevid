@@ -28,6 +28,8 @@ import {
   recordProductEvent,
 } from '../lib/product-loop';
 import { WATERMARK_TEXT } from '../lib/plan';
+import { resolveVoiceIdForUser } from '../lib/cloned-voices';
+import { DEFAULT_VOICE_ID, VOICES } from '../lib/voice-catalog';
 import type { ResolvedScene } from '../lib/video-generator';
 
 const ffmpegPath = resolveFfmpegPath();
@@ -244,6 +246,24 @@ async function main() {
     assert(insights.avgCostPerGenerationUsd > 0, `insights expose unit cost ($${insights.avgCostPerGenerationUsd}/gen)`);
     assert(insights.topStyles.some((s) => s.style === 'modern'), 'insights rank style demand');
 
+    // ---- 4e. Cloned voices resolve for their owner only -----------------------
+    console.log('\n4e. Checking cloned-voice resolution...');
+    await prisma.clonedVoice.create({
+      data: { userId, providerVoiceId: `clone_${stamp}`, name: 'My voice' },
+    });
+    assert(
+      (await resolveVoiceIdForUser(userId, `clone_${stamp}`)) === `clone_${stamp}`,
+      'owner may use their cloned voice',
+    );
+    assert(
+      (await resolveVoiceIdForUser(userId, 'someone_elses_voice')) === DEFAULT_VOICE_ID,
+      'an unowned voice id falls back to the default (never sent upstream)',
+    );
+    assert(
+      (await resolveVoiceIdForUser(userId, VOICES[0].id)) === VOICES[0].id,
+      'catalog voices still resolve',
+    );
+
     // ---- 5. Fail visibly -----------------------------------------------------
     console.log('\n5. A generation that cannot find footage must fail visibly...');
     const pexels = process.env.PEXELS_API_KEY;
@@ -279,6 +299,7 @@ async function main() {
     if (userId) {
       // subscriptions_userId_fkey is RESTRICT (not CASCADE), so children must go
       // first or the user delete is rejected.
+      await prisma.clonedVoice.deleteMany({ where: { userId } }).catch(() => {});
       await prisma.usageRecord.deleteMany({ where: { userId } }).catch(() => {});
       await prisma.aIGeneration.deleteMany({ where: { userId } }).catch(() => {});
       await prisma.subscription.deleteMany({ where: { userId } }).catch(() => {});

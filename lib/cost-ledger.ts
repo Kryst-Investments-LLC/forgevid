@@ -20,6 +20,8 @@ export const RATES = {
   whisperPerMinute: 0.006,
   /** Our compute: ffmpeg render, per minute of output (rough VM amortisation). */
   renderPerMinute: 0.01,
+  /** HeyGen-class avatar rendering, per minute of output. */
+  avatarPerMinute: 0.5,
 };
 
 export interface CostInputs {
@@ -27,6 +29,7 @@ export interface CostInputs {
   ttsChars?: number;
   whisperSeconds?: number;
   renderSeconds?: number;
+  avatarSeconds?: number;
 }
 
 export interface CostBreakdown extends Required<CostInputs> {
@@ -38,18 +41,21 @@ export function estimateGenerationCost(inputs: CostInputs): CostBreakdown {
   const ttsChars = Math.max(0, inputs.ttsChars ?? 0);
   const whisperSeconds = Math.max(0, inputs.whisperSeconds ?? 0);
   const renderSeconds = Math.max(0, inputs.renderSeconds ?? 0);
+  const avatarSeconds = Math.max(0, inputs.avatarSeconds ?? 0);
 
   const totalUsd =
     (gptTokens / 1000) * RATES.gptPer1kTokens +
     (ttsChars / 1000) * RATES.ttsPer1kChars +
     (whisperSeconds / 60) * RATES.whisperPerMinute +
-    (renderSeconds / 60) * RATES.renderPerMinute;
+    (renderSeconds / 60) * RATES.renderPerMinute +
+    (avatarSeconds / 60) * RATES.avatarPerMinute;
 
   return {
     gptTokens,
     ttsChars,
     whisperSeconds,
     renderSeconds,
+    avatarSeconds,
     totalUsd: Number(totalUsd.toFixed(6)),
   };
 }

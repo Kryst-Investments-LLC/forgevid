@@ -10,6 +10,7 @@
     "verify:export": "tsx scripts/verify-export.ts",
     "verify:generate": "tsx scripts/verify-generate.ts",
     "verify:e2e": "tsx scripts/verify-e2e.ts",
+    "verify:e2e:db": "bash scripts/run-e2e-with-db.sh",
     "lint": "next lint",
     "start": "next start",
     "test": "jest",

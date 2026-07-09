@@ -45,6 +45,9 @@ import { buildKenBurnsFilter, directionForScene } from '../lib/ken-burns';
 import { hasOpenAiKey, openAiApiKey } from '../lib/openai-key';
 import { applySceneOps, describeScenesForModel, sceneOpsSchema } from '../lib/scene-ops';
 import { withRenderSlot, activeRenders, queuedRenders } from '../lib/render-semaphore';
+import { avatarDimension, buildAvatarVideoPayload } from '../lib/avatar-provider';
+import { allowsAvatars, allowsVoiceCloning } from '../lib/plan';
+import { estimateGenerationCost } from '../lib/cost-ledger';
 import { SCENE_AUDIO_PADDING_SECONDS, synthesizeSceneVoiceovers } from '../lib/voiceover';
 
 /** Unique per run, so a previous run's TTS cache can't fake a "first pass". */
@@ -546,6 +549,39 @@ function checkSceneOps(clip: string) {
   assert(digest.includes('scene-2 (scene 2)'), 'digest labels scenes the way the prompt expects');
 }
 
+/**
+ * The HeyGen contract we THINK we speak, pinned. The live call cannot run here
+ * (no key), so the payload builder is the testable seam.
+ */
+function checkAvatarContract() {
+  console.log('\nChecking avatar provider contract + plan gates...');
+  const payload: any = buildAvatarVideoPayload({
+    script: 'Hello from ForgeVid',
+    avatarId: 'av_123',
+    aspectRatio: '9:16',
+  });
+  assert(payload.video_inputs?.[0]?.character?.avatar_id === 'av_123', 'payload carries the avatar id');
+  assert(payload.video_inputs?.[0]?.voice?.input_text === 'Hello from ForgeVid', 'payload carries the script');
+  assert(payload.dimension.width === 720 && payload.dimension.height === 1280, 'vertical avatar renders 720x1280');
+  assert(avatarDimension('16:9').width === 1280, 'landscape avatar is 1280x720');
+  assert(!('voice_id' in (payload.video_inputs[0].voice ?? {})), 'no voice_id unless one is chosen');
+
+  const withVoice: any = buildAvatarVideoPayload({
+    script: 'x'.repeat(5),
+    avatarId: 'a',
+    aspectRatio: '16:9',
+    voiceId: 'cloned123',
+  });
+  assert(withVoice.video_inputs[0].voice.voice_id === 'cloned123', 'chosen voice id is passed through');
+
+  assert(!allowsAvatars('free') && !allowsAvatars('starter'), 'avatars are gated below pro');
+  assert(allowsAvatars('pro'), 'pro can render avatars');
+  assert(!allowsVoiceCloning('free') && allowsVoiceCloning('pro'), 'voice cloning is pro+');
+
+  const cost = estimateGenerationCost({ avatarSeconds: 60 });
+  assert(cost.totalUsd === 0.5, `a 60s avatar render books $0.50 (got $${cost.totalUsd})`);
+}
+
 /** Quality tiers are pure math — assert all of them. */
 function checkRenderDims() {
   console.log('\nChecking render quality dimensions...');
@@ -761,6 +797,7 @@ async function main() {
   ffmpeg(['-f', 'lavfi', '-i', 'color=blue:s=640x360:r=24', '-t', '5', '-pix_fmt', 'yuv420p', clipB]);
   assert(fs.existsSync(clipA) && fs.existsSync(clipB), 'source clips created');
 
+  checkAvatarContract();
   checkRenderDims();
   await renderAndCheck('16:9', [clipA, clipB]);
   await renderAndCheck('9:16', [clipA, clipB]);

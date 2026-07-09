@@ -10,6 +10,7 @@ import { securityConfigs } from '@/lib/api-security';
 import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
 import { DEFAULT_TTS_MODEL, resolveVoiceId } from '@/lib/voice-catalog';
+import { resolveVoiceIdForUser } from '@/lib/cloned-voices';
 import { DEFAULT_TRANSITION, TRANSITIONS } from '@/lib/transitions';
 import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
 import { allows4k } from '@/lib/plan';
@@ -143,7 +144,7 @@ async function handleGenerateVideo(body: any, userId: string) {
             addOns: input.addOns ?? [],
             // Re-render and scene-swap read these back so they stay consistent.
             aspectRatio: input.aspectRatio,
-            voiceId: resolveVoiceId(input.voiceId),
+            voiceId: await resolveVoiceIdForUser(userId, input.voiceId),
             transition: input.transition === undefined ? DEFAULT_TRANSITION : input.transition,
             mediaAssetIds: input.mediaAssetIds ?? [],
             renderQuality: input.renderQuality,
