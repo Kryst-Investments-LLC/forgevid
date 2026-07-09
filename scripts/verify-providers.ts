@@ -101,6 +101,116 @@ async function renderWithRealVoice() {
   console.log(`      kept for listening: ${outFile}`);
 }
 
+async function checkOpenAI() {
+  const { hasOpenAiKey, openAiApiKey } = await import('../lib/openai-key');
+  if (!hasOpenAiKey()) {
+    console.log('\nOpenAI: no key — skipped');
+    return false;
+  }
+  console.log('\nChecking OpenAI (live)...');
+
+  // Tiny completion (~20 tokens) validates the key and the model we use.
+  const { OpenAI } = await import('openai');
+  const openai = new OpenAI({ apiKey: openAiApiKey() });
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: 'Reply with exactly: ok' }],
+    max_tokens: 5,
+  });
+  const reply = completion.choices[0]?.message?.content?.trim().toLowerCase() ?? '';
+  assert(reply.includes('ok'), `chat completion works (reply: "${reply}")`);
+
+  // Whisper, through OUR caption path, on a KNOWN real-speech segment (~2s,
+  // ~$0.0002). The cache also holds sine-tone artifacts from the injectable-
+  // synth tests, so we address the exact file by its content hash rather than
+  // grabbing whatever sorts first.
+  const fs = await import('fs');
+  const path = await import('path');
+  const { sceneCacheKey } = await import('../lib/voiceover');
+  const { DEFAULT_VOICE_ID } = await import('../lib/voice-catalog');
+  const knownLine = 'ForgeVid live check, part one.';
+  const speechFile = path.join(
+    process.cwd(),
+    '.cache',
+    'tts',
+    `${sceneCacheKey(knownLine, DEFAULT_VOICE_ID)}.mp3`,
+  );
+  if (fs.existsSync(speechFile)) {
+    const { transcribeAudioToText } = await import('../lib/captions');
+    const text = (await transcribeAudioToText(speechFile)) ?? '';
+    assert(
+      /part one/i.test(text) || /forge/i.test(text),
+      `Whisper transcribed the actual words: "${text}"`,
+    );
+  } else {
+    console.log('      (known speech segment not cached yet — Whisper check skipped)');
+  }
+  return true;
+}
+
+async function checkPexels() {
+  if (!process.env.PEXELS_API_KEY) {
+    console.log('\nPexels: no key — skipped');
+    return false;
+  }
+  console.log('\nChecking Pexels (live)...');
+  const { searchStockVideos, searchStockPhotos } = await import('../lib/video-generator');
+
+  const clips = await searchStockVideos('ocean waves', 3);
+  assert(clips.length > 0, `video search returns footage (${clips.length} clips)`);
+  assert(/^https?:\/\//.test(clips[0].url), 'clip urls are real remote media');
+
+  const photos = await searchStockPhotos('mountain sunrise', 3);
+  assert(photos.length > 0, `photo search returns stills (${photos.length} photos)`);
+  return true;
+}
+
+/**
+ * The milestone: a PROMPT becomes a narrated stock-footage video, live —
+ * GPT plans the scenes, Pexels supplies the footage, ElevenLabs narrates,
+ * ffmpeg assembles with speech-aligned captions and narration pacing.
+ */
+async function generateFromPrompt() {
+  console.log('\nFIRST FULL PROMPT -> VIDEO (live GPT + Pexels + ElevenLabs)...');
+  const { generateVideoWithScenes } = await import('../lib/video-generator');
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const { videoUrl, scenes, cues } = await generateVideoWithScenes({
+    prompt:
+      'A calm 10-second video about starting the day well: sunrise over the sea, ' +
+      'a fresh cup of coffee, a person opening a laptop ready to work.',
+    style: 'modern',
+    duration: 10,
+    addOns: [], // everything on: narration + captions
+    aspectRatio: '16:9',
+    transition: { type: 'fade', duration: 0.4 },
+  });
+
+  assert(scenes.length >= 2, `GPT planned ${scenes.length} scenes from the prompt`);
+  assert(
+    scenes.every((s) => /^https?:\/\//.test(s.clipUrl)),
+    'every scene matched real Pexels footage',
+  );
+  assert(cues.length >= 2, 'speech-aligned captions were produced');
+
+  const isRemote = /^https?:\/\//.test(videoUrl);
+  const outFile = isRemote
+    ? null
+    : path.join(process.cwd(), 'public', 'generated', path.basename(videoUrl));
+  if (outFile) {
+    assert(fs.existsSync(outFile), 'the video exists on disk');
+    console.log(`      WATCH IT: ${outFile}`);
+  } else {
+    console.log(`      WATCH IT: ${videoUrl}`);
+  }
+  for (const s of scenes) {
+    console.log(
+      `      ${s.id} (${s.duration.toFixed(2)}s, ${s.mediaType ?? 'video'}): "${s.description.slice(0, 70)}" [${s.matchedQuery}]`,
+    );
+  }
+}
+
 async function checkHeyGen() {
   const key = process.env.HEYGEN_API_KEY;
   if (!key) {
@@ -119,7 +229,11 @@ async function checkHeyGen() {
 async function main() {
   const el = await checkElevenLabs();
   if (el) await renderWithRealVoice();
+  const oa = await checkOpenAI();
+  const px = await checkPexels();
   await checkHeyGen();
+  // The full loop needs all three creative providers.
+  if (el && oa && px) await generateFromPrompt();
   console.log('\nPASS — live provider checks complete.');
 }
 
