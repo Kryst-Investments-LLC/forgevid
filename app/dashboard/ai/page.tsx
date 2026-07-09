@@ -33,6 +33,9 @@ export default function AIFeaturesPage() {
   const [narrationAssetId, setNarrationAssetId] = useState<string | null>(null)
   const [narrationName, setNarrationName] = useState<string>("")
   const [uploadingNarration, setUploadingNarration] = useState(false)
+  const [musicAssetId, setMusicAssetId] = useState<string | null>(null)
+  const [musicName, setMusicName] = useState<string>("")
+  const [uploadingMusic, setUploadingMusic] = useState(false)
   const [transitionType, setTransitionType] = useState<string>("fade")
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null)
@@ -121,6 +124,7 @@ export default function AIFeaturesPage() {
           aspectRatio: selectedAspectRatio,
           ...(voiceMode === "ai" && selectedVoiceId ? { voiceId: selectedVoiceId } : {}),
           ...(voiceMode === "own" && narrationAssetId ? { narrationAssetId } : {}),
+          ...(selectedAddOns.includes("music") && musicAssetId ? { musicAssetId } : {}),
           ...(selectedMediaIds.length ? { mediaAssetIds: selectedMediaIds } : {}),
           renderQuality: quality,
           transition:
@@ -362,6 +366,46 @@ export default function AIFeaturesPage() {
                         ))}
                       </div>
                     </div>
+
+                    {/* Bring-your-own music — the bundled library ships empty
+                        (tracks need a licence), so this is how a soundtrack
+                        actually gets onto a video. */}
+                    {selectedAddOns.includes("music") && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Music track</label>
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          disabled={uploadingMusic}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            e.target.value = ""
+                            if (!file) return
+                            setUploadingMusic(true)
+                            try {
+                              const body = new FormData()
+                              body.append("file", file)
+                              const res = await fetch("/api/music", { method: "POST", body })
+                              const data = await res.json()
+                              if (!res.ok) throw new Error(data?.error || "Upload failed")
+                              setMusicAssetId(data.assetId)
+                              setMusicName(data.name || file.name)
+                              toast.success("Music uploaded — it will play under the video")
+                            } catch (err) {
+                              toast.error(err instanceof Error ? err.message : "Upload failed")
+                            } finally {
+                              setUploadingMusic(false)
+                            }
+                          }}
+                          className="w-full text-sm"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {musicAssetId
+                            ? `Using: ${musicName}. It loops and ducks under any narration.`
+                            : "Upload a track you have the rights to (mp3/wav/m4a, max 30MB). No track is bundled."}
+                        </p>
+                      </div>
+                    )}
 
                     {/* Render quality + scene transition */}
                     <div className="grid grid-cols-2 gap-3">

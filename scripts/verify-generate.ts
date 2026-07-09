@@ -15,6 +15,7 @@ import path from 'path';
 import {
   assembleVideo,
   aspectPreset,
+  normalizeSceneDurations,
   renderDims,
   resolveLocalSource,
   resolveSceneClips,
@@ -844,6 +845,33 @@ async function checkLocalSourceResolution() {
   fs.rmSync(out, { force: true });
 }
 
+function checkDurationNormalization() {
+  console.log('\nChecking scene duration budget...');
+  const mk = (durations: number[]) =>
+    durations.map((d, i) => ({
+      id: `scene-${i + 1}`, index: i, description: 'x', keywords: [], duration: d, visualElements: [],
+    }));
+  const sum = (xs: Array<{ duration: number }>) => xs.reduce((a, s) => a + s.duration, 0);
+
+  // The exact failure: gpt-4o-mini returned ~12s per scene for a 15s video.
+  const over = normalizeSceneDurations(mk([12, 12, 10, 10, 9]), 15);
+  assert(Math.abs(sum(over) - 15) < 0.05, `5 bloated scenes rescale to 15s (got ${sum(over).toFixed(2)})`);
+  assert(over.every((s) => s.duration >= 1), 'every scene keeps a 1s floor');
+  // Relative weighting is preserved: scene 1 stays >= the shorter scenes.
+  assert(over[0].duration >= over[4].duration, 'the model relative weighting survives');
+
+  const under = normalizeSceneDurations(mk([1, 1, 1]), 30);
+  assert(Math.abs(sum(under) - 30) < 0.05, `short scenes stretch up to 30s (got ${sum(under).toFixed(2)})`);
+
+  const zero = normalizeSceneDurations(mk([0, 0, 0, 0]), 20);
+  assert(Math.abs(sum(zero) - 20) < 0.05, 'zero-weight scenes split evenly to the total');
+  assert(zero.every((s) => s.duration === 5), 'even split gives 5s each');
+
+  const tiny = normalizeSceneDurations(mk([100, 1, 1, 1, 1, 1]), 6);
+  assert(tiny.every((s) => s.duration >= 1), 'the 1s floor holds even against a dominant scene');
+  assert(Math.abs(sum(tiny) - 6) < 0.05, `total still lands on 6 with a floor (got ${sum(tiny).toFixed(2)})`);
+}
+
 async function main() {
   fs.mkdirSync(workDir, { recursive: true });
   const clipA = path.join(workDir, 'a.mp4');
@@ -856,6 +884,7 @@ async function main() {
 
   await checkLocalSourceResolution();
   checkAvatarContract();
+  checkDurationNormalization();
   checkRenderDims();
   await renderAndCheck('16:9', [clipA, clipB]);
   await renderAndCheck('9:16', [clipA, clipB]);

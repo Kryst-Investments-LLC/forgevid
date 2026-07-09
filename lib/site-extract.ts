@@ -85,6 +85,79 @@ function stripNoise(html: string): string {
     .replace(/<!--[\s\S]*?-->/g, ' ');
 }
 
+/** Structured product/organization data a page publishes about itself. */
+export interface StructuredData {
+  name?: string;
+  description?: string;
+  images: string[];
+}
+
+/**
+ * Read schema.org JSON-LD.
+ *
+ * This is the cheapest way to rescue a client-rendered page: frameworks and
+ * SEO plugins emit <script type="application/ld+json"> during SSR even when
+ * the visible body is an empty <div id="root">. No browser required.
+ */
+export function parseJsonLd(html: string): StructuredData {
+  const out: StructuredData = { images: [] };
+  const blocks = html.match(
+    /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+  );
+  if (!blocks) return out;
+
+  const visit = (node: any) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    // @graph is how most CMSs nest their entities.
+    if (Array.isArray(node['@graph'])) node['@graph'].forEach(visit);
+
+    const type = String(node['@type'] ?? '').toLowerCase();
+    const interesting = ['organization', 'product', 'website', 'softwareapplication', 'webpage', 'service'];
+    if (type && !interesting.some((t) => type.includes(t))) return;
+
+    if (!out.name && typeof node.name === 'string') out.name = node.name.trim();
+    if (!out.description && typeof node.description === 'string') {
+      out.description = node.description.trim();
+    }
+    const image = node.image ?? node.logo ?? node.thumbnailUrl;
+    for (const candidate of Array.isArray(image) ? image : [image]) {
+      if (typeof candidate === 'string') out.images.push(candidate);
+      else if (candidate && typeof candidate.url === 'string') out.images.push(candidate.url);
+    }
+  };
+
+  for (const block of blocks) {
+    const body = block.replace(/^<script\b[^>]*>/i, '').replace(/<\/script>$/i, '');
+    try {
+      visit(JSON.parse(body));
+    } catch {
+      // A single malformed block must not lose the others.
+    }
+  }
+  return out;
+}
+
+/**
+ * Copy inside <noscript> is written FOR the no-JavaScript reader — which is
+ * exactly what we are. stripNoise removes it from the main pass (it is usually
+ * "please enable JavaScript"), so pull real sentences out of it separately.
+ */
+function noscriptParagraphs(html: string): string[] {
+  const blocks = html.match(/<noscript\b[^>]*>([\s\S]*?)<\/noscript>/gi) ?? [];
+  const out: string[] = [];
+  for (const block of blocks) {
+    for (const text of textOfTags(block, 'p', 5)) {
+      if (/enable\s+javascript|javascript\s+is\s+(required|disabled)/i.test(text)) continue;
+      if (text.length >= 40) out.push(text);
+    }
+  }
+  return out;
+}
+
 /** All <meta> tags as { name|property (lowercased) -> content }. */
 function metaMap(html: string): Map<string, string> {
   const map = new Map<string, string>();
@@ -174,13 +247,18 @@ export function parseSiteHtml(html: string, baseUrl: string): SiteContent {
   const rawTitle = clean.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '';
   const title = collapse(rawTitle);
 
+  // Structured data survives client-side rendering; read it before giving up.
+  const jsonLd = parseJsonLd(html);
+
   const ogTitle = meta.get('og:title') ?? meta.get('twitter:title') ?? '';
   const description =
     meta.get('og:description') ||
     meta.get('description') ||
     meta.get('twitter:description') ||
+    jsonLd.description ||
     '';
-  const siteName = meta.get('og:site_name') ?? meta.get('application-name') ?? null;
+  const siteName =
+    meta.get('og:site_name') ?? meta.get('application-name') ?? jsonLd.name ?? null;
 
   const canonical =
     clean
@@ -191,9 +269,11 @@ export function parseSiteHtml(html: string, baseUrl: string): SiteContent {
     [ogTitle, ...textOfTags(clean, 'h1', 3), ...textOfTags(clean, 'h2', 6)].filter(Boolean),
   ).slice(0, 8);
 
-  const paragraphs = dedupe(
-    textOfTags(clean, 'p', 30).filter((p) => p.length >= 40 && p.length <= 400),
-  ).slice(0, 8);
+  const paragraphs = dedupe([
+    ...textOfTags(clean, 'p', 30).filter((p) => p.length >= 40 && p.length <= 400),
+    ...noscriptParagraphs(html),
+    ...(jsonLd.description && jsonLd.description.length >= 40 ? [jsonLd.description] : []),
+  ]).slice(0, 8);
 
   // og:image is the publisher's own choice of hero art — the best scene still.
   const imageCandidates = [
@@ -204,6 +284,7 @@ export function parseSiteHtml(html: string, baseUrl: string): SiteContent {
     clean
       .match(/<link\b[^>]*\brel\s*=\s*["']image_src["'][^>]*>/i)?.[0]
       ?.match(/\bhref\s*=\s*["']([^"']+)["']/i)?.[1],
+    ...jsonLd.images,
   ].filter((v): v is string => Boolean(v));
 
   const images = dedupe(
@@ -261,15 +342,61 @@ export function decodeHtmlBody(body: Buffer, contentType: string): string {
   }
 }
 
-/** Fetch a page through the SSRF guard and extract its brief. */
-export async function extractSite(rawUrl: string): Promise<SiteContent> {
+/** A rendered page plus the screenshots the browser took, if any. */
+export interface ExtractResult extends SiteContent {
+  /** PNG buffers of the live UI — only present when headless rendering ran. */
+  screenshots?: Buffer[];
+  /** How the page was read, for honesty in the API response. */
+  renderedWith: 'static' | 'headless';
+}
+
+/**
+ * Fetch a page through the SSRF guard and extract its brief.
+ *
+ * When the static read comes back sparse (a client-rendered shell) AND headless
+ * rendering is enabled, retry with a real browser behind the guarded proxy —
+ * that both recovers the text and captures screenshots of the live product.
+ * The browser is never the first attempt: it is slow and heavy, and most pages
+ * do not need it.
+ */
+export async function extractSite(rawUrl: string): Promise<ExtractResult> {
   const { body, finalUrl, contentType } = await safeFetch(rawUrl, {
     maxBytes: 2 * 1024 * 1024,
     timeoutMs: 10_000,
     acceptTypes: ['text/html', 'application/xhtml+xml'],
     headers: { Accept: 'text/html,application/xhtml+xml' },
   });
-  return parseSiteHtml(decodeHtmlBody(body, contentType), finalUrl);
+
+  const staticContent = parseSiteHtml(decodeHtmlBody(body, contentType), finalUrl);
+
+  if (!staticContent.sparse) {
+    return { ...staticContent, renderedWith: 'static' };
+  }
+
+  // Only reached for pages that gave static parsing nothing.
+  const { isHeadlessEnabled, renderPage } = await import('./headless-render');
+  if (!isHeadlessEnabled()) {
+    return { ...staticContent, renderedWith: 'static' };
+  }
+
+  try {
+    const rendered = await renderPage(finalUrl, { shots: 3 });
+    const headlessContent = parseSiteHtml(rendered.html, rendered.finalUrl);
+    if (rendered.blockedHosts.length > 0) {
+      console.warn('[extractSite] proxy blocked during render:', rendered.blockedHosts.join(', '));
+    }
+    return {
+      ...headlessContent,
+      // A rendered page that STILL has no text is honestly still sparse; but if
+      // we have screenshots, the commercial can be built from those.
+      sparse: headlessContent.sparse && rendered.screenshots.length === 0,
+      screenshots: rendered.screenshots,
+      renderedWith: 'headless',
+    };
+  } catch (error) {
+    console.warn('[extractSite] headless render failed:', error instanceof Error ? error.message : error);
+    return { ...staticContent, renderedWith: 'static' };
+  }
 }
 
 /**

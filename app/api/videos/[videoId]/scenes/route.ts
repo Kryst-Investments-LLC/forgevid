@@ -25,6 +25,9 @@ export async function GET(_req: NextRequest, { params }: { params: { videoId: st
 const patchSchema = z.object({
   sceneId: z.string().min(1),
   description: z.string().min(1).max(500).optional(),
+  // The stock-search term for this scene, independent of the prose above.
+  // Editing it and calling /swap re-resolves footage against the new words.
+  searchQuery: z.string().max(120).optional(),
   duration: z.number().positive().max(120).optional(),
 });
 
@@ -39,8 +42,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { videoId: s
       { status: 400 },
     );
   }
-  const { sceneId, description, duration } = parsed.data;
-  if (description === undefined && duration === undefined) {
+  const { sceneId, description, searchQuery, duration } = parsed.data;
+  if (description === undefined && searchQuery === undefined && duration === undefined) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
   }
 
@@ -53,6 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { videoId: s
   const updated = {
     ...scenes[index],
     ...(description !== undefined ? { description } : {}),
+    ...(searchQuery !== undefined ? { searchQuery } : {}),
     ...(duration !== undefined ? { duration } : {}),
   };
   scenes[index] = updated;

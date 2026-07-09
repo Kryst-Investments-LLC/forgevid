@@ -33,10 +33,20 @@ function isCsrfExemptApiPath(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  // Skip middleware for static files, internal routes, and health checks
+  // Skip middleware for static files, internal routes, and health checks.
+  //
+  // /generated, /uploads and /music are real files under public/. Without this
+  // the i18n middleware 307s `/generated/x.mp4` -> `/en/generated/x.mp4`, so
+  // every video byte and every thumbnail first pays for security headers, CSRF
+  // and RATE LIMITING before being redirected. Media loads could be throttled
+  // as if they were API calls, and a Range request for video seeking has to
+  // survive a redirect it never should have seen.
   if (
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/static/') ||
+    pathname.startsWith('/generated/') ||
+    pathname.startsWith('/uploads/') ||
+    pathname.startsWith('/music/') ||
     pathname.startsWith('/favicon.ico') ||
     pathname === '/api/health' ||
     pathname === '/api/monitoring/health' ||

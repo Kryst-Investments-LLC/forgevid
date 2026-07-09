@@ -25,6 +25,7 @@ export const PRODUCT_ACTIONS = {
   sceneEdit: 'scene_edit',
   chatEdit: 'scene_chat_edit',
   clipSwap: 'scene_clip_swap',
+  sceneMedia: 'scene_media_set',
   captionsDownload: 'captions_download',
   shareEnabled: 'share_enabled',
 } as const;

@@ -19,7 +19,8 @@ import {
   safeFetch,
   withDefaultScheme,
 } from '../lib/safe-fetch';
-import { briefForModel, decodeEntities, decodeHtmlBody, parseSiteHtml } from '../lib/site-extract';
+import { briefForModel, decodeEntities, decodeHtmlBody, parseJsonLd, parseSiteHtml } from '../lib/site-extract';
+import { buildSceneQueries, sanitizeStockQuery } from '../lib/stock-query';
 import {
   buildScriptPrompt,
   commercialScriptSchema,
@@ -364,6 +365,78 @@ function checkCharset() {
   assert(parsed.title === 'Rentabilité', `an accented title survives extraction (got "${parsed.title}")`);
 }
 
+function checkStockQuery() {
+  console.log('\nStock query sanitizer (the makeup-clip bug)...');
+
+  // The exact string that fetched a lipstick clip in a video-editing promo.
+  const smile = sanitizeStockQuery("Close-up of person's smile watching finished video");
+  assert(!/smile|finished|close-up|watching/.test(smile), `strips camera + emotion words (got "${smile}")`);
+  assert(/person|video/.test(smile), `keeps the real subject (got "${smile}")`);
+
+  assert(sanitizeStockQuery('Over-the-shoulder view of a laptop') === 'laptop', 'strips leading camera grammar');
+  assert(sanitizeStockQuery('A sleek aspirational premium studio') === 'studio', 'strips abstractions, keeps the noun');
+  assert(sanitizeStockQuery("a developer's desk") === 'developer desk', 'drops the possessive');
+  assert(sanitizeStockQuery('THE Coffee Cup') === 'coffee cup', 'lowercases and drops stop words');
+  assert(sanitizeStockQuery('one two three four five six seven').split(' ').length <= 5, 'caps query length');
+  assert(sanitizeStockQuery('') === '', 'empty in, empty out');
+  // Never return nothing for real input, even if every word is "abstract".
+  assert(sanitizeStockQuery('premium quality success').length > 0, 'a fully-abstract phrase still yields a query');
+
+  console.log('\nScene query ordering...');
+  const queries = buildSceneQueries({
+    description: "Close-up of a person's smile",
+    searchQuery: 'person editing video laptop',
+    keywords: ['laptop', 'editing', 'studio'],
+  });
+  assert(queries[0] === 'person editing video laptop', 'the explicit searchQuery leads');
+  assert(queries.includes('laptop editing'), 'a keyword PAIR is tried (more specific than one word)');
+  assert(new Set(queries).size === queries.length, 'queries are deduped');
+  assert(!queries.includes(''), 'no empty query is ever searched');
+
+  // A scene with no searchQuery (planned before the field existed) still works.
+  const legacy = buildSceneQueries({ description: 'Wide shot of a mountain lake', keywords: ['lake'] });
+  assert(legacy[0] === 'mountain lake', 'a legacy scene falls back to a sanitized description');
+}
+
+function checkStructuredData() {
+  console.log('\nStructured data + noscript (rescuing JS-only pages)...');
+
+  const jsonLd = `<html><head>
+    <script type="application/ld+json">
+    {"@context":"https://schema.org","@graph":[
+      {"@type":"Organization","name":"Nimbus","logo":{"url":"https://nimbus.test/logo.png"}},
+      {"@type":"WebSite","description":"Nimbus is deployment automation for small teams."}
+    ]}
+    </script>
+    </head><body><div id="root"></div></body></html>`;
+
+  const ld = parseJsonLd(jsonLd);
+  assert(ld.name === 'Nimbus', `reads @graph organization name (got "${ld.name}")`);
+  assert(!!ld.description && ld.description.includes('deployment automation'), 'reads description from @graph');
+  assert(ld.images.includes('https://nimbus.test/logo.png'), 'reads logo object url');
+
+  // The end-to-end win: a shell page that would be sparse becomes usable.
+  const content = parseSiteHtml(jsonLd, 'https://nimbus.test/');
+  assert(content.sparse === false, 'JSON-LD rescues an otherwise-empty shell from sparse');
+  assert(content.brand === 'Nimbus', 'brand comes from JSON-LD when no og:site_name exists');
+  assert(content.description.includes('deployment automation'), 'description filled from JSON-LD');
+
+  // noscript copy (written for the no-JS reader — us).
+  const noscript = `<html><head><title>App</title></head><body>
+    <div id="root"></div>
+    <noscript><p>Please enable JavaScript to use this app.</p>
+    <p>Zephyr helps remote teams run better standups with async video updates and summaries.</p></noscript>
+  </body></html>`;
+  const z = parseSiteHtml(noscript, 'https://zephyr.test/');
+  assert(z.paragraphs.some((p) => p.includes('async video updates')), 'real noscript copy is captured');
+  assert(!z.paragraphs.some((p) => /enable javascript/i.test(p)), '"enable JavaScript" boilerplate is dropped');
+
+  // Malformed JSON-LD must not throw or lose sibling blocks.
+  const broken = `<script type="application/ld+json">{ not json </script>
+    <script type="application/ld+json">{"@type":"Product","name":"Kept"}</script>`;
+  assert(parseJsonLd(broken).name === 'Kept', 'a malformed block does not lose a valid sibling');
+}
+
 function checkScriptContract() {
   console.log('\nScript contract...');
   assert(narrationWordBudget(30) === 78, `30s budgets ~78 words (got ${narrationWordBudget(30)})`);
@@ -459,6 +532,8 @@ async function main() {
     await checkFetchLimits(port);
     checkExtraction();
     checkCharset();
+    checkStockQuery();
+    checkStructuredData();
     checkScriptContract();
   } finally {
     server.close();

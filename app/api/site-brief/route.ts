@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { extractSite } from '@/lib/site-extract';
-import { importSiteImages } from '@/lib/site-images';
+import { importSiteImages, saveScreenshots } from '@/lib/site-images';
 import { FetchLimitError, SsrfError, withDefaultScheme } from '@/lib/safe-fetch';
 import {
   COMMERCIAL_TONES,
@@ -132,7 +132,16 @@ export async function POST(req: NextRequest) {
   }
 
   // Best-effort: a script with no imported images still generates (stock footage).
-  const images = importImages ? await importSiteImages(userId, content.images) : [];
+  // Screenshots of the live product (headless) are the strongest footage, so
+  // they lead; the page's og:images follow.
+  let images: Awaited<ReturnType<typeof importSiteImages>> = [];
+  if (importImages) {
+    const shots = content.screenshots?.length
+      ? await saveScreenshots(userId, content.screenshots, content.sourceUrl)
+      : [];
+    const fromMeta = await importSiteImages(userId, content.images);
+    images = [...shots, ...fromMeta];
+  }
 
   return NextResponse.json({
     sourceUrl: content.sourceUrl,
@@ -151,6 +160,8 @@ export async function POST(req: NextRequest) {
       description: content.description,
       headings: content.headings.slice(0, 5),
       imagesFound: content.images.length,
+      renderedWith: content.renderedWith,
+      screenshots: content.screenshots?.length ?? 0,
     },
   });
 }

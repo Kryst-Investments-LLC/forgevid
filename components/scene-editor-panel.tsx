@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
-import { Shuffle, RefreshCw, Save, Film, Download, Sparkles, Loader2, Share2 } from "lucide-react"
+import { Shuffle, RefreshCw, Save, Film, Download, Sparkles, Loader2, Share2, ImageIcon } from "lucide-react"
 import { toast } from "sonner"
+import MediaPicker from "@/components/media-picker"
 
 interface Scene {
   id: string
@@ -40,6 +41,9 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
   const [chatInput, setChatInput] = useState("")
   const [chatting, setChatting] = useState(false)
   const [sharing, setSharing] = useState(false)
+  // When set, the media picker is open for this scene id.
+  const [pickingFor, setPickingFor] = useState<string | null>(null)
+  const [pickerValue, setPickerValue] = useState<string[]>([])
 
   const loadScenes = useCallback(async () => {
     setLoading(true)
@@ -94,6 +98,28 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
       toast.success(`Scene ${scene.index + 1}: new clip (“${data.scene.matchedQuery}”)`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Swap failed")
+    } finally {
+      setBusyScene(null)
+    }
+  }
+
+  // Point one scene at a SPECIFIC asset the user owns (not a random re-roll).
+  const chooseMedia = async (scene: Scene, assetId: string) => {
+    setBusyScene(scene.id)
+    try {
+      const res = await fetch(`/api/videos/${videoId}/scenes/${scene.id}/media`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "Could not use that media")
+      updateLocal(scene.id, data.scene)
+      setPickingFor(null)
+      setPickerValue([])
+      toast.success(`Scene ${scene.index + 1}: using your media — re-render to see it`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not use that media")
     } finally {
       setBusyScene(null)
     }
@@ -323,6 +349,18 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
                 Swap clip
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPickerValue([])
+                  setPickingFor(pickingFor === scene.id ? null : scene.id)
+                }}
+                disabled={busyScene === scene.id || rerendering}
+              >
+                <ImageIcon className="h-4 w-4 mr-2" />
+                Choose image
+              </Button>
+              <Button
                 size="sm"
                 onClick={() => saveScene(scene)}
                 disabled={busyScene === scene.id || rerendering}
@@ -331,6 +369,24 @@ export function SceneEditorPanel({ videoId, onRerendered }: SceneEditorPanelProp
                 Save
               </Button>
             </div>
+
+            {pickingFor === scene.id && (
+              <div className="mt-3 rounded-lg border p-3">
+                <p className="text-sm font-medium mb-2">
+                  Pick one of your images or clips for scene {scene.index + 1}
+                </p>
+                <MediaPicker
+                  value={pickerValue}
+                  onChange={(ids) => {
+                    // Single-select: act on the most recently chosen id.
+                    const chosen = ids[ids.length - 1]
+                    setPickerValue(chosen ? [chosen] : [])
+                    if (chosen) chooseMedia(scene, chosen)
+                  }}
+                  disabled={busyScene === scene.id}
+                />
+              </div>
+            )}
           </div>
         ))}
       </CardContent>

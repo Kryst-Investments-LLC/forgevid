@@ -34,6 +34,48 @@ export interface ImportedImage {
 }
 
 /**
+ * Persist screenshots captured by the headless renderer as IMAGE assets owned
+ * by the user. These are the product's OWN interface — the strongest possible
+ * footage for a product commercial. The bytes are already in hand (no fetch),
+ * so there is no SSRF surface here.
+ */
+export async function saveScreenshots(
+  userId: string,
+  screenshots: Buffer[],
+  sourceUrl: string,
+): Promise<ImportedImage[]> {
+  const saved: ImportedImage[] = [];
+  const dir = path.join(process.cwd(), 'public', 'uploads', 'site');
+  fs.mkdirSync(dir, { recursive: true });
+
+  for (const png of screenshots) {
+    if (!png || png.length === 0) continue;
+    try {
+      const id = crypto.randomUUID();
+      const filename = `${id}.png`;
+      fs.writeFileSync(path.join(dir, filename), png);
+      const asset = await prisma.mediaAsset.create({
+        data: {
+          name: `shot-${id}`,
+          fileName: `${new URL(sourceUrl).hostname}-screenshot.png`,
+          type: 'IMAGE',
+          category: 'site-screenshot',
+          url: `/uploads/site/${filename}`,
+          fileSize: BigInt(png.length),
+          uploadedById: userId,
+          metadata: JSON.stringify({ sourceUrl, capturedBy: 'headless' }),
+        },
+        select: { id: true, url: true },
+      });
+      saved.push({ assetId: asset.id, url: asset.url, sourceUrl });
+    } catch (error) {
+      console.warn('[SiteImages] Screenshot save failed:', error instanceof Error ? error.message : error);
+    }
+  }
+  return saved;
+}
+
+/**
  * Download each image through the SSRF guard and persist it as an IMAGE asset
  * owned by `userId`. Individual failures are skipped, never fatal: a promo
  * with three of four screenshots still beats no promo. Returns what landed.

@@ -81,11 +81,11 @@ async function brandingForVideo(videoId: string) {
 }
 
 /**
- * Resolve an uploaded narration (a natural human voice) to a local file path,
- * ownership-checked against the video's owner. Returns null when absent or
- * not owned — generation then falls back to AI TTS rather than failing.
+ * Resolve an uploaded AUDIO asset (a narration recording, or a music track) to
+ * a local file path, ownership-checked against the video's owner. Returns null
+ * when absent or not owned, so generation degrades rather than failing.
  */
-async function narrationForVideo(
+async function audioAssetForVideo(
   videoId: string,
   narrationAssetId?: string,
 ): Promise<string | null> {
@@ -155,6 +155,8 @@ export interface GenerationInput {
   renderQuality?: import('./video-generator').RenderQuality;
   /** A MediaAsset (AUDIO) id: the user's OWN narration instead of AI TTS. */
   narrationAssetId?: string;
+  /** A MediaAsset (AUDIO) id: the user's OWN background music track. */
+  musicAssetId?: string;
   enableEmotionAware?: boolean;
 }
 
@@ -316,7 +318,9 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     const aspectRatio: AspectRatio = input.aspectRatio ?? '16:9';
     const branding = await brandingForVideo(videoId);
     // The user's own recording (natural voice) replaces AI TTS when present.
-    const narrationPath = await narrationForVideo(videoId, input.narrationAssetId);
+    const narrationPath = await audioAssetForVideo(videoId, input.narrationAssetId);
+    // Their own music track beats the (possibly empty) bundled library.
+    const musicOverride = await audioAssetForVideo(videoId, input.musicAssetId);
     const { videoUrl, scenes, cues, thumbnailUrl } = await generateVideoWithScenes({
       prompt: script,
       style: input.style,
@@ -328,6 +332,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       branding,
       transition: input.transition,
       voiceoverPath: narrationPath,
+      musicPath: musicOverride,
       userMedia: await userMediaForVideo(videoId, input.mediaAssetIds),
       renderQuality: input.renderQuality,
     });
@@ -418,9 +423,12 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     await prisma.video.update({ where: { id: videoId }, data: { status: 'PROCESSING' } });
     await setStage(videoId, 'assembling');
 
-    // Keep the soundtrack on a re-render too.
+    // Keep the soundtrack on a re-render too: the user's own track first.
     const wantMusic = addOns.length === 0 || addOns.includes('music');
-    const musicPath = wantMusic ? selectMusicPath(meta.request?.style) : null;
+    const musicPath = wantMusic
+      ? (await audioAssetForVideo(videoId, meta.request?.musicAssetId)) ??
+        selectMusicPath(meta.request?.style)
+      : null;
 
     // A re-render re-synthesizes the voiceover, so previously-transcribed cues
     // would no longer be aligned; only reuse them when the scenes are unchanged.
@@ -434,7 +442,7 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     const assembled = await assembleVideo(scenes, addOns, aspectRatio, {
       musicPath,
       voiceId: meta.request?.voiceId,
-      voiceoverPath: await narrationForVideo(videoId, meta.request?.narrationAssetId),
+      voiceoverPath: await audioAssetForVideo(videoId, meta.request?.narrationAssetId),
       branding,
       // Re-render must reuse the same transition, or the output changes shape.
       transition: transitionFromMetadata(meta.request?.transition),

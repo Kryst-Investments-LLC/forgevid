@@ -39,6 +39,7 @@ import {
 import { resolveFfmpegPath, supportsFilter } from './ffmpeg-env';
 import { buildKenBurnsFilter, directionForScene } from './ken-burns';
 import type { UserMediaItem } from './user-media';
+import { buildSceneQueries } from './stock-query';
 import {
   concatSceneVoiceovers,
   pacedDuration,
@@ -78,7 +79,15 @@ let pexelsClient: any = null;
 export interface PlannedScene {
   id: string;
   index: number;
+  /** Prose for the human editing this scene. NOT a stock search term. */
   description: string;
+  /**
+   * A literal, filmable search phrase for the stock provider. Kept separate
+   * from `description` because using prose as a query retrieved a makeup clip
+   * for "close-up of a person's smile". Optional: scenes planned before this
+   * existed fall back to a sanitized description (lib/stock-query.ts).
+   */
+  searchQuery?: string;
   keywords: string[];
   duration: number;
   visualElements: string[];
@@ -171,6 +180,11 @@ export interface GenerationOptions {
    * set, AI TTS (and per-scene pacing) is skipped; captions come from Whisper.
    */
   voiceoverPath?: string | null;
+  /**
+   * The user's own background music. Overrides the bundled library, which is
+   * empty unless the operator has licensed tracks into public/music.
+   */
+  musicPath?: string | null;
 }
 
 function sceneId(index: number): string {
@@ -497,43 +511,101 @@ async function downloadFile(url: string, filename: string): Promise<Materialized
 }
 
 /**
+ * Rescale scene durations so they sum to the requested total.
+ *
+ * The model's per-scene durations are advisory and frequently wrong: it will
+ * happily return five 12-second scenes for a "15 second" video (that shipped a
+ * 62s render from a 15s request). We keep the model's RELATIVE weighting — some
+ * scenes deserve to linger — but the total is ours to enforce, with a 1s floor
+ * so no scene is too short to register.
+ */
+export function normalizeSceneDurations(
+  scenes: PlannedScene[],
+  totalDuration: number,
+): PlannedScene[] {
+  if (scenes.length === 0) return scenes;
+  const target = Math.max(scenes.length, totalDuration); // at least 1s per scene
+  const rawSum = scenes.reduce((sum, s) => sum + Math.max(0, s.duration), 0);
+
+  // No usable weights from the model — split evenly.
+  if (rawSum <= 0) {
+    const each = Number((target / scenes.length).toFixed(2));
+    return scenes.map((s) => ({ ...s, duration: each }));
+  }
+
+  const scale = target / rawSum;
+  const scaled = scenes.map((s) => ({
+    ...s,
+    duration: Math.max(1, Number((Math.max(0, s.duration) * scale).toFixed(2))),
+  }));
+
+  // The 1s floor can push the sum off target; put the drift on the longest
+  // scene so the total lands exactly on the request.
+  const scaledSum = scaled.reduce((sum, s) => sum + s.duration, 0);
+  const drift = Number((target - scaledSum).toFixed(2));
+  if (Math.abs(drift) >= 0.01) {
+    let longest = 0;
+    for (let i = 1; i < scaled.length; i++) {
+      if (scaled[i].duration > scaled[longest].duration) longest = i;
+    }
+    scaled[longest].duration = Math.max(1, Number((scaled[longest].duration + drift).toFixed(2)));
+  }
+  return scaled;
+}
+
+/**
  * Stage 1 — decompose the script into scenes with GPT.
  */
 export async function planScenes(script: string, totalDuration: number): Promise<PlannedScene[]> {
   await initializeModules();
 
   const withIds = (raw: any[]): PlannedScene[] =>
-    raw
-      .filter((s) => s && typeof s.description === 'string')
-      .map((s, i) => ({
-        id: sceneId(i),
-        index: i,
-        description: String(s.description),
-        keywords: Array.isArray(s.keywords) ? s.keywords.map(String) : [],
-        duration: Number(s.duration) > 0 ? Number(s.duration) : Math.max(1, totalDuration / raw.length),
-        visualElements: Array.isArray(s.visualElements) ? s.visualElements.map(String) : [],
-      }));
+    normalizeSceneDurations(
+      raw
+        .filter((s) => s && typeof s.description === 'string')
+        .map((s, i) => ({
+          id: sceneId(i),
+          index: i,
+          description: String(s.description),
+          searchQuery: typeof s.searchQuery === 'string' ? s.searchQuery : undefined,
+          keywords: Array.isArray(s.keywords) ? s.keywords.map(String) : [],
+          duration: Number(s.duration) > 0 ? Number(s.duration) : Math.max(1, totalDuration / raw.length),
+          visualElements: Array.isArray(s.visualElements) ? s.visualElements.map(String) : [],
+        })),
+      totalDuration,
+    );
 
   try {
     const openai = new OpenAI({ apiKey: openAiApiKey() });
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
           content: `You are a video production assistant. Parse the video script into individual scenes for stock footage matching.
 
-For each scene, extract:
-1. Scene description (what's happening)
-2. Search keywords (3-5 visual elements that can be found in stock footage)
-3. Duration in seconds (distribute ${totalDuration}s total across all scenes)
-4. Key visual elements
+For each scene provide:
+1. "description" — prose for a human: what happens in this scene.
+2. "searchQuery" — a STOCK FOOTAGE SEARCH TERM, not prose. 2-4 concrete,
+   filmable nouns naming what is literally on screen. This string is sent to a
+   stock library verbatim, so:
+     - no camera language ("close-up of", "over-the-shoulder", "cut to")
+     - no emotions or abstractions ("satisfaction", "smile", "success",
+       "premium"). Stock libraries answer those with beauty and lifestyle
+       clips instead of your subject.
+     - name the SUBJECT and its SETTING.
+   Bad:  "Close-up of a person's smile watching the finished video"
+   Good: "person editing video on laptop"
+3. "keywords" — 3-5 single visual nouns, used as backup queries.
+4. "duration" — seconds; distribute ${totalDuration}s total across all scenes.
+5. "visualElements" — key objects in frame.
 
 Return ONLY a JSON array with this structure:
 [
   {
-    "description": "Opening with flour on countertop",
+    "description": "Opening with flour scattered across a wooden countertop",
+    "searchQuery": "flour wooden countertop",
     "keywords": ["flour", "baking", "countertop", "kitchen"],
     "duration": 5,
     "visualElements": ["flour dust", "wooden counter", "baking preparation"]
@@ -643,8 +715,9 @@ export async function resolveSceneClip(
   aspectRatio: AspectRatio = '16:9',
 ): Promise<ResolvedScene | null> {
   const { orientation } = aspectPreset(aspectRatio);
-  const descriptionQuery = scene.description.split(/\s+/).slice(0, 6).join(' ');
-  const queries = [descriptionQuery, ...scene.keywords].filter(Boolean);
+  // The scene's own search phrase first, then a sanitized description, then
+  // keywords. Never the raw prose: see lib/stock-query.ts for why.
+  const queries = buildSceneQueries(scene);
 
   for (const query of queries) {
     const candidates = await searchStockVideos(query, 5, orientation);
@@ -1215,9 +1288,12 @@ export async function generateVideoWithScenes(
 
   const resolved = await resolveSceneClips(planned, aspectRatio, userMedia);
 
-  // Music is opt-out and silently skipped when the library is empty.
+  // Music is opt-out. The user's own track wins; otherwise fall back to the
+  // bundled library, which is silently skipped when empty (no track is licensed).
   const wantMusic = !addOns || addOns.length === 0 || addOns.includes('music');
-  const musicPath = wantMusic ? selectMusicPath(mood ?? options.style) : null;
+  const musicPath = wantMusic
+    ? options.musicPath ?? selectMusicPath(mood ?? options.style)
+    : null;
 
   const assembled = await assembleVideo(resolved, addOns || [], aspectRatio, {
     musicPath,
