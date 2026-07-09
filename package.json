@@ -12,6 +12,8 @@
     "verify:e2e": "tsx scripts/verify-e2e.ts",
     "verify:e2e:db": "bash scripts/run-e2e-with-db.sh",
     "verify:providers": "tsx scripts/verify-providers.ts",
+    "db:local": "bash scripts/db-local.sh start",
+    "db:local:stop": "bash scripts/db-local.sh stop",
     "lint": "next lint",
     "start": "next start",
     "test": "jest",

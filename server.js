@@ -124,10 +124,12 @@ app.prepare().then(() => {
   // or set to the number of proxy layers (e.g., 2 for ALB + Nginx)
   server.set('trust proxy', process.env.TRUST_PROXY_DEPTH ? parseInt(process.env.TRUST_PROXY_DEPTH) : 1);
   
-  // Body parsing middleware
-  server.use(express.json({ limit: '10mb' }));
-  server.use(express.urlencoded({ extended: true, limit: '10mb' }));
-  
+  // NO body parsers here. express.json()/urlencoded() DRAIN the request
+  // stream before Next's route handlers run, so every `await req.json()` in
+  // app/api/** hangs forever (GETs worked, every POST died). Nothing in this
+  // file reads req.body; Next parses bodies itself. If an express-only route
+  // ever needs parsing, mount the parser on that specific path only.
+
   // Request logging
   server.use((req, res, next) => {
     const start = Date.now();

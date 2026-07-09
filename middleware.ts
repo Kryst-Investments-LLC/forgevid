@@ -53,7 +53,7 @@ export async function middleware(request: NextRequest) {
 
   // Apply CSRF protection on API state-changing requests
   if (pathname.startsWith('/api/') && !isCsrfExemptApiPath(pathname)) {
-    const csrfResult = verifyCsrf(request);
+    const csrfResult = await verifyCsrf(request);
     if (csrfResult) {
       return csrfResult;
     }
@@ -76,12 +76,12 @@ export async function middleware(request: NextRequest) {
   ) {
     // Attach CSRF token to non-API responses
     const response = NextResponse.next();
-    return attachCsrfToken(response);
+    return await attachCsrfToken(response);
   }
 
   // For localized routes, apply i18n middleware
   const intlResponse = intlMiddleware(request);
-  return attachCsrfToken(intlResponse as NextResponse);
+  return await attachCsrfToken(intlResponse as NextResponse);
 }
 
 export const config = {
