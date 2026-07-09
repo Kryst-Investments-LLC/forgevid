@@ -77,6 +77,31 @@ function durationSeconds(out: string): number {
   return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
 }
 
+/**
+ * public/generated holds REAL USER VIDEOS. These tests used to clean up with
+ * fs.rmSync(publicGenerated, { recursive: true }) — which deleted every video a
+ * user had ever generated. It really did, twice, before anyone noticed.
+ *
+ * Delete only what THIS run created: anything whose mtime is at or after the
+ * moment the suite started.
+ */
+const RUN_STARTED_AT = Date.now();
+const generatedDirRoot = path.join(process.cwd(), 'public', 'generated');
+
+function cleanupOurGenerated(): void {
+  if (!fs.existsSync(generatedDirRoot)) return;
+  for (const name of fs.readdirSync(generatedDirRoot)) {
+    const target = path.join(generatedDirRoot, name);
+    try {
+      if (fs.statSync(target).mtimeMs >= RUN_STARTED_AT) {
+        fs.rmSync(target, { force: true, recursive: true });
+      }
+    } catch {
+      // a file vanished under us — nothing to clean
+    }
+  }
+}
+
 function assert(cond: boolean, msg: string) {
   if (!cond) throw new Error(`ASSERTION FAILED: ${msg}`);
   console.log(`  ok  ${msg}`);
@@ -359,7 +384,7 @@ async function checkTransitionRender(clipA: string, clipB: string, hasXfade: boo
       ? `cross-faded video keeps its 6s duration (got ${dur.toFixed(2)}s) — narration stays in sync`
       : `fell back to hard cuts and still rendered 6s (got ${dur.toFixed(2)}s)`,
   );
-  fs.rmSync(generated, { recursive: true, force: true });
+  cleanupOurGenerated();
 
   console.log('Rendering the same scenes with transitions explicitly disabled...');
   const { videoUrl: cutUrl } = await assembleVideo(scenes, ['subtitles'], '16:9', {
@@ -367,7 +392,7 @@ async function checkTransitionRender(clipA: string, clipB: string, hasXfade: boo
   });
   const cutDur = durationSeconds(probe(path.join(generated, path.basename(cutUrl))));
   assert(Math.abs(cutDur - 6) < 0.4, `hard-cut video is also 6s (got ${cutDur.toFixed(2)}s)`);
-  fs.rmSync(generated, { recursive: true, force: true });
+  cleanupOurGenerated();
 }
 
 /**
@@ -417,7 +442,7 @@ async function checkKenBurnsRender() {
   fs.unlinkSync(early);
   fs.unlinkSync(late);
 
-  fs.rmSync(generated, { recursive: true, force: true });
+  cleanupOurGenerated();
   assert(fs.existsSync(photo), 'source photo not deleted by cleanup');
 }
 
@@ -608,7 +633,7 @@ async function checkDraftMode(clipA: string, clipB: string) {
   const info = probe(outFile);
   assert(/960x540/.test(info), 'draft renders at half resolution (960x540)');
   assert(Math.abs(durationSeconds(info) - 4) < 0.5, 'draft keeps the full duration');
-  fs.rmSync(path.join(process.cwd(), 'public', 'generated'), { recursive: true, force: true });
+  cleanupOurGenerated();
 }
 
 /**
@@ -681,7 +706,7 @@ async function checkNarrationPacing(clipA: string, clipB: string) {
     'cue 2 starts exactly where scene 2 starts',
   );
 
-  fs.rmSync(path.join(process.cwd(), 'public', 'generated'), { recursive: true, force: true });
+  cleanupOurGenerated();
 }
 
 /**
@@ -785,7 +810,7 @@ async function checkBrandingRender(clip: string) {
   );
   assert(shiftCues([{ start: 0, end: 1, text: 'x' }], 0)[0].start === 0, 'no intro => no shift');
 
-  fs.rmSync(path.join(process.cwd(), 'public', 'generated'), { recursive: true, force: true });
+  cleanupOurGenerated();
   assert(fs.existsSync(logo) && fs.existsSync(intro), 'brand assets not deleted by cleanup');
 }
 

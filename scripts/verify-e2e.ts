@@ -35,6 +35,8 @@ import type { ResolvedScene } from '../lib/video-generator';
 const ffmpegPath = resolveFfmpegPath();
 const workDir = path.join(process.cwd(), 'public', 'temp', 'verify-e2e');
 const generatedDir = path.join(process.cwd(), 'public', 'generated');
+/** Never delete videos that existed before this run started. */
+const RUN_STARTED_AT = Date.now();
 const stamp = Date.now();
 
 function ffmpeg(args: string[]) {
@@ -310,7 +312,17 @@ async function main() {
     }
     await prisma.$disconnect().catch(() => {});
     fs.rmSync(workDir, { recursive: true, force: true });
-    fs.rmSync(generatedDir, { recursive: true, force: true });
+    // Only remove what this run produced: generatedDir holds real user videos.
+    if (fs.existsSync(generatedDir)) {
+      for (const name of fs.readdirSync(generatedDir)) {
+        const target = path.join(generatedDir, name);
+        try {
+          if (fs.statSync(target).mtimeMs >= RUN_STARTED_AT) fs.rmSync(target, { force: true, recursive: true });
+        } catch {
+          // already gone
+        }
+      }
+    }
   }
 }
 
