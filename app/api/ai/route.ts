@@ -74,6 +74,8 @@ const generateVideoSchema = z.object({
   mediaAssetIds: z.array(z.string()).max(20).optional(),
   // 'draft' renders at half resolution with fast encoding for quick previews.
   renderQuality: z.enum(['draft', 'full', '4k']).default('full'),
+  // A MediaAsset (AUDIO) id: use the user's OWN narration instead of AI TTS.
+  narrationAssetId: z.string().optional(),
   // null = hard cuts. Omitted = the default cross-fade.
   transition: z
     .object({ type: z.enum(TRANSITIONS), duration: z.number().min(0).max(3) })
@@ -148,6 +150,7 @@ async function handleGenerateVideo(body: any, userId: string) {
             transition: input.transition === undefined ? DEFAULT_TRANSITION : input.transition,
             mediaAssetIds: input.mediaAssetIds ?? [],
             renderQuality: input.renderQuality,
+            narrationAssetId: input.narrationAssetId,
             // enableEmotionAware is preserved for the pipeline to honor once
             // emotion-aware generation is folded into the worker (TODO Phase 5).
             enableEmotionAware: input.enableEmotionAware ?? false,

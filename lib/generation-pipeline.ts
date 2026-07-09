@@ -81,6 +81,51 @@ async function brandingForVideo(videoId: string) {
 }
 
 /**
+ * Resolve an uploaded narration (a natural human voice) to a local file path,
+ * ownership-checked against the video's owner. Returns null when absent or
+ * not owned — generation then falls back to AI TTS rather than failing.
+ */
+async function narrationForVideo(
+  videoId: string,
+  narrationAssetId?: string,
+): Promise<string | null> {
+  if (!narrationAssetId) return null;
+  const video = await prisma.video.findUnique({
+    where: { id: videoId },
+    select: { userId: true },
+  });
+  if (!video) return null;
+
+  const asset = await prisma.mediaAsset.findFirst({
+    where: { id: narrationAssetId, uploadedById: video.userId, type: 'AUDIO' },
+    select: { url: true },
+  });
+  if (!asset?.url) return null;
+
+  const fs = await import('fs');
+  const path = await import('path');
+  // Local uploads live under public/; remote urls are fetched to temp.
+  if (asset.url.startsWith('/')) {
+    const p = path.join(process.cwd(), 'public', asset.url.replace(/^\/+/, ''));
+    return fs.existsSync(p) ? p : null;
+  }
+  if (/^https?:\/\//.test(asset.url)) {
+    try {
+      const res = await fetch(asset.url);
+      if (!res.ok) return null;
+      const dir = path.join(process.cwd(), 'public', 'temp');
+      fs.mkdirSync(dir, { recursive: true });
+      const p = path.join(dir, `narration_${Date.now()}.audio`);
+      fs.writeFileSync(p, Buffer.from(await res.arrayBuffer()));
+      return p;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
  * Resolve the user's media from asset IDS against the video's owner. Never take
  * urls from the client — the renderer would happily fetch whatever it was given.
  */
@@ -108,6 +153,8 @@ export interface GenerationInput {
   mediaAssetIds?: string[];
   /** 'draft' = fast preview, 'full' (default), '4k' = paid plans. */
   renderQuality?: import('./video-generator').RenderQuality;
+  /** A MediaAsset (AUDIO) id: the user's OWN narration instead of AI TTS. */
+  narrationAssetId?: string;
   enableEmotionAware?: boolean;
 }
 
@@ -268,6 +315,8 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     // can persist it for scene-based editing / re-rendering.
     const aspectRatio: AspectRatio = input.aspectRatio ?? '16:9';
     const branding = await brandingForVideo(videoId);
+    // The user's own recording (natural voice) replaces AI TTS when present.
+    const narrationPath = await narrationForVideo(videoId, input.narrationAssetId);
     const { videoUrl, scenes, cues, thumbnailUrl } = await generateVideoWithScenes({
       prompt: script,
       style: input.style,
@@ -278,6 +327,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       voiceId: input.voiceId,
       branding,
       transition: input.transition,
+      voiceoverPath: narrationPath,
       userMedia: await userMediaForVideo(videoId, input.mediaAssetIds),
       renderQuality: input.renderQuality,
     });
@@ -384,6 +434,7 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     const assembled = await assembleVideo(scenes, addOns, aspectRatio, {
       musicPath,
       voiceId: meta.request?.voiceId,
+      voiceoverPath: await narrationForVideo(videoId, meta.request?.narrationAssetId),
       branding,
       // Re-render must reuse the same transition, or the output changes shape.
       transition: transitionFromMetadata(meta.request?.transition),

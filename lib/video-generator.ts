@@ -166,6 +166,11 @@ export interface GenerationOptions {
   userMedia?: UserMediaItem[];
   /** 'draft' = fast preview, 'full' (default), '4k' = paid plans. */
   renderQuality?: RenderQuality;
+  /**
+   * A natural human voice: path to the user's own narration recording. When
+   * set, AI TTS (and per-scene pacing) is skipped; captions come from Whisper.
+   */
+  voiceoverPath?: string | null;
 }
 
 function sceneId(index: number): string {
@@ -1181,6 +1186,7 @@ export async function generateVideoWithScenes(
     branding,
     transition,
     renderQuality: options.renderQuality,
+    voiceoverPath: options.voiceoverPath ?? null,
   });
 
   console.log(

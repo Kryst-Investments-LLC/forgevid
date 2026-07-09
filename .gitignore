@@ -79,3 +79,6 @@ next-env.d.ts
 
 # per-scene TTS cache
 /.cache/
+
+# user uploads (narration recordings etc.)
+/public/uploads/

@@ -14,6 +14,8 @@ import { toast } from "sonner"
 import AIChatPanel from "@/components/ai-chat-panel"
 import SceneEditorPanel from "@/components/scene-editor-panel"
 import MediaPicker from "@/components/media-picker"
+import AvatarStudioPanel from "@/components/avatar-studio-panel"
+import { withCsrfHeaders } from "@/lib/csrf-client"
 
 export default function AIFeaturesPage() {
   const [prompt, setPrompt] = useState("")
@@ -26,6 +28,10 @@ export default function AIFeaturesPage() {
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>("")
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([])
   const [quality, setQuality] = useState<"draft" | "full" | "4k">("full")
+  const [voiceMode, setVoiceMode] = useState<"ai" | "own">("ai")
+  const [narrationAssetId, setNarrationAssetId] = useState<string | null>(null)
+  const [narrationName, setNarrationName] = useState<string>("")
+  const [uploadingNarration, setUploadingNarration] = useState(false)
   const [transitionType, setTransitionType] = useState<string>("fade")
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null)
@@ -112,7 +118,8 @@ export default function AIFeaturesPage() {
           duration: videoLength[0],
           addOns: selectedAddOns,
           aspectRatio: selectedAspectRatio,
-          ...(selectedVoiceId ? { voiceId: selectedVoiceId } : {}),
+          ...(voiceMode === "ai" && selectedVoiceId ? { voiceId: selectedVoiceId } : {}),
+          ...(voiceMode === "own" && narrationAssetId ? { narrationAssetId } : {}),
           ...(selectedMediaIds.length ? { mediaAssetIds: selectedMediaIds } : {}),
           renderQuality: quality,
           transition:
@@ -188,12 +195,13 @@ export default function AIFeaturesPage() {
           </div>
 
           <Tabs defaultValue="chat" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="chat" className="flex items-center gap-1">
                 <MessageCircle className="h-3 w-3" />
                 Chat
               </TabsTrigger>
               <TabsTrigger value="create">AI Creator</TabsTrigger>
+              <TabsTrigger value="avatar">AI Presenter</TabsTrigger>
               <TabsTrigger value="emotion">Emotion AI</TabsTrigger>
               <TabsTrigger value="recommendations">Smart Suggestions</TabsTrigger>
               <TabsTrigger value="analytics">AI Analytics</TabsTrigger>
@@ -382,24 +390,85 @@ export default function AIFeaturesPage() {
                       </div>
                     </div>
 
-                    {/* Narration voice — only relevant when the voiceover add-on is on */}
-                    {selectedAddOns.includes("voiceover") && voices.length > 0 && (
+                    {/* Narration: an AI voice, or the user's own recording (natural voice) */}
+                    {selectedAddOns.includes("voiceover") && (
                       <div className="space-y-3">
-                        <label htmlFor="voice" className="text-sm font-medium">
-                          Narration Voice
-                        </label>
-                        <select
-                          id="voice"
-                          value={selectedVoiceId}
-                          onChange={(e) => setSelectedVoiceId(e.target.value)}
-                          className="w-full rounded-md border border-gray-600 bg-gray-800/50 p-2 text-sm text-gray-200"
-                        >
-                          {voices.map((voice) => (
-                            <option key={voice.id} value={voice.id}>
-                              {voice.name} — {voice.gender}, {voice.description}
-                            </option>
-                          ))}
-                        </select>
+                        <label className="text-sm font-medium">Narration</label>
+                        <div className="flex gap-4 text-sm">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="voiceMode"
+                              checked={voiceMode === "ai"}
+                              onChange={() => setVoiceMode("ai")}
+                            />
+                            AI voice
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="voiceMode"
+                              checked={voiceMode === "own"}
+                              onChange={() => setVoiceMode("own")}
+                            />
+                            My own recording
+                          </label>
+                        </div>
+
+                        {voiceMode === "ai" && voices.length > 0 && (
+                          <select
+                            id="voice"
+                            value={selectedVoiceId}
+                            onChange={(e) => setSelectedVoiceId(e.target.value)}
+                            className="w-full rounded-md border border-gray-600 bg-gray-800/50 p-2 text-sm text-gray-200"
+                          >
+                            {voices.map((voice) => (
+                              <option key={voice.id} value={voice.id}>
+                                {voice.name} — {voice.gender}, {voice.description}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+
+                        {voiceMode === "own" && (
+                          <div className="space-y-2">
+                            <input
+                              type="file"
+                              accept="audio/*,video/webm"
+                              disabled={uploadingNarration}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0]
+                                e.target.value = ""
+                                if (!file) return
+                                setUploadingNarration(true)
+                                try {
+                                  const body = new FormData()
+                                  body.append("file", file)
+                                  const res = await fetch("/api/narration", {
+                                    method: "POST",
+                                    headers: withCsrfHeaders(),
+                                    body,
+                                  })
+                                  const data = await res.json()
+                                  if (!res.ok) throw new Error(data?.error || "Upload failed")
+                                  setNarrationAssetId(data.assetId)
+                                  setNarrationName(data.fileName || file.name)
+                                  toast.success("Narration uploaded — it will replace the AI voice")
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : "Upload failed")
+                                } finally {
+                                  setUploadingNarration(false)
+                                }
+                              }}
+                              className="w-full text-sm"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              {narrationAssetId
+                                ? `Using: ${narrationName}. Captions are transcribed from your recording; scene timing follows your requested length.`
+                                : "Upload your recorded narration (mp3/wav/m4a/webm, max 50MB)."}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -553,6 +622,11 @@ export default function AIFeaturesPage() {
             </TabsContent>
 
             {/* Emotion AI Tab */}
+            {/* AI presenter (HeyGen) — Pro plans; renders bill provider credits */}
+            <TabsContent value="avatar" className="space-y-6">
+              <AvatarStudioPanel />
+            </TabsContent>
+
             <TabsContent value="emotion" className="space-y-6">
               <Card>
                 <CardHeader>
