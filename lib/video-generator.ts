@@ -436,13 +436,51 @@ export async function searchStockPhotos(
 }
 
 /**
- * Download a remote file into public/temp. A local path is returned as-is,
- * which keeps assembleVideo testable without network access.
+ * Map a MediaAsset url to a file on disk.
+ *
+ * Locally-stored assets (uploaded product shots, images imported from a site)
+ * carry a PUBLIC-relative url like `/uploads/site/x.jpg`, not a filesystem
+ * path — feeding that straight to ffmpeg looks for `C:\uploads\...` and fails.
+ * A leading slash is therefore resolved under public/. Anything else is taken
+ * as a real path, which is what keeps assembleVideo testable offline.
+ *
+ * The containment check is belt-and-braces: these urls come from our own
+ * database, but a `..` segment must never escape public/.
  */
-async function downloadFile(url: string, filename: string): Promise<string> {
+export function resolveLocalSource(url: string): string {
+  if (!url.startsWith('/')) return url;
+  const publicDir = path.resolve(process.cwd(), 'public');
+  const resolved = path.resolve(publicDir, `.${url}`);
+  const prefix = publicDir + path.sep;
+  if (resolved !== publicDir && !resolved.startsWith(prefix)) {
+    throw new Error(`Refusing to read a scene source outside public/: ${url}`);
+  }
+  return resolved;
+}
+
+/**
+ * Where a scene's source ended up, and whether WE created that file.
+ *
+ * `downloaded` is not a nicety: cleanup deletes only files it created, and the
+ * old code inferred that by comparing the returned string to the input url. The
+ * moment a local url needed resolving (`/uploads/x.jpg` -> an absolute path)
+ * that heuristic silently flipped, and cleanup began deleting the user's own
+ * uploads. Say it explicitly instead.
+ */
+interface MaterializedFile {
+  path: string;
+  downloaded: boolean;
+}
+
+/**
+ * Download a remote file into public/temp. A local source is resolved to a
+ * path and never copied, which keeps assembleVideo testable without network.
+ */
+async function downloadFile(url: string, filename: string): Promise<MaterializedFile> {
   if (!/^https?:\/\//i.test(url)) {
-    if (!fs.existsSync(url)) throw new Error(`Scene source not found on disk: ${url}`);
-    return url;
+    const local = resolveLocalSource(url);
+    if (!fs.existsSync(local)) throw new Error(`Scene source not found on disk: ${url}`);
+    return { path: local, downloaded: false };
   }
   const tempDir = path.join(process.cwd(), 'public', 'temp');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
@@ -453,7 +491,7 @@ async function downloadFile(url: string, filename: string): Promise<string> {
   response.data.pipe(writer);
 
   return new Promise((resolve, reject) => {
-    writer.on('finish', () => resolve(filepath));
+    writer.on('finish', () => resolve({ path: filepath, downloaded: true }));
     writer.on('error', reject);
   });
 }
@@ -805,10 +843,10 @@ export async function assembleVideo(
         for (const scene of scenes) {
           const ext = scene.mediaType === 'image' ? 'jpg' : 'mp4';
           const filename = `scene_${Date.now()}_${scene.index}.${ext}`;
-          const resolved = await downloadFile(scene.clipUrl, filename);
-          paths.push(resolved);
+          const source = await downloadFile(scene.clipUrl, filename);
+          paths.push(source.path);
           // Only a downloaded copy is ours to delete; a local source is not.
-          if (resolved !== scene.clipUrl) tempFiles.push(resolved);
+          if (source.downloaded) tempFiles.push(source.path);
         }
         return paths;
       })(),
@@ -950,9 +988,9 @@ export async function assembleVideo(
 
     const prepareBookend = async (url: string, label: string): Promise<string> => {
       const src = await downloadFile(url, `${label}_${Date.now()}.mp4`);
-      if (src !== url) tempFiles.push(src);
+      if (src.downloaded) tempFiles.push(src.path);
       const normalized = path.join(tempDir, `${label}_norm_${Date.now()}.mp4`);
-      await normalizeClip(src, fit, normalized);
+      await normalizeClip(src.path, fit, normalized);
       tempFiles.push(normalized);
       return normalized;
     };
@@ -1021,8 +1059,9 @@ export async function assembleVideo(
     let logoPath: string | null = null;
     if (branding?.logoUrl) {
       try {
-        logoPath = await downloadFile(branding.logoUrl, `logo_${Date.now()}.png`);
-        if (logoPath !== branding.logoUrl) tempFiles.push(logoPath);
+        const logo = await downloadFile(branding.logoUrl, `logo_${Date.now()}.png`);
+        logoPath = logo.path;
+        if (logo.downloaded) tempFiles.push(logo.path);
       } catch (error) {
         console.error('[Video Generator] Logo fetch failed, skipping (non-fatal):', error);
         logoPath = null;

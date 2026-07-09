@@ -15,6 +15,7 @@ import AIChatPanel from "@/components/ai-chat-panel"
 import SceneEditorPanel from "@/components/scene-editor-panel"
 import MediaPicker from "@/components/media-picker"
 import AvatarStudioPanel from "@/components/avatar-studio-panel"
+import SiteBriefPanel from "@/components/site-brief-panel"
 import { withCsrfHeaders } from "@/lib/csrf-client"
 
 export default function AIFeaturesPage() {
@@ -224,6 +225,15 @@ export default function AIFeaturesPage() {
 
             {/* AI Creator Tab */}
             <TabsContent value="create" className="space-y-6">
+              {/* Paste a URL -> a grounded commercial script + the site's own images */}
+              <SiteBriefPanel
+                duration={videoLength[0]}
+                onBrief={(brief) => {
+                  setPrompt(brief.prompt)
+                  if (brief.mediaAssetIds.length > 0) setSelectedMediaIds(brief.mediaAssetIds)
+                }}
+              />
+
               <div className="grid lg:grid-cols-2 gap-6">
                 {/* Input Panel */}
                 <Card>

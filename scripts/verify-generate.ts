@@ -16,6 +16,7 @@ import {
   assembleVideo,
   aspectPreset,
   renderDims,
+  resolveLocalSource,
   resolveSceneClips,
   type ResolvedScene,
   type AspectRatio,
@@ -787,6 +788,62 @@ async function checkBrandingRender(clip: string) {
   assert(fs.existsSync(logo) && fs.existsSync(intro), 'brand assets not deleted by cleanup');
 }
 
+/**
+ * Locally-stored assets (uploaded product shots, images imported from a site)
+ * carry a PUBLIC-relative url. A live generation caught this: the renderer
+ * treated `/uploads/site/x.jpg` as a filesystem path and died with
+ * "Scene source not found on disk".
+ */
+async function checkLocalSourceResolution() {
+  console.log('\nChecking public-relative scene sources...');
+  const publicDir = path.resolve(process.cwd(), 'public');
+
+  assert(
+    resolveLocalSource('/uploads/site/x.jpg') === path.join(publicDir, 'uploads', 'site', 'x.jpg'),
+    'a public-relative url resolves under public/',
+  );
+  const absolute = path.join(workDir, 'a.mp4');
+  assert(resolveLocalSource(absolute) === absolute, 'an absolute path is passed through untouched');
+
+  let escaped = false;
+  try {
+    resolveLocalSource('/../../../../etc/passwd');
+  } catch {
+    escaped = true;
+  }
+  assert(escaped, 'a traversal out of public/ is refused');
+
+  // The real thing: render a scene whose source is a public-relative image.
+  const uploadDir = path.join(publicDir, 'uploads', 'verify');
+  fs.mkdirSync(uploadDir, { recursive: true });
+  const still = path.join(uploadDir, 'still.jpg');
+  ffmpeg(['-f', 'lavfi', '-i', 'color=green:s=640x360', '-frames:v', '1', still]);
+
+  const { videoUrl } = await assembleVideo(
+    [
+      {
+        id: 'scene-1',
+        index: 0,
+        description: 'Product shot',
+        keywords: [],
+        duration: 3,
+        visualElements: [],
+        clipUrl: '/uploads/verify/still.jpg',
+        matchedQuery: 'local',
+        mediaType: 'image',
+      },
+    ],
+    ['captions'],
+    '16:9',
+    { transition: null },
+  );
+  const out = path.join(publicDir, 'generated', path.basename(videoUrl));
+  assert(fs.existsSync(out), 'a scene sourced from a public-relative url renders');
+  assert(fs.existsSync(still), 'the source image was NOT deleted by cleanup');
+  fs.rmSync(uploadDir, { recursive: true, force: true });
+  fs.rmSync(out, { force: true });
+}
+
 async function main() {
   fs.mkdirSync(workDir, { recursive: true });
   const clipA = path.join(workDir, 'a.mp4');
@@ -797,6 +854,7 @@ async function main() {
   ffmpeg(['-f', 'lavfi', '-i', 'color=blue:s=640x360:r=24', '-t', '5', '-pix_fmt', 'yuv420p', clipB]);
   assert(fs.existsSync(clipA) && fs.existsSync(clipB), 'source clips created');
 
+  await checkLocalSourceResolution();
   checkAvatarContract();
   checkRenderDims();
   await renderAndCheck('16:9', [clipA, clipB]);
