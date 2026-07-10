@@ -182,10 +182,13 @@ export default function RootPage() {
           <source src="/videos/hero.mp4" type="video/mp4" />
         </video>
 
-        {/* Scrim: the headline must stay legible over every frame of the loop. */}
-        <div className="absolute inset-0 bg-black/60" />
+        {/* Scrim. Light enough to let the footage read, dark enough that the
+            headline survives the brightest frame of the loop. The top/bottom
+            gradient stays strong: it anchors the nav bar and blends into the
+            next section. */}
+        <div className="absolute inset-0 bg-black/35" />
         <div className="absolute inset-0 bg-gradient-to-b from-[#070a12] via-transparent to-[#070a12]" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#070a12]/80 via-transparent to-[#070a12]/60" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#070a12]/55 via-transparent to-[#070a12]/40" />
 
         <div className="relative z-10 mx-auto max-w-4xl py-32 text-center">
           <div className="glass-card mb-8 inline-flex items-center rounded-full border border-cyan-500/30 px-4 py-2">
