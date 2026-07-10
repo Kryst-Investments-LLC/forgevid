@@ -78,20 +78,44 @@ const securityConfig = {
   },
   rateLimit: {
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    // Pages and API calls only. A limit this size is meaningless if every
+    // script chunk, stylesheet, font, image and video frame-request counts
+    // against it — see the skip() below for why that was catastrophic.
+    max: 300,
     message: {
       error: 'Too many requests from this IP, please try again later.',
     },
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => {
-      // Only skip rate limiting for health checks and root page
-      if (req.method === 'GET' && (
-        req.path === '/api/health' || 
-        req.path === '/api/monitoring/health' ||
-        req.path === '/'
-      )) {
-        return true;
+      // STATIC ASSETS ARE NOT REQUESTS WORTH LIMITING.
+      //
+      // This limiter counted them, and a single Next.js page load pulls well
+      // over 100 chunks/styles/fonts. So the app rate-limited ITSELF: /_next
+      // chunks came back as 429 JSON, the browser refused them ("MIME type
+      // application/json is not executable"), React never hydrated, and the
+      // page was dead. A real visitor loading the site twice would be locked
+      // out for fifteen minutes.
+      //
+      // Serving a static file is cheap; an unauthenticated API call is not.
+      // Limit the latter.
+      if (req.method === 'GET' || req.method === 'HEAD') {
+        if (
+          req.path.startsWith('/_next/') ||
+          req.path.startsWith('/static/') ||
+          req.path.startsWith('/videos/') ||
+          req.path.startsWith('/images/') ||
+          req.path.startsWith('/generated/') ||
+          req.path.startsWith('/uploads/') ||
+          req.path.startsWith('/music/') ||
+          req.path === '/favicon.ico' ||
+          req.path === '/robots.txt' ||
+          req.path === '/sitemap.xml' ||
+          req.path === '/api/health' ||
+          req.path === '/api/monitoring/health'
+        ) {
+          return true;
+        }
       }
       return false;
     },
