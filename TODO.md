@@ -252,6 +252,16 @@ Writing actual customer videos found more than a week of testing did.
 - **Proven live through the queue**: one concept -> 4 variants (2 hooks x 2 placements), all rendered by the WORKER (web process rendered 0). All four share the identical 3-scene body; only the hook line ("Drowning in sticky notes?" vs "Finish work an hour early.") and shape (960x540 vs 540x960) differ. Frames confirm the hook footage differs too.
 - **Ops lesson**: the first live run re-planned every variant — the WORKER had been booted before the feature existed and `tsx` does not hot-reload. The Redis payload carried `presetScenes` correctly; the stale worker ignored it. Restart the worker on lib changes (now in CLAUDE.md).
 
+**2026-07-10 — AUTOMOTIVE + E-COMMERCE verticals (then verticals FREEZE).**
+- Both built on a shared, deduped feed engine. `lib/feed-core.ts` holds the parsing machinery (JSON + XML dispatch, the record-array finder, case/separator-insensitive alias lookup, `pickAll` for photos split across fields, money/count/mileage coercion, http-only photo extraction). `mls-feed.ts` was refactored onto it with **all 18 real-estate tests still green** — no drift.
+- `lib/feed-batch.ts`: the shared per-item loop (quota, SSRF-guarded photo import, mediaOnly generation, lower third, per-item error isolation). All three verticals' routes are now thin.
+- **Automotive** (`lib/vehicle-feed.ts`, `POST /api/vehicles/batch`): DMS inventory feed (JSON/XML) or inline array → one video per car with **title + price · miles · year** burned in. Composes "2022 Toyota RAV4 XLE" from parts when there's no title field; formats mileage (mi/km); aliases for vAuto/Dealer.com/HomeNet-style fields (StockNumber/VIN/Odometer/SellingPrice). Fact-only prompt forbids inventing options, mileage, price or warranty.
+- **E-commerce** (`lib/product-feed.ts`, `POST /api/products/batch`): Google Merchant RSS (the `g:` namespace) and Shopify/generic JSON → one ad per SKU with **price · brand** burned in, defaulting to 9:16 for social. Strips HTML from `body_html`; gathers photos across `image_link` + `additional_image_link`. Feeds straight into the ad-variation engine for hook/placement testing.
+- **Proven live through the queue**: a vehicle feed → 960x540 dealership video, 2/2 own photos, lower third "2022 Toyota RAV4 XLE · $28,900 · 24,000 mi · 2022", Whisper heard "Presenting the 2022 Toyota RAV4 XLE with just 24,000 miles on the odometer." A product feed → 540x960 ad, 2/2 own photos, "Wireless Earbuds Pro · $49.00 · Acme Audio", "Introducing the Wireless Earbuds Pro. Experience crisp, immersive sound." Both fact-only, zero stock.
+- **Every feed refuses to smuggle a non-http photo url into the renderer** (tested), rejects malformed feeds by name, and pulls photos through the SSRF guard.
+- Gates: type-check, verify:generate (277 assertions), verify:site, verify:proxy, verify:export, verify:e2e:db, build with every key unset.
+- **DECISION: verticals are now FROZEN.** Real estate, automotive, e-commerce, and the marketing ad-variation engine ship on one shared engine. No new verticals until the platform is tested and generating real income.
+
 ## Phase 0 — Repo hygiene (do before any feature work)
 
 - [ ] Commit or deliberately revert the working tree (510 uncommitted files, ~60 deleted status MDs).

@@ -1,0 +1,125 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+import { resolveVoiceIdForUser } from '@/lib/cloned-voices';
+import { FetchLimitError, SsrfError, safeFetch, withDefaultScheme } from '@/lib/safe-fetch';
+import { runFeedBatch, type FeedItem } from '@/lib/feed-batch';
+import {
+  VehicleParseError,
+  parseVehicleFeed,
+  vehicleLowerThird,
+  vehiclePrompt,
+  type Vehicle,
+} from '@/lib/vehicle-feed';
+
+/**
+ * POST /api/vehicles/batch — a dealership's whole lot, one video per car.
+ *
+ * Accepts a DMS inventory feed URL (JSON or XML), or an inline `vehicles` array.
+ * Each vehicle's photos are pulled through the SSRF guard, and a `mediaOnly`
+ * video is rendered with its price / mileage / year burned in. Nothing about the
+ * car is invented — a dealer is legally accountable for what an ad claims.
+ */
+
+export const dynamic = 'force-dynamic';
+
+const MAX_VEHICLES = 40;
+
+const vehicleSchema = z.object({
+  ref: z.string().min(1).max(120),
+  title: z.string().min(1).max(200),
+  year: z.number().int().min(1900).max(2100).optional(),
+  make: z.string().max(60).optional(),
+  model: z.string().max(60).optional(),
+  trim: z.string().max(60).optional(),
+  price: z.string().max(60).optional(),
+  mileage: z.string().max(40).optional(),
+  highlights: z.string().max(1000).optional(),
+  photos: z.array(z.string().min(4)).min(1).max(12),
+});
+
+const bodySchema = z
+  .object({
+    feedUrl: z.string().min(4).max(2048).optional(),
+    vehicles: z.array(vehicleSchema).min(1).max(MAX_VEHICLES).optional(),
+    duration: z.number().int().min(5).max(120).default(20),
+    aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
+    voiceId: z.string().optional(),
+    renderQuality: z.enum(['draft', 'full', '4k']).default('full'),
+  })
+  .refine((b) => Boolean(b.feedUrl) !== Boolean(b.vehicles), {
+    message: 'Provide either `feedUrl` or `vehicles`, not both',
+  });
+
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+  const userId = session.user.id;
+
+  const parsed = bodySchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Invalid request', details: parsed.error.issues }, { status: 400 });
+  }
+  const { feedUrl, duration, aspectRatio, voiceId, renderQuality } = parsed.data;
+
+  let vehicles: Vehicle[];
+  try {
+    if (feedUrl) {
+      const { body, contentType } = await safeFetch(withDefaultScheme(feedUrl), {
+        maxBytes: 8 * 1024 * 1024,
+        timeoutMs: 15_000,
+        acceptTypes: ['application/json', 'text/json', 'application/xml', 'text/xml', 'text'],
+        headers: { Accept: 'application/json, application/xml;q=0.9' },
+      });
+      vehicles = parseVehicleFeed(body.toString('utf8'), contentType);
+    } else {
+      vehicles = parsed.data.vehicles as Vehicle[];
+    }
+  } catch (error) {
+    if (error instanceof VehicleParseError) {
+      return NextResponse.json({ error: error.message }, { status: 422 });
+    }
+    if (error instanceof SsrfError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (error instanceof FetchLimitError) {
+      return NextResponse.json({ error: `Could not read the feed: ${error.message}` }, { status: 422 });
+    }
+    console.error('[vehicles] feed fetch failed:', error);
+    return NextResponse.json({ error: 'Could not read that feed' }, { status: 502 });
+  }
+
+  if (vehicles.length > MAX_VEHICLES) {
+    return NextResponse.json(
+      { error: `At most ${MAX_VEHICLES} vehicles per batch (got ${vehicles.length})` },
+      { status: 413 },
+    );
+  }
+
+  const resolvedVoiceId = await resolveVoiceIdForUser(userId, voiceId);
+  const items: FeedItem[] = vehicles.map((v) => ({
+    ref: v.ref,
+    label: v.title,
+    photos: v.photos,
+    buildPrompt: (n) => vehiclePrompt(v, n),
+    lowerThird: () => vehicleLowerThird(v),
+  }));
+
+  const { started, failed, results } = await runFeedBatch(items, {
+    userId,
+    duration,
+    aspectRatio,
+    voiceId: resolvedVoiceId,
+    renderQuality,
+  });
+
+  return NextResponse.json({
+    started,
+    failed,
+    results,
+    message: `Started ${started} of ${results.length} vehicle videos. Poll /api/ai/jobs/{videoId} for each.`,
+  });
+}

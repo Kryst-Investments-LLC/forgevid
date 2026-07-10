@@ -58,6 +58,8 @@ import { ListingParseError, listingPrompt, parseListingsCsv } from '../lib/listi
 import { buildLowerThirdFilter, formatFacts } from '../lib/lower-third';
 import { parseListingsFeed, parseResoJson, parseXmlFeed } from '../lib/mls-feed';
 import { VariationError, assertBodySupportsAxes, expandVariations } from '../lib/ad-variations';
+import { VehicleParseError, parseVehicleFeed, vehicleLowerThird, vehiclePrompt } from '../lib/vehicle-feed';
+import { ProductParseError, parseProductFeed, productLowerThird, productPrompt } from '../lib/product-feed';
 
 /** Unique per run, so a previous run's TTS cache can't fake a "first pass". */
 const stampTag = Date.now().toString(36);
@@ -1142,6 +1144,120 @@ function checkListingCsv() {
   assert(!/bedroom|bathroom|listed at/.test(noFacts), 'absent facts are simply not mentioned');
 }
 
+function checkVehicleFeed() {
+  console.log('\nChecking automotive inventory ingestion...');
+
+  // A DMS JSON export. Photos as a pipe-separated string; parts, no title field.
+  const dms = JSON.stringify({
+    value: [
+      {
+        StockNumber: 'A7788',
+        VIN: '1HGCV1F34LA000000',
+        Year: 2022,
+        Make: 'Toyota',
+        Model: 'RAV4',
+        Trim: 'XLE',
+        SellingPrice: '28900.00',
+        Odometer: '24000',
+        DealerNotes: 'One owner, clean CARFAX.',
+        Photos: 'https://cdn.test/a.jpg | https://cdn.test/b.jpg',
+      },
+    ],
+  });
+  const [car] = parseVehicleFeed(dms, 'application/json');
+  assert(car.ref === 'A7788', 'vehicle ref from StockNumber');
+  assert(car.title === '2022 Toyota RAV4 XLE', `title composed from parts (${car.title})`);
+  assert(car.price === '$28,900', `a "28900.00" price becomes $28,900 (${car.price})`);
+  assert(car.mileage === '24,000 mi', `odometer becomes "24,000 mi" (${car.mileage})`);
+  assert(car.photos.length === 2, 'pipe-separated photos split');
+
+  // A dealer XML feed with a direct title and km.
+  const xml = `<?xml version="1.0"?><inventory>
+    <vehicle><stock>B12</stock><title>2020 Honda Civic</title><price>19995</price>
+      <miles>45000 km</miles><images><image>https://cdn.test/c.jpg</image></images></vehicle>
+  </inventory>`;
+  const [civic] = parseVehicleFeed(xml, 'text/xml');
+  assert(civic.title === '2020 Honda Civic', 'direct title field is used as-is');
+  assert(civic.mileage === '45,000 km', `km unit is preserved (${civic.mileage})`);
+
+  // The lower third shows the facts a car shopper wants.
+  const lt = vehicleLowerThird(car);
+  assert(lt.title === '2022 Toyota RAV4 XLE' && (lt.facts ?? []).join('|') === '$28,900|24,000 mi|2022',
+    'lower third: title + price · miles · year');
+
+  // The prompt states only real facts and forbids inventing.
+  const p = vehiclePrompt(car, 2);
+  assert(p.includes('2022 Toyota RAV4 XLE') && p.includes('$28,900') && p.includes('24,000 mi'), 'prompt states real facts');
+  assert(/never invent/i.test(p), 'prompt forbids inventing');
+
+  // Bad feeds fail LOUDLY.
+  let rejected = 0;
+  for (const [t, ct] of [
+    ['{"value":[{"Price":1}]}', 'application/json'],           // no title/make/model
+    ['{"value":[{"Make":"Toyota","Model":"RAV4"}]}', 'application/json'], // no photos
+    ['{"value":[]}', 'application/json'],                       // empty
+  ] as Array<[string, string]>) {
+    try { parseVehicleFeed(t, ct); } catch (e) { if (e instanceof VehicleParseError) rejected++; }
+  }
+  assert(rejected === 3, `every malformed vehicle feed is rejected (${rejected}/3)`);
+
+  // A feed cannot smuggle a non-http photo into the renderer.
+  const sneaky = parseVehicleFeed(
+    JSON.stringify({ value: [{ VIN: 'X', Make: 'Ford', Model: 'F150', Photos: 'file:///etc/passwd https://ok.test/a.jpg' }] }),
+    'application/json',
+  );
+  assert(sneaky[0].photos.length === 1 && sneaky[0].photos[0] === 'https://ok.test/a.jpg', 'only http(s) vehicle photos survive');
+}
+
+function checkProductFeed() {
+  console.log('\nChecking e-commerce product ingestion...');
+
+  // Google Merchant Center RSS: the g: namespace, which fast-xml-parser flattens.
+  const merchant = `<?xml version="1.0"?><rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+    <channel><item>
+      <g:id>SKU-9</g:id><g:title>Wireless Earbuds Pro</g:title><g:brand>Acme</g:brand>
+      <g:price>49.00 USD</g:price>
+      <g:description>&lt;p&gt;Crisp sound, all&amp;nbsp;day battery.&lt;/p&gt;</g:description>
+      <g:image_link>https://cdn.test/e1.jpg</g:image_link>
+      <g:additional_image_link>https://cdn.test/e2.jpg</g:additional_image_link>
+    </item></channel></rss>`;
+  const [buds] = parseProductFeed(merchant, 'application/xml');
+  assert(buds.ref === 'SKU-9' && buds.title === 'Wireless Earbuds Pro', 'g:id and g:title read');
+  assert(buds.brand === 'Acme', 'g:brand read');
+  assert(buds.price === '$49', `a "49.00 USD" price becomes $49 (${buds.price})`);
+  assert(buds.description === 'Crisp sound, all day battery.', `HTML stripped from description (${buds.description})`);
+  assert(buds.photos.length === 2 && buds.photos[0].endsWith('e1.jpg'), 'image_link + additional_image_link, in order');
+
+  // Shopify / generic JSON: `{ products: [...] }`, images as objects.
+  const shopify = JSON.stringify({
+    products: [
+      { id: 12, title: 'Canvas Tote', vendor: 'Acme', price: '29.99',
+        images: [{ src: 'https://cdn.test/t1.jpg' }, { src: 'https://cdn.test/t2.jpg' }] },
+    ],
+  });
+  const [tote] = parseProductFeed(shopify, 'application/json');
+  assert(tote.title === 'Canvas Tote' && tote.brand === 'Acme', 'Shopify title + vendor');
+  assert(tote.price === '$29.99', `cents kept ($29.99 from 29.99) (${tote.price})`);
+  assert(tote.photos.length === 2, 'Shopify images[].src extracted');
+
+  const lt = productLowerThird(buds);
+  assert(lt.title === 'Wireless Earbuds Pro' && (lt.facts ?? []).join('|') === '$49|Acme', 'lower third: title + price · brand');
+
+  const p = productPrompt(buds, 2);
+  assert(p.includes('Wireless Earbuds Pro') && p.includes('$49'), 'prompt states real facts');
+  assert(/never invent/i.test(p), 'prompt forbids inventing');
+
+  let rejected = 0;
+  for (const [t, ct] of [
+    ['{"products":[{"price":"1"}]}', 'application/json'],       // no title
+    ['{"products":[{"title":"x"}]}', 'application/json'],       // no image
+    ['<rss><channel></channel></rss>', 'application/xml'],      // no items
+  ] as Array<[string, string]>) {
+    try { parseProductFeed(t, ct); } catch (e) { if (e instanceof ProductParseError) rejected++; }
+  }
+  assert(rejected === 3, `every malformed product feed is rejected (${rejected}/3)`);
+}
+
 function checkAdVariations() {
   console.log('\nChecking the ad-variation matrix...');
 
@@ -1411,6 +1527,8 @@ async function main() {
   await checkLowerThird();
   checkClampScenesToMedia();
   checkListingCsv();
+  checkVehicleFeed();
+  checkProductFeed();
   checkAdVariations();
   checkMlsFeed();
   checkSilentSceneDrop();
