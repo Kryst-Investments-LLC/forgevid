@@ -12,8 +12,47 @@
  */
 
 import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { spawnSync } from 'child_process';
 import { hasOpenAiKey, openAiApiKey } from './openai-key';
+import { resolveFfmpegPath } from './ffmpeg-env';
 import type * as fsTypes from 'fs';
+
+/** Whisper rejects anything over 25MB with a 413. */
+const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Whisper's hard limit is 25MB, but a narration upload may be 50MB and a
+ * rendered video far more. Speech needs none of that: 16 kHz mono at 64 kbps
+ * loses nothing Whisper uses, and shrinks an hour of audio to ~30MB — so this
+ * also strips the video stream, which is the usual reason a file is huge.
+ *
+ * Returns a temp path the caller must delete, or null if the file is fine as-is.
+ * Without this, captions failed silently on exactly the long recordings people
+ * pay to have captioned.
+ */
+function compressForWhisper(inputPath: string): string | null {
+  let size = 0;
+  try {
+    size = fs.statSync(inputPath).size;
+  } catch {
+    return null;
+  }
+  if (size <= WHISPER_MAX_BYTES) return null;
+
+  const out = path.join(os.tmpdir(), `whisper_${Date.now()}.mp3`);
+  const result = spawnSync(
+    resolveFfmpegPath(),
+    ['-y', '-i', inputPath, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '64k', out],
+    { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+  );
+  if (result.status !== 0 || !fs.existsSync(out)) {
+    console.error('[Captions] Could not compress audio for Whisper; sending as-is.');
+    return null;
+  }
+  return out;
+}
 
 export interface CaptionCue {
   /** Seconds from the start of the video. */
@@ -56,11 +95,19 @@ export async function transcribeToCues(audioPath: string): Promise<CaptionCue[] 
     const { OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey: openAiApiKey() });
 
-    const result: any = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(audioPath) as any,
-      model: 'whisper-1',
-      response_format: 'verbose_json',
-    });
+    // A 50MB narration upload is legal here but a 413 at Whisper. Shrink first.
+    const compressed = compressForWhisper(audioPath);
+    const sendPath = compressed ?? audioPath;
+    let result: any;
+    try {
+      result = await openai.audio.transcriptions.create({
+        file: fs.createReadStream(sendPath) as any,
+        model: 'whisper-1',
+        response_format: 'verbose_json',
+      });
+    } finally {
+      if (compressed) fs.rmSync(compressed, { force: true });
+    }
 
     const segments = Array.isArray(result?.segments) ? result.segments : [];
     const cues: CaptionCue[] = segments
@@ -92,11 +139,18 @@ export async function transcribeAudioToText(audioPath: string): Promise<string |
     const { OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey: openAiApiKey() });
 
-    const result: any = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(audioPath) as any,
-      model: 'whisper-1',
-      response_format: 'text',
-    });
+    const compressed = compressForWhisper(audioPath);
+    const sendPath = compressed ?? audioPath;
+    let result: any;
+    try {
+      result = await openai.audio.transcriptions.create({
+        file: fs.createReadStream(sendPath) as any,
+        model: 'whisper-1',
+        response_format: 'text',
+      });
+    } finally {
+      if (compressed) fs.rmSync(compressed, { force: true });
+    }
 
     const text = typeof result === 'string' ? result : String(result?.text ?? '');
     return text.trim() || null;

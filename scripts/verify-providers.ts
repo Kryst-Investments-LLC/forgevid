@@ -92,10 +92,16 @@ async function renderWithRealVoice() {
     info = String(err.stderr ?? '');
   }
   assert(/Stream .*Audio: aac/.test(info), 'output carries the REAL narration audio');
-  // Narration pacing: scenes were requested at 5s each but must follow speech.
+  // The requested length is a promise. Real ElevenLabs speech (~2s a line) is
+  // shorter than these 5s scenes, and the video must still be 5s + 5s — the
+  // spare time becomes a pause, not a shorter video.
   assert(
-    scenes.every((s) => s.duration < 5),
-    `scenes were cut to speech (${scenes.map((s) => s.duration.toFixed(2)).join('s, ')}s), not the requested 5s`,
+    scenes.every((s) => Math.abs(s.duration - 5) < 0.01),
+    `the requested 5s scenes are honoured (${scenes.map((s) => s.duration.toFixed(2)).join('s, ')}s)`,
+  );
+  assert(
+    Math.abs(cues[1].start - 5) < 0.05,
+    `line 2 is spoken when scene 2 begins, not early (cue at ${cues[1].start.toFixed(2)}s)`,
   );
   assert(cues.length === 2, 'speech-aligned cues came from the segments');
   console.log(`      kept for listening: ${outFile}`);

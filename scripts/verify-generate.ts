@@ -19,6 +19,7 @@ import {
   renderDims,
   resolveLocalSource,
   resolveSceneClips,
+  spokenLine,
   type ResolvedScene,
   type AspectRatio,
 } from '../lib/video-generator';
@@ -50,7 +51,7 @@ import { withRenderSlot, activeRenders, queuedRenders } from '../lib/render-sema
 import { avatarDimension, buildAvatarVideoPayload } from '../lib/avatar-provider';
 import { allowsAvatars, allowsVoiceCloning } from '../lib/plan';
 import { estimateGenerationCost } from '../lib/cost-ledger';
-import { SCENE_AUDIO_PADDING_SECONDS, synthesizeSceneVoiceovers } from '../lib/voiceover';
+import { SCENE_AUDIO_PADDING_SECONDS, buildAlignedNarration, synthesizeSceneVoiceovers } from '../lib/voiceover';
 
 /** Unique per run, so a previous run's TTS cache can't fake a "first pass". */
 const stampTag = Date.now().toString(36);
@@ -677,34 +678,56 @@ async function checkNarrationPacing(clipA: string, clipB: string) {
   await synthesizeSceneVoiceovers(edited, undefined, fakeSynth as any);
   assert(synthCalls === 3, 'editing one scene re-synthesizes only that scene');
 
-  // Now the pacing: scenes REQUEST 5s+5s, but the audio (1s and 2s + padding)
-  // must decide the cut.
-  const requested = [scene(0, clipA, 5, lines[0].description), scene(1, clipB, 5, lines[1].description)];
-  const result = await assembleVideo(requested, [], '16:9', {
+  // Speech is a FLOOR on a scene, never a ceiling.
+  //
+  // Case A — the requested length is longer than the copy (a 25s advert whose
+  // script runs 13s). The video must still be the length that was asked for;
+  // the spare time becomes a pause, not a shorter advert.
+  const roomy = [scene(0, clipA, 5, lines[0].description), scene(1, clipB, 5, lines[1].description)];
+  const result = await assembleVideo(roomy, [], '16:9', {
     sceneVoiceovers: first,
     transition: null,
   });
 
-  const expected = 1 + 2 + 2 * SCENE_AUDIO_PADDING_SECONDS;
-  const paced = result.scenes.map((s) => s.duration);
+  const held = result.scenes.map((s) => s.duration);
   assert(
-    Math.abs(paced[0] - (1 + SCENE_AUDIO_PADDING_SECONDS)) < 0.25 &&
-      Math.abs(paced[1] - (2 + SCENE_AUDIO_PADDING_SECONDS)) < 0.25,
-    `scene durations follow the audio (${paced.join(', ')})`,
+    Math.abs(held[0] - 5) < 0.01 && Math.abs(held[1] - 5) < 0.01,
+    `a short script does not shorten the video (${held.join('s, ')}s of the requested 5s+5s)`,
   );
 
   const outFile = path.join(process.cwd(), 'public', 'generated', path.basename(result.videoUrl));
   const dur = durationSeconds(probe(outFile));
-  assert(Math.abs(dur - expected) < 0.6, `video is speech-length ~${expected.toFixed(2)}s (got ${dur.toFixed(2)}s), not the requested 10s`);
-  assert(/Stream .*Audio: aac/.test(probe(outFile)), 'concatenated narration made it into the mux');
+  assert(Math.abs(dur - 10) < 0.6, `video is the requested 10s (got ${dur.toFixed(2)}s)`);
+  assert(/Stream .*Audio: aac/.test(probe(outFile)), 'narration made it into the mux');
 
   // Cues came from the segments, not Whisper: each spans its own scene.
   assert(result.cues.length === 2, 'one cue per scene');
   assert(result.cues[0].start === 0 && Math.abs(result.cues[0].end - 1) < 0.2, 'cue 1 spans its audio');
   assert(
-    Math.abs(result.cues[1].start - paced[0]) < 0.01,
-    'cue 2 starts exactly where scene 2 starts',
+    Math.abs(result.cues[1].start - held[0]) < 0.01,
+    'cue 2 starts exactly where scene 2 starts, not where line 1 stopped talking',
   );
+
+  // Case B — the copy is longer than the requested scene. The line must never be
+  // cut off mid-word, so the scene grows to hold it.
+  const cramped = [scene(0, clipA, 1, lines[0].description), scene(1, clipB, 1, lines[1].description)];
+  const grown = await assembleVideo(cramped, [], '16:9', {
+    sceneVoiceovers: first,
+    transition: null,
+  });
+  const paced = grown.scenes.map((s) => s.duration);
+  assert(
+    Math.abs(paced[1] - (2 + SCENE_AUDIO_PADDING_SECONDS)) < 0.25,
+    `a scene grows to hold a line longer than it (${paced.join('s, ')}s)`,
+  );
+  const grownFile = path.join(process.cwd(), 'public', 'generated', path.basename(grown.videoUrl));
+  const grownDur = durationSeconds(probe(grownFile));
+  const speechTotal = 1 + 2 + 2 * SCENE_AUDIO_PADDING_SECONDS;
+  assert(
+    Math.abs(grownDur - speechTotal) < 0.6,
+    `video stretches to fit the speech (~${speechTotal.toFixed(2)}s, got ${grownDur.toFixed(2)}s)`,
+  );
+  fs.rmSync(grownFile, { force: true });
 
   cleanupOurGenerated();
 }
@@ -870,6 +893,71 @@ async function checkLocalSourceResolution() {
   fs.rmSync(out, { force: true });
 }
 
+/**
+ * A 25-second advert whose copy runs 13 seconds must still be 25 seconds long,
+ * and its second line must not play over its first shot. Prove both by measuring
+ * loudness: speech at each scene's start, silence in the gaps.
+ */
+async function checkNarrationAlignment() {
+  console.log('\nChecking narration is aligned to the scene timeline...');
+
+  const one = path.join(workDir, 'line1.mp3');
+  const two = path.join(workDir, 'line2.mp3');
+  ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=440:duration=1', '-c:a', 'libmp3lame', one]);
+  ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=880:duration=1', '-c:a', 'libmp3lame', two]);
+
+  const segments = [
+    { sceneId: 'scene-1', path: one, durationSeconds: 1, cached: false },
+    { sceneId: 'scene-2', path: two, durationSeconds: 1, cached: false },
+  ];
+
+  // Scene 1 runs 0-5s, scene 2 runs 5-8s. The lines are 1s each.
+  const out = path.join(workDir, 'aligned.m4a');
+  await buildAlignedNarration(segments, [0, 5], 8, out);
+
+  const info = probe(out);
+  const dur = durationSeconds(info);
+  assert(Math.abs(dur - 8) < 0.3, `track fills the whole video (${dur.toFixed(2)}s of 8s)`);
+
+  assert(meanVolumeDb(out, 0.1, 0.7) > -35, 'line 1 plays at scene 1 start');
+  assert(meanVolumeDb(out, 2.5, 2.0) < -60, 'the gap between lines is silent, not filled early');
+  assert(meanVolumeDb(out, 5.1, 0.7) > -35, 'line 2 plays at scene 2 start, not over scene 1');
+  assert(meanVolumeDb(out, 6.5, 1.0) < -60, 'the tail after the last line is silent');
+
+  // The old concat behaviour is what this replaces: back-to-back, so line 2
+  // would have landed at 1s instead of 5s.
+  assert(meanVolumeDb(out, 1.2, 0.6) < -60, 'line 2 did NOT slide forward to 1s (the concat bug)');
+
+  fs.rmSync(one, { force: true });
+  fs.rmSync(two, { force: true });
+  fs.rmSync(out, { force: true });
+}
+
+function checkSpokenLine() {
+  console.log('\nChecking spoken narration vs stage direction...');
+
+  // The bug: a commercial narrated its own stage directions out loud.
+  assert(
+    spokenLine({
+      description: 'Close-up of coffee beans pouring into a grinder',
+      narration: 'It starts with beans picked at their peak.',
+    }) === 'It starts with beans picked at their peak.',
+    'narration is spoken, not the description',
+  );
+  assert(
+    spokenLine({ description: 'Sunrise over the sea' }) === 'Sunrise over the sea',
+    'a scene planned before narration existed still speaks its description',
+  );
+  assert(
+    spokenLine({ description: 'Fallback line', narration: '   ' }) === 'Fallback line',
+    'a blank narration falls back rather than rendering silence',
+  );
+  assert(
+    spokenLine({ description: 'Fallback line', narration: '' }) === 'Fallback line',
+    'an empty narration falls back',
+  );
+}
+
 function checkDurationNormalization() {
   console.log('\nChecking scene duration budget...');
   const mk = (durations: number[]) =>
@@ -909,6 +997,8 @@ async function main() {
 
   await checkLocalSourceResolution();
   checkAvatarContract();
+  await checkNarrationAlignment();
+  checkSpokenLine();
   checkDurationNormalization();
   checkRenderDims();
   await renderAndCheck('16:9', [clipA, clipB]);

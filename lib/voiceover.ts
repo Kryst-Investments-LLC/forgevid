@@ -166,7 +166,70 @@ export async function concatSceneVoiceovers(
   return outPath;
 }
 
-/** The duration each scene should get when its narration drives the cut. */
+/**
+ * Lay each scene's line at that scene's START time, and hold the track for the
+ * whole video.
+ *
+ * concatSceneVoiceovers() butts the segments together, which is only correct
+ * when every scene is exactly as long as its line. The moment a scene is longer
+ * — because someone asked for a 25-second advert and the copy fills 13 — the
+ * voice drifts ahead of the picture and scene two's line plays over scene one.
+ *
+ * Here each segment is delayed to its own scene's start and the mix is padded
+ * to the video's length, so the silence falls BETWEEN lines instead of the
+ * whole script sliding forward. `-t` bounds the output: `apad` alone never ends.
+ */
+export async function buildAlignedNarration(
+  segments: SceneVoiceover[],
+  sceneStarts: number[],
+  totalDuration: number,
+  outPath: string,
+): Promise<string> {
+  if (segments.length === 0) throw new Error('No narration segments to align');
+
+  const args: string[] = ['-y'];
+  for (const segment of segments) args.push('-i', segment.path);
+
+  const delays = segments.map((_, i) => {
+    const ms = Math.max(0, Math.round((sceneStarts[i] ?? 0) * 1000));
+    // Normalise to stereo first, then delay BOTH channels explicitly. The
+    // shorter `adelay=<ms>:all=1` needs ffmpeg >= 4.2; `<ms>|<ms>` works
+    // everywhere, and aformat also spares amix from mixing mismatched inputs.
+    return (
+      `[${i}:a]aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo,` +
+      `adelay=${ms}|${ms}[a${i}]`
+    );
+  });
+  const labels = segments.map((_, i) => `[a${i}]`).join('');
+  // normalize=0: otherwise amix divides every input's gain by the input count,
+  // so a five-scene narration would come out five times too quiet.
+  const mix = `${labels}amix=inputs=${segments.length}:normalize=0:duration=longest,apad[out]`;
+
+  args.push(
+    '-filter_complex', `${delays.join(';')};${mix}`,
+    '-map', '[out]',
+    '-t', totalDuration.toFixed(3),
+    '-c:a', 'aac',
+    '-b:a', '192k',
+    outPath,
+  );
+
+  const result = spawnSync(resolveFfmpegPath(), args, {
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (result.status !== 0 || !fs.existsSync(outPath)) {
+    throw new Error(`Narration alignment failed: ${String(result.stderr ?? '').slice(-300)}`);
+  }
+  return outPath;
+}
+
+/**
+ * The duration a scene needs in order to hold its own narration.
+ *
+ * This is a FLOOR, not the answer: a scene never gets shorter than its line,
+ * but it may be longer if the user asked for a longer video.
+ */
 export function pacedDuration(segment: SceneVoiceover): number {
   return Math.max(1, Number((segment.durationSeconds + SCENE_AUDIO_PADDING_SECONDS).toFixed(3)));
 }

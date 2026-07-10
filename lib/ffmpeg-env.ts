@@ -55,12 +55,24 @@ export function resolveFfmpegPath(): string {
 
   if (works('ffmpeg')) {
     cachedPath = 'ffmpeg';
+    console.log('[ffmpeg-env] using the system ffmpeg on PATH');
     return cachedPath;
   }
 
   // Last resort: the pinned 2018 build. Missing xfade; features degrade.
+  //
+  // This must never happen silently. It DID: webpack bundled ffmpeg-static, so
+  // its `path.join(__dirname, ...)` pointed nowhere, the check above failed, and
+  // every render the web app produced quietly used this 2018 binary — hard cuts
+  // instead of the cross-fades the user asked for. The suites never saw it
+  // because plain node resolves ffmpeg-static correctly.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   cachedPath = require('@ffmpeg-installer/ffmpeg').path as string;
+  console.warn(
+    '[ffmpeg-env] WARNING: falling back to the 2018 @ffmpeg-installer build. ' +
+      'It has no xfade, so scene transitions will degrade to hard cuts. ' +
+      'Install ffmpeg-static, or set FFMPEG_PATH to a modern binary.',
+  );
   return cachedPath;
 }
 

@@ -41,6 +41,7 @@ import { buildKenBurnsFilter, directionForScene } from './ken-burns';
 import type { UserMediaItem } from './user-media';
 import { buildSceneQueries } from './stock-query';
 import {
+  buildAlignedNarration,
   concatSceneVoiceovers,
   pacedDuration,
   synthesizeSceneVoiceovers,
@@ -79,8 +80,18 @@ let pexelsClient: any = null;
 export interface PlannedScene {
   id: string;
   index: number;
-  /** Prose for the human editing this scene. NOT a stock search term. */
+  /** Prose for the human editing this scene. NOT spoken, NOT a search term. */
   description: string;
+  /**
+   * The words actually SPOKEN over this scene, and shown as its caption.
+   *
+   * Without this, `description` was narrated verbatim — so a commercial's
+   * voiceover read its own stage directions out loud ("Close-up of coffee beans
+   * pouring into a grinder"). A description tells an editor what is on screen;
+   * narration is copy written to be heard. Optional: scenes planned before this
+   * existed fall back to the description, exactly as they used to sound.
+   */
+  narration?: string;
   /**
    * A literal, filmable search phrase for the stock provider. Kept separate
    * from `description` because using prose as a query retrieved a makeup clip
@@ -91,6 +102,17 @@ export interface PlannedScene {
   keywords: string[];
   duration: number;
   visualElements: string[];
+}
+
+/**
+ * The words spoken over a scene and printed in its captions.
+ *
+ * `description` is the fallback so that videos generated before narration
+ * existed re-render identically instead of falling silent.
+ */
+export function spokenLine(scene: Pick<PlannedScene, 'description' | 'narration'>): string {
+  const line = scene.narration?.trim();
+  return line && line.length > 0 ? line : scene.description;
 }
 
 /** A planned scene with its chosen stock clip. */
@@ -567,6 +589,7 @@ export async function planScenes(script: string, totalDuration: number): Promise
           id: sceneId(i),
           index: i,
           description: String(s.description),
+          narration: typeof s.narration === 'string' ? s.narration : undefined,
           searchQuery: typeof s.searchQuery === 'string' ? s.searchQuery : undefined,
           keywords: Array.isArray(s.keywords) ? s.keywords.map(String) : [],
           duration: Number(s.duration) > 0 ? Number(s.duration) : Math.max(1, totalDuration / raw.length),
@@ -586,8 +609,21 @@ export async function planScenes(script: string, totalDuration: number): Promise
           content: `You are a video production assistant. Parse the video script into individual scenes for stock footage matching.
 
 For each scene provide:
-1. "description" — prose for a human: what happens in this scene.
-2. "searchQuery" — a STOCK FOOTAGE SEARCH TERM, not prose. 2-4 concrete,
+1. "description" — prose for a human editor: what is on screen. Never spoken.
+2. "narration" — THE WORDS SPOKEN ALOUD over this scene, and shown as its
+   caption. This is copy written to be HEARD, not a description of the picture.
+   Read end to end across all scenes it must flow as one continuous script.
+     - never narrate the shot itself ("close-up of...", "we see...")
+     - if the source text is an advert, this is the ad copy; if it is a story,
+       this is the storytelling
+     - LENGTH MATTERS. Speech runs at about 2.5 words per second, and the
+       finished video is cut to the length of the narration. Across ALL scenes
+       the narration must total roughly ${Math.round(totalDuration * 2.5)} words
+       for this ${totalDuration}-second video, split in proportion to each
+       scene's duration. Writing less makes the video come out short.
+   Bad:  "Close-up of coffee beans pouring into a grinder"
+   Good: "It starts with beans picked at their peak."
+3. "searchQuery" — a STOCK FOOTAGE SEARCH TERM, not prose. 2-4 concrete,
    filmable nouns naming what is literally on screen. This string is sent to a
    stock library verbatim, so:
      - no camera language ("close-up of", "over-the-shoulder", "cut to")
@@ -597,14 +633,15 @@ For each scene provide:
      - name the SUBJECT and its SETTING.
    Bad:  "Close-up of a person's smile watching the finished video"
    Good: "person editing video on laptop"
-3. "keywords" — 3-5 single visual nouns, used as backup queries.
-4. "duration" — seconds; distribute ${totalDuration}s total across all scenes.
-5. "visualElements" — key objects in frame.
+4. "keywords" — 3-5 single visual nouns, used as backup queries.
+5. "duration" — seconds; distribute ${totalDuration}s total across all scenes.
+6. "visualElements" — key objects in frame.
 
 Return ONLY a JSON array with this structure:
 [
   {
-    "description": "Opening with flour scattered across a wooden countertop",
+    "description": "Flour scattered across a wooden countertop in morning light",
+    "narration": "Every loaf begins the same way.",
     "searchQuery": "flour wooden countertop",
     "keywords": ["flour", "baking", "countertop", "kitchen"],
     "duration": 5,
@@ -882,22 +919,39 @@ export async function assembleVideo(
       const segments =
         options.sceneVoiceovers ??
         (await synthesizeSceneVoiceovers(
-          scenes.map((s) => ({ id: s.id, description: s.description })),
+          // What is SPOKEN is the narration, never the stage direction.
+          scenes.map((s) => ({ id: s.id, description: spokenLine(s) })),
           options.voiceId,
         ));
 
       if (segments && segments.length === scenes.length) {
         if (options.paceToNarration !== false) {
-          scenes = scenes.map((s, i) => ({ ...s, duration: pacedDuration(segments[i]) }));
+          // A scene is never SHORTER than its line (the voice would be cut off)
+          // and never shorter than the length the user asked for. Speech is a
+          // floor, not the answer — otherwise a 25-second advert whose copy runs
+          // 13 seconds silently becomes a 13-second advert.
+          scenes = scenes.map((s, i) => ({
+            ...s,
+            duration: Math.max(pacedDuration(segments[i]), s.duration),
+          }));
+        }
+
+        // Each line is delayed to its own scene's start, so extra runtime lands
+        // as pauses BETWEEN lines rather than sliding the whole script early.
+        const sceneStarts: number[] = [];
+        let cursor = 0;
+        for (const s of scenes) {
+          sceneStarts.push(cursor);
+          cursor += s.duration;
         }
         const concatPath = path.join(tempDir, `narration_${Date.now()}.m4a`);
-        voiceoverPath = await concatSceneVoiceovers(segments, concatPath);
+        voiceoverPath = await buildAlignedNarration(segments, sceneStarts, cursor, concatPath);
         tempFiles.push(concatPath);
 
         // Exact per-scene cues: each line spans its own (audio-derived) scene.
         let t = 0;
         sceneCues = scenes.map((s, i) => {
-          const cue = { start: t, end: t + segments[i].durationSeconds, text: s.description };
+          const cue = { start: t, end: t + segments[i].durationSeconds, text: spokenLine(s) };
           t += s.duration;
           return cue;
         });
@@ -908,7 +962,7 @@ export async function assembleVideo(
     }
 
     const scenesDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
-    const narration = scenes.map((s) => s.description).join('. ').replace(/\s+/g, ' ').trim();
+    const narration = scenes.map(spokenLine).join(' ').replace(/\s+/g, ' ').trim();
     // Fetch footage and synthesize narration in parallel.
     const [clipPaths, vo] = await Promise.all([
       (async () => {
@@ -1107,7 +1161,7 @@ export async function assembleVideo(
         options.cues ??
         sceneCues ??
         (voiceoverPath ? await transcribeToCues(voiceoverPath) : null) ??
-        cuesFromScenes(scenes);
+        cuesFromScenes(scenes.map((s) => ({ description: spokenLine(s), duration: s.duration })));
 
       // A brand intro delays the narration; shift the cues to match.
       cues = shiftCues(cues, introDuration);

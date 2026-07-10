@@ -39,7 +39,14 @@ const nextConfig = {
     if (isServer) {
       // Externalize ffmpeg packages to avoid webpack bundling issues
       config.externals = config.externals || [];
-      config.externals.push('fluent-ffmpeg', '@ffmpeg-installer/ffmpeg', '@ffmpeg/ffmpeg', '@ffmpeg/util');
+      // ffmpeg-static MUST be external. Bundled, its `path.join(__dirname, ...)`
+      // resolves to a webpack-mangled directory, the binary check fails, and
+      // lib/ffmpeg-env silently falls through to @ffmpeg-installer's 2018 build
+      // — which has neither `xfade` (4.3) nor `adelay:all` (4.2). Every render
+      // the web app produced therefore had HARD CUTS instead of the cross-fades
+      // it was asked for, while the test suites (plain node, correct resolution)
+      // used the modern 6.1.1 binary and passed.
+      config.externals.push('ffmpeg-static', 'fluent-ffmpeg', '@ffmpeg-installer/ffmpeg', '@ffmpeg/ffmpeg', '@ffmpeg/util');
     }
     return config;
   },
