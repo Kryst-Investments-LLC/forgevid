@@ -78,27 +78,29 @@ const securityConfig = {
   },
   rateLimit: {
     windowMs: 15 * 60 * 1000, // 15 minutes
-    // Pages and API calls only. A limit this size is meaningless if every
-    // script chunk, stylesheet, font, image and video frame-request counts
-    // against it — see the skip() below for why that was catastrophic.
-    max: 300,
+    /*
+     * This is a coarse per-IP flood guard, nothing more. Real quotas live
+     * per-user in lib/quota.ts and lib/api-security.ts.
+     *
+     * It has to be generous, because normal use of this product is chatty:
+     * rendering one video polls /api/ai/jobs every 2 seconds for as long as
+     * the render takes. At the old budget of 300, generating a single video
+     * locked the user out of their own application for fifteen minutes.
+     */
+    max: 600,
     message: {
       error: 'Too many requests from this IP, please try again later.',
     },
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => {
-      // STATIC ASSETS ARE NOT REQUESTS WORTH LIMITING.
+      // 1. STATIC ASSETS ARE NOT REQUESTS WORTH LIMITING.
       //
-      // This limiter counted them, and a single Next.js page load pulls well
+      // These used to be counted, and a single Next.js page load pulls well
       // over 100 chunks/styles/fonts. So the app rate-limited ITSELF: /_next
       // chunks came back as 429 JSON, the browser refused them ("MIME type
       // application/json is not executable"), React never hydrated, and the
-      // page was dead. A real visitor loading the site twice would be locked
-      // out for fifteen minutes.
-      //
-      // Serving a static file is cheap; an unauthenticated API call is not.
-      // Limit the latter.
+      // page was dead.
       if (req.method === 'GET' || req.method === 'HEAD') {
         if (
           req.path.startsWith('/_next/') ||
@@ -117,6 +119,32 @@ const securityConfig = {
           return true;
         }
       }
+
+      // 1b. Next's dev overlay (stack frames, launch-editor) fires constantly
+      // while you work and lives outside /_next.
+      if (dev && req.path.startsWith('/__nextjs')) {
+        return true;
+      }
+
+      // 2. THE APP CALLING ITSELF IS NOT USER TRAFFIC.
+      //
+      // middleware/security.ts POSTs to /api/internal/rate-limit on every
+      // request it handles, so each real request was being counted TWICE:
+      // once for itself and once for the loopback call it triggers.
+      if (req.path.startsWith('/api/internal/')) {
+        return true;
+      }
+
+      // 3. PROGRESS POLLING IS NOT ABUSE.
+      //
+      // The client polls this while a render runs; the count is dictated by how
+      // long ffmpeg takes, not by the user. It is authenticated, it is a single
+      // indexed read, and it is the request most likely to trip a flood guard
+      // for someone doing exactly what they paid for.
+      if (req.method === 'GET' && req.path.startsWith('/api/ai/jobs/')) {
+        return true;
+      }
+
       return false;
     },
   },
