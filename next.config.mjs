@@ -51,6 +51,31 @@ const nextConfig = {
     ]
   },
   async headers() {
+    const isDev = process.env.NODE_ENV !== 'production';
+
+    /*
+     * `immutable` is a promise that a URL's bytes will NEVER change, so the
+     * browser may keep them for a year without ever revalidating.
+     *
+     * In a production build that promise holds: chunk filenames carry a content
+     * hash. In DEVELOPMENT they do not — the chunk is plainly
+     * `/_next/static/chunks/app/page.js` — so this header told every browser to
+     * cache a snapshot of the app's code for a YEAR. Edit a component, and the
+     * server sends fresh HTML while the browser replays year-old JavaScript:
+     *
+     *     Hydration failed because the initial UI does not match
+     *     what was rendered on the server
+     *
+     * and no ordinary reload fixes it, because `immutable` suppresses even the
+     * revalidation request. Cache aggressively in production; never in dev.
+     */
+    const staticCache = isDev
+      ? 'no-store, must-revalidate'
+      : 'public, max-age=31536000, immutable';
+    const mediaCache = isDev
+      ? 'no-cache'
+      : 'public, max-age=86400, stale-while-revalidate=604800';
+
     return [
       {
         source: '/(.*)',
@@ -69,19 +94,19 @@ const nextConfig = {
       {
         source: '/_next/static/:path*',
         headers: [
-          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+          { key: 'Cache-Control', value: staticCache },
         ],
       },
       {
         source: '/images/:path*',
         headers: [
-          { key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' },
+          { key: 'Cache-Control', value: mediaCache },
         ],
       },
       {
         source: '/videos/:path*',
         headers: [
-          { key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' },
+          { key: 'Cache-Control', value: mediaCache },
         ],
       },
     ];
