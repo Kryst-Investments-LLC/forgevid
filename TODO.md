@@ -210,6 +210,23 @@ Each item has a file pointer and an acceptance criterion so "done" is verifiable
 
 ---
 
+**2026-07-10 — a real advert, then the real-estate vertical. Six defects, several silent.**
+Writing actual customer videos found more than a week of testing did.
+- **The voiceover read its own stage directions.** `description` served three masters: prose for the editor, the words SPOKEN, and the caption text. A coffee commercial narrated *"Close-up of coffee beans pouring into a grinder."* Added `narration` alongside `description` and `searchQuery`. Verified by Whisper-transcribing the render.
+- **`duration` was a lie whenever voiceover was on.** Scenes were cut to speech, so a 25s advert rendered 12.9s. Speech is now a FLOOR, never a ceiling. That alone desynced the voice (segments were concatenated back-to-back), so `buildAlignedNarration()` delays each line to its own scene's start and pads the track — silence falls BETWEEN lines instead of the script sliding early.
+- **THE WEB APP HAD NEVER RENDERED A CROSS-FADE.** `@ffmpeg-installer` was in webpack's externals but **`ffmpeg-static` was not**, so inside the Next server bundle its `path.join(__dirname, ...)` resolved nowhere and `lib/ffmpeg-env` fell silently through to the pinned **2018 build** — no `xfade` (4.3), no `adelay:all` (4.2). Every UI render used hard cuts; every test suite passed, because plain node resolves ffmpeg-static correctly. Fixed by externalising it; the fallback now logs a loud warning.
+- **Captions failed silently above 25MB** (Whisper's limit) against a 50MB narration cap. `compressForWhisper()` downmixes to 16 kHz mono before sending.
+- **An estate agent's ad ended by speaking a stage direction.** GPT appended an end-card with EMPTY narration, so `spokenLine()` fell back to the description. `dropSilentScenes()` prunes it and the planner is forbidden from inventing cards. Legacy plans (no narration anywhere) still speak their descriptions.
+- **There was no way to upload a photo.** The pipeline could always USE a user's media, but `POST /api/media` only *records a url you already host*. `POST /api/media/upload` is the front door: multipart, order preserved, returns `mediaAssetIds`.
+
+**2026-07-10 — REAL ESTATE VERTICAL: the three gaps closed.**
+- **Caption contrast.** White text + 2px outline is invisible over a white kitchen. `buildCaptionFilter` now draws a scrim (`box=1:boxcolor=black@0.55:boxborderw=6`), line spacing widened so per-line boxes never overlap and compound their alpha. `boxOpacity: 0` restores the old look. Measured, not eyeballed: white text on a WHITE frame reads **YAVG 158.8 vs a control of 255.0** — 96 levels of separation. (A full-width band was the wrong ruler: the box only spans the text, so margins washed it out to 245.)
+- **Scene-count matching.** The planner asked 6 scenes against 5 photos, so a listing ended on a stranger's kitchen. `clampScenesToMedia()` trims the plan to the assets *before* durations are normalised, behind a `mediaOnly` flag. Live: 5 photos -> **5 scenes, 0 stock**, and the video lands on **exactly 20.00s** instead of 24.7s — clamping fixed the slot overrun as a side effect.
+- **Bulk import.** `lib/listing-brief.ts` (pure, offline-tested) parses the agent's CSV: RFC-4180 quoted fields so `"$685,000"` survives its comma, photo urls split on space/semicolon/pipe, column aliases across CRMs, malformed rows rejected LOUDLY. `listingPrompt()` states only supplied facts and forbids inventing rooms or prices — agents are legally accountable for their listings.
+- `POST /api/listings/batch`: CSV or JSON, <=25 listings, per-listing quota, photos pulled through the SSRF guard into owned MediaAssets, `mediaOnly: true`, one video per row; a failing row is reported by ref and doesn't take the batch down.
+- Proven live: a two-row CSV -> two videos, **4 scenes / 4 photos / 0 stock** each, narrating only supplied facts. Loopback photo urls were correctly REFUSED by the SSRF guard and reported per-row.
+- Remaining for a first paying agent: nothing blocking. Nice-to-have: lower-third templates (price/beds burned in), MLS feed ingestion, and a licensed music bed.
+
 ## Phase 0 — Repo hygiene (do before any feature work)
 
 - [ ] Commit or deliberately revert the working tree (510 uncommitted files, ~60 deleted status MDs).
