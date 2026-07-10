@@ -1,0 +1,39 @@
+[
+  {
+    "id": "calm-bed",
+    "title": "Still (generated)",
+    "moods": [
+      "calm",
+      "professional",
+      "modern",
+      "corporate",
+      "sad"
+    ],
+    "file": "calm-bed.m4a",
+    "license": "Generated from sine tones by scripts/make-music-beds.ts. No rights reserved."
+  },
+  {
+    "id": "uplift-bed",
+    "title": "Lift (generated)",
+    "moods": [
+      "happy",
+      "energetic",
+      "uplifting",
+      "bright"
+    ],
+    "file": "uplift-bed.m4a",
+    "license": "Generated from sine tones by scripts/make-music-beds.ts. No rights reserved."
+  },
+  {
+    "id": "cinematic-bed",
+    "title": "Wide (generated)",
+    "moods": [
+      "cinematic",
+      "dramatic",
+      "premium",
+      "epic"
+    ],
+    "file": "cinematic-bed.m4a",
+    "license": "Generated from sine tones by scripts/make-music-beds.ts. No rights reserved."
+  }
+]

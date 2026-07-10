@@ -40,6 +40,7 @@ import { resolveFfmpegPath, supportsFilter } from './ffmpeg-env';
 import { buildKenBurnsFilter, directionForScene } from './ken-burns';
 import type { UserMediaItem } from './user-media';
 import { buildSceneQueries } from './stock-query';
+import { buildLowerThirdFilter, type LowerThird } from './lower-third';
 import {
   buildAlignedNarration,
   concatSceneVoiceovers,
@@ -255,6 +256,10 @@ export interface GenerationOptions {
    * one of somebody else's kitchen.
    */
   mediaOnly?: boolean;
+  /** Address + price burned into the opening seconds. */
+  lowerThird?: LowerThird | null;
+  /** Clips this user has already rejected — never serve them again. */
+  excludeClipUrls?: string[];
 }
 
 function sceneId(index: number): string {
@@ -844,6 +849,8 @@ export async function resolveSceneClips(
   scenes: PlannedScene[],
   aspectRatio: AspectRatio = '16:9',
   userMedia: UserMediaItem[] = [],
+  /** Clips this user already rejected. We never offer them again. */
+  excludeUrls: Set<string> = new Set(),
 ): Promise<ResolvedScene[]> {
   // The user's own media fills scenes in order; stock only covers the rest. So
   // Pexels is only required when there is a scene it must actually cover.
@@ -855,7 +862,8 @@ export async function resolveSceneClips(
     );
   }
 
-  const used = new Set<string>();
+  // Seeded with the user's rejections, so the search skips them from the start.
+  const used = new Set<string>(excludeUrls);
   const resolved: ResolvedScene[] = [];
 
   for (const scene of scenes) {
@@ -915,6 +923,11 @@ export interface AssembleOptions {
    * when per-scene TTS succeeds — the AUDIO decides each scene's duration.
    */
   sceneVoiceovers?: SceneVoiceover[] | null;
+  /**
+   * A lower third burned into the opening seconds — the address and price an
+   * estate agent expects to see on screen.
+   */
+  lowerThird?: LowerThird | null;
   /** Set false to keep GPT's scene durations even when narration is per-scene. */
   paceToNarration?: boolean;
   /** 'draft' = fast half-res preview, '4k' = double resolution (paid plans). */
@@ -947,7 +960,14 @@ export async function assembleVideo(
   const renderQuality = options.renderQuality ?? 'full';
   const { width: outW, height: outH } = renderDims(aspectRatio, renderQuality);
   const fit = fitFilterFor(outW, outH);
-  const musicVolume = options.musicVolume ?? 0.25;
+  // Music arrives already normalised to about -20 LUFS (generated beds are baked
+  // that way; uploads are normalised on the way in), so this is a plain gain.
+  //
+  // The old default of 0.25 sat the bed near -32 dB, and `amix` without
+  // normalize=0 took another 6 dB off both stems — about -38 dB, which is
+  // present in the waveform and inaudible to a human. 0.6 puts it roughly
+  // 20 dB under the narration: audible in the gaps, invisible under speech.
+  const musicVolume = options.musicVolume ?? 0.6;
   const branding = options.branding ?? null;
 
   const tempDir = path.join(process.cwd(), 'public', 'temp');
@@ -1236,7 +1256,19 @@ export async function assembleVideo(
       ? buildWatermarkFilter(branding.watermarkText)
       : '';
 
-    const videoFilter = [fit, textFilter, watermarkFilter].filter(Boolean).join(',');
+    // Drawn before the captions so a long address never sits on top of them.
+    const lowerThirdFilter = options.lowerThird
+      ? buildLowerThirdFilter(options.lowerThird, {
+          fontFile: branding?.fontFile ?? null,
+          // captionColor is already hex-validated by resolveBranding, so the
+          // accent bar can safely reuse it and match the brand.
+          accentColor: branding?.captionColor ?? undefined,
+        })
+      : '';
+
+    const videoFilter = [fit, lowerThirdFilter, textFilter, watermarkFilter]
+      .filter(Boolean)
+      .join(',');
 
     const musicPath = options.musicPath ?? null;
 
@@ -1293,6 +1325,15 @@ export async function assembleVideo(
       // sidechaincompress requires both inputs in the same format.
       const AFMT = 'aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo';
 
+      /**
+       * Gain only. Loudness normalisation belongs at BAKE time, not here:
+       * `loudnorm` runs with a multi-second lookahead, which delays the music
+       * relative to the sidechain key and lands the duck in the wrong place.
+       * Our beds are normalised when generated (scripts/make-music-beds.ts),
+       * and an uploaded track is normalised when it is uploaded.
+       */
+      const MUSIC_CHAIN = `${AFMT},volume=${musicVolume}`;
+
       if (voiceIndex > 0 && musicIndex > 0) {
         // Duck the music using the narration as the sidechain key.
         //
@@ -1302,16 +1343,28 @@ export async function assembleVideo(
         // volume and keep the music playing to the end of the video.
         filters.push(`[${voiceIndex}:a]${AFMT},asplit=2[vo][vokeyraw]`);
         filters.push(`[vokeyraw]apad[vokey]`);
-        filters.push(`[${musicIndex}:a]${AFMT},volume=${musicVolume}[mus]`);
+        filters.push(`[${musicIndex}:a]${MUSIC_CHAIN}[mus]`);
+        // level_sc boosts the DETECTOR's copy of the key, not the audio.
+        //
+        // Without it the compressor never fired: a narration at -35 dBFS sits
+        // far below threshold=0.05 (~-26 dB), so the music was mixed at a
+        // constant level and the "ducking" this project believed it had was an
+        // amix artefact. With level_sc=4 a real voiceover ducks the bed by ~14 dB
+        // and a quiet one still by ~2 dB, instead of by nothing at all.
         filters.push(
-          `[mus][vokey]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=400[musduck]`,
+          `[mus][vokey]sidechaincompress=threshold=0.05:ratio=8:attack=20:release=400:level_sc=4[musduck]`,
         );
         // duration=longest keeps the (looped) music going past the narration.
-        filters.push(`[vo][musduck]amix=inputs=2:duration=longest:dropout_transition=0[aout]`);
+        // normalize=0 is essential: amix otherwise divides every input by the
+        // input count, quietly taking 6 dB off BOTH the voice and the music and
+        // burying a bed that was already sitting politely underneath.
+        filters.push(
+          `[vo][musduck]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[aout]`,
+        );
       } else if (voiceIndex > 0) {
         filters.push(`[${voiceIndex}:a]${AFMT}[aout]`);
       } else if (musicIndex > 0) {
-        filters.push(`[${musicIndex}:a]${AFMT},volume=${musicVolume}[aout]`);
+        filters.push(`[${musicIndex}:a]${MUSIC_CHAIN}[aout]`);
       }
 
       const hasAudio = voiceIndex > 0 || musicIndex > 0;
@@ -1406,7 +1459,12 @@ export async function generateVideoWithScenes(
     planned = normalizeSceneDurations(clampScenesToMedia(planned, userMedia.length), duration);
   }
 
-  const resolved = await resolveSceneClips(planned, aspectRatio, userMedia);
+  const resolved = await resolveSceneClips(
+    planned,
+    aspectRatio,
+    userMedia,
+    new Set(options.excludeClipUrls ?? []),
+  );
 
   // Music is opt-out. The user's own track wins; otherwise fall back to the
   // bundled library, which is silently skipped when empty (no track is licensed).
@@ -1422,6 +1480,7 @@ export async function generateVideoWithScenes(
     transition,
     renderQuality: options.renderQuality,
     voiceoverPath: options.voiceoverPath ?? null,
+    lowerThird: options.lowerThird ?? null,
   });
 
   console.log(

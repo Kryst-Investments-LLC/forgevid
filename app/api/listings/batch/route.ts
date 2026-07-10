@@ -16,6 +16,8 @@ import {
   parseListingsCsv,
   type Listing,
 } from '@/lib/listing-brief';
+import { parseListingsFeed } from '@/lib/mls-feed';
+import { FetchLimitError, SsrfError, safeFetch, withDefaultScheme } from '@/lib/safe-fetch';
 
 /**
  * POST /api/listings/batch — an estate agent's whole spreadsheet at once.
@@ -49,14 +51,17 @@ const bodySchema = z
   .object({
     csv: z.string().min(10).max(200_000).optional(),
     listings: z.array(listingSchema).min(1).max(MAX_LISTINGS).optional(),
+    /** A RESO Web API (JSON) or portal (XML) feed. The agent touches nothing. */
+    feedUrl: z.string().min(4).max(2048).optional(),
     duration: z.number().int().min(5).max(120).default(25),
     aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
     voiceId: z.string().optional(),
     renderQuality: z.enum(['draft', 'full', '4k']).default('full'),
   })
-  .refine((b) => Boolean(b.csv) !== Boolean(b.listings), {
-    message: 'Provide either `csv` or `listings`, not both',
-  });
+  .refine(
+    (b) => [b.csv, b.listings, b.feedUrl].filter(Boolean).length === 1,
+    { message: 'Provide exactly one of `csv`, `listings` or `feedUrl`' },
+  );
 
 interface BatchResult {
   ref: string;
@@ -80,16 +85,37 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { csv, duration, aspectRatio, voiceId, renderQuality } = parsed.data;
+  const { csv, feedUrl, duration, aspectRatio, voiceId, renderQuality } = parsed.data;
 
   let listings: Listing[];
   try {
-    listings = csv ? parseListingsCsv(csv) : (parsed.data.listings as Listing[]);
+    if (feedUrl) {
+      // A feed url is attacker-supplied data. It goes through the same guard as
+      // every other url this product fetches.
+      const { body, contentType } = await safeFetch(withDefaultScheme(feedUrl), {
+        maxBytes: 8 * 1024 * 1024,
+        timeoutMs: 15_000,
+        acceptTypes: ['application/json', 'text/json', 'application/xml', 'text/xml', 'text'],
+        headers: { Accept: 'application/json, application/xml;q=0.9' },
+      });
+      listings = parseListingsFeed(body.toString('utf8'), contentType);
+    } else if (csv) {
+      listings = parseListingsCsv(csv);
+    } else {
+      listings = parsed.data.listings as Listing[];
+    }
   } catch (error) {
     if (error instanceof ListingParseError) {
       return NextResponse.json({ error: error.message }, { status: 422 });
     }
-    throw error;
+    if (error instanceof SsrfError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (error instanceof FetchLimitError) {
+      return NextResponse.json({ error: `Could not read the feed: ${error.message}` }, { status: 422 });
+    }
+    console.error('[listings] feed fetch failed:', error);
+    return NextResponse.json({ error: 'Could not read that feed' }, { status: 502 });
   }
 
   if (listings.length > MAX_LISTINGS) {
@@ -136,6 +162,17 @@ export async function POST(req: NextRequest) {
       // The listing shows THIS house. Never pad it with stock footage.
       mediaOnly: true,
       renderQuality,
+      // The price is the reason anyone watches a listing video. Burn it in.
+      lowerThird: {
+        title: listing.address,
+        facts: [
+          listing.price,
+          listing.beds ? `${listing.beds} bed` : undefined,
+          listing.baths ? `${listing.baths} bath` : undefined,
+        ].filter((f): f is string => Boolean(f)),
+        start: 0.6,
+        duration: 4.5,
+      },
     };
 
     try {

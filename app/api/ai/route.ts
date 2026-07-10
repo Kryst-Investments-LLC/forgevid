@@ -80,6 +80,17 @@ const generateVideoSchema = z.object({
   musicAssetId: z.string().optional(),
   // Use ONLY mediaAssetIds; never pad the plan with stock footage.
   mediaOnly: z.boolean().default(false),
+  // Burned-in title bar: address + price. Text is escaped before it reaches
+  // the filtergraph (lib/lower-third.ts).
+  lowerThird: z
+    .object({
+      title: z.string().min(1).max(120),
+      facts: z.array(z.string().max(60)).max(5).optional(),
+      start: z.number().min(0).max(60).optional(),
+      duration: z.number().min(0.5).max(60).optional(),
+    })
+    .nullable()
+    .optional(),
   // null = hard cuts. Omitted = the default cross-fade.
   transition: z
     .object({ type: z.enum(TRANSITIONS), duration: z.number().min(0).max(3) })
@@ -157,6 +168,7 @@ async function handleGenerateVideo(body: any, userId: string) {
             narrationAssetId: input.narrationAssetId,
             musicAssetId: input.musicAssetId,
             mediaOnly: input.mediaOnly,
+            lowerThird: input.lowerThird ?? null,
             // enableEmotionAware is preserved for the pipeline to honor once
             // emotion-aware generation is folded into the worker (TODO Phase 5).
             enableEmotionAware: input.enableEmotionAware ?? false,

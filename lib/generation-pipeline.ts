@@ -22,6 +22,7 @@ import { freeBranding, resolveBranding } from './brand-kit';
 import { resolveUserMedia } from './user-media';
 import { estimateGenerationCost, recordGenerationCost } from './cost-ledger';
 import { sendExportCompleteEmail } from './email';
+import { rejectedClipUrls } from './clip-memory';
 
 /**
  * "Your video is ready" — the come-back-to-a-finished-video loop. Best-effort:
@@ -159,6 +160,8 @@ export interface GenerationInput {
   musicAssetId?: string;
   /** Use ONLY the supplied media; never pad the plan with stock footage. */
   mediaOnly?: boolean;
+  /** Address + price burned into the opening seconds (estate-agent lower third). */
+  lowerThird?: { title: string; facts?: string[]; start?: number; duration?: number } | null;
   enableEmotionAware?: boolean;
 }
 
@@ -333,9 +336,12 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       voiceId: input.voiceId,
       branding,
       transition: input.transition,
+      // The platform's memory: never serve footage this user already rejected.
+      excludeClipUrls: owner ? [...(await rejectedClipUrls(owner.userId))] : [],
       voiceoverPath: narrationPath,
       musicPath: musicOverride,
       mediaOnly: input.mediaOnly,
+      lowerThird: input.lowerThird ?? null,
       userMedia: await userMediaForVideo(videoId, input.mediaAssetIds),
       renderQuality: input.renderQuality,
     });
@@ -446,6 +452,7 @@ export async function rerenderVideo(videoId: string): Promise<string> {
       musicPath,
       voiceId: meta.request?.voiceId,
       voiceoverPath: await audioAssetForVideo(videoId, meta.request?.narrationAssetId),
+      lowerThird: meta.request?.lowerThird ?? null,
       branding,
       // Re-render must reuse the same transition, or the output changes shape.
       transition: transitionFromMetadata(meta.request?.transition),

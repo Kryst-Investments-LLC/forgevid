@@ -13,6 +13,7 @@
     "verify:e2e:db": "bash scripts/run-e2e-with-db.sh",
     "verify:providers": "tsx scripts/verify-providers.ts",
     "verify:site": "tsx scripts/verify-site.ts",
+    "music:beds": "tsx scripts/make-music-beds.ts",
     "verify:proxy": "tsx scripts/verify-proxy.ts",
     "db:local": "bash scripts/db-local.sh start",
     "db:local:stop": "bash scripts/db-local.sh stop",

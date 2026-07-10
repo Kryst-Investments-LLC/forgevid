@@ -1,0 +1,127 @@
+/**
+ * Lower thirds — the caption bar an estate agent expects.
+ *
+ * "14 Maple Court" on one line, "$685,000 · 4 bed · 2 bath" beneath it, held in
+ * the lower-left for the opening seconds. Agents will not use a listing video
+ * that does not show the price, because the price is the reason anyone watches.
+ *
+ * Everything here is a PURE string builder over ffmpeg's drawtext, so the filter
+ * is verified without rendering. Two rules it must never break:
+ *
+ *  1. The text is user data. It goes into a filtergraph, so it is escaped
+ *     (lib/captions' escapeDrawText) and the colours are hex-validated — a
+ *     colon or a quote in "O'Brien Ave" would otherwise rewrite the graph.
+ *  2. Never hand this to fluent-ffmpeg's outputOptions(): an array entry with
+ *     exactly one space gets torn in half. Pass it to videoFilters()/
+ *     complexFilter(), which send it as a single argv entry.
+ *
+ * Relative imports only — reachable from the worker process.
+ */
+
+import { escapeDrawText, escapeFontPath, resolveCaptionFontFile } from './captions';
+import { isValidHexColor } from './brand-kit';
+
+export interface LowerThird {
+  /** The headline: an address, a product name. */
+  title: string;
+  /** The facts beneath it, already formatted. Joined with a middot. */
+  facts?: string[];
+  /** Seconds into the video when it appears. */
+  start?: number;
+  /** How long it stays on screen. */
+  duration?: number;
+}
+
+export interface LowerThirdStyle {
+  titleSize?: number;
+  factsSize?: number;
+  /** Distance from the left edge, in pixels. */
+  marginLeft?: number;
+  /** Distance from the bottom edge, in pixels. */
+  marginBottom?: number;
+  fontColor?: string;
+  /** Accent bar colour down the left of the block. */
+  accentColor?: string;
+  boxOpacity?: number;
+  fontFile?: string | null;
+}
+
+/** A colour is only allowed through if it is a hex value or a safe name. */
+const SAFE_NAMED_COLORS = new Set(['white', 'black', 'gray', 'grey']);
+
+function safeColor(value: string | undefined, fallback: string): string {
+  if (!value) return fallback;
+  if (SAFE_NAMED_COLORS.has(value.toLowerCase())) return value.toLowerCase();
+  return isValidHexColor(value) ? value : fallback;
+}
+
+/** "$685,000 · 4 bed · 2 bath" from the parts the caller actually has. */
+export function formatFacts(facts: Array<string | undefined | null>): string {
+  return facts.map((f) => (f ?? '').trim()).filter(Boolean).join('  ·  ');
+}
+
+/**
+ * Build the drawtext chain for one lower third.
+ *
+ * Returns '' when there is no font (a bare container ships none) or nothing to
+ * say — a missing font must drop the overlay, never kill the render.
+ */
+export function buildLowerThirdFilter(
+  lowerThird: LowerThird,
+  style: LowerThirdStyle = {},
+): string {
+  const title = (lowerThird.title ?? '').trim();
+  if (!title) return '';
+
+  const brandFont = style.fontFile ?? null;
+  const font = brandFont ?? resolveCaptionFontFile();
+  if (!font) return '';
+  const fontOpt = `fontfile='${escapeFontPath(font)}':`;
+
+  const titleSize = style.titleSize ?? 46;
+  const factsSize = style.factsSize ?? 30;
+  const marginLeft = style.marginLeft ?? 70;
+  const marginBottom = style.marginBottom ?? 170;
+  const fontColor = safeColor(style.fontColor, 'white');
+  const accentColor = safeColor(style.accentColor, '#38bdf8');
+  const opacity = Math.min(Math.max(style.boxOpacity ?? 0.6, 0), 1);
+
+  const start = Math.max(lowerThird.start ?? 0.6, 0);
+  const end = start + Math.max(lowerThird.duration ?? 4.5, 0.5);
+  // `enable` is an expression: its commas must be escaped or ffmpeg reads them
+  // as filter-option separators.
+  const enable = `enable='between(t\\,${start.toFixed(3)}\\,${end.toFixed(3)})'`;
+
+  const facts = formatFacts(lowerThird.facts ?? []);
+  const filters: string[] = [];
+
+  // The title sits above the facts; both are drawn from the bottom up so the
+  // block grows upward and never collides with the captions below it.
+  const factsY = marginBottom;
+  const titleY = marginBottom + (facts ? factsSize + 22 : 0);
+
+  const box = (size: number) =>
+    opacity > 0 ? `box=1:boxcolor=black@${opacity.toFixed(2)}:boxborderw=${Math.round(size * 0.35)}:` : '';
+
+  // A slim accent bar to the left of the text. drawtext can't draw a rectangle,
+  // so it draws a run of full-block glyphs, which every font we ship has.
+  const barHeight = titleY - factsY + titleSize + (facts ? factsSize : 0);
+  filters.push(
+    `drawtext=${fontOpt}text='█':fontsize=${Math.round(barHeight * 0.9)}:fontcolor=${accentColor}:` +
+      `x=${marginLeft - 26}:y=h-${titleY + titleSize}:${enable}`,
+  );
+
+  filters.push(
+    `drawtext=${fontOpt}text='${escapeDrawText(title)}':fontsize=${titleSize}:fontcolor=${fontColor}:` +
+      `${box(titleSize)}x=${marginLeft}:y=h-${titleY + titleSize}:${enable}`,
+  );
+
+  if (facts) {
+    filters.push(
+      `drawtext=${fontOpt}text='${escapeDrawText(facts)}':fontsize=${factsSize}:fontcolor=${fontColor}:` +
+        `${box(factsSize)}x=${marginLeft}:y=h-${factsY + factsSize}:${enable}`,
+    );
+  }
+
+  return filters.join(',');
+}

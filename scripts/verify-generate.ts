@@ -55,6 +55,8 @@ import { allowsAvatars, allowsVoiceCloning } from '../lib/plan';
 import { estimateGenerationCost } from '../lib/cost-ledger';
 import { SCENE_AUDIO_PADDING_SECONDS, buildAlignedNarration, synthesizeSceneVoiceovers } from '../lib/voiceover';
 import { ListingParseError, listingPrompt, parseListingsCsv } from '../lib/listing-brief';
+import { buildLowerThirdFilter, formatFacts } from '../lib/lower-third';
+import { parseListingsFeed, parseResoJson, parseXmlFeed } from '../lib/mls-feed';
 
 /** Unique per run, so a previous run's TTS cache can't fake a "first pass". */
 const stampTag = Date.now().toString(36);
@@ -181,7 +183,7 @@ async function renderAndCheck(aspectRatio: AspectRatio, sources: string[]) {
  * Mean volume (dB) of a time window of `file`, via ffmpeg's volumedetect.
  * volumedetect exits 0, so read stderr from spawnSync rather than a thrown error.
  */
-function meanVolumeDb(file: string, start: number, duration: number): number {
+function meanVolumeDb(file: string, start: number, duration: number, preFilter?: string): number {
   const res = spawnSync(
     ffmpegPath,
     [
@@ -190,7 +192,8 @@ function meanVolumeDb(file: string, start: number, duration: number): number {
       '-t', String(duration),
       '-i', file,
       '-vn', // don't decode the video stream — we only want loudness
-      '-af', 'volumedetect',
+      // An optional band-pass lets a caller measure ONE stem inside a mix.
+      '-af', preFilter ? `${preFilter},volumedetect` : 'volumedetect',
       '-f', 'null', '-',
     ],
     { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
@@ -218,9 +221,11 @@ async function checkMusicDucking(clip: string) {
   const music = path.join(workDir, 'music.m4a');
   const voice = path.join(workDir, 'voice.m4a');
 
-  // Music: loud, 6s. Voice: quiet, only the first 2s of a 4s video.
+  // Music: 6s at 300Hz. Voice: 2s at 800Hz, at the level real TTS actually
+  // arrives (~-21 dBFS). The old test attenuated it to -35 dBFS, far below the
+  // compressor's threshold, so nothing ever ducked and nobody noticed.
   ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=300:duration=6', '-c:a', 'aac', music]);
-  ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=800:duration=2', '-af', 'volume=0.2', '-c:a', 'aac', voice]);
+  ffmpeg(['-f', 'lavfi', '-i', 'sine=frequency=800:duration=2', '-c:a', 'aac', voice]);
 
   const { videoUrl: url } = await assembleVideo([scene(0, clip, 4)], ['subtitles'], '16:9', {
     musicPath: music,
@@ -232,15 +237,29 @@ async function checkMusicDucking(clip: string) {
   const info = probe(outFile);
   assert(/Stream .*Audio: aac/.test(info), 'output has an audio stream');
 
-  const duringNarration = meanVolumeDb(outFile, 0.2, 1.5); // voice playing -> music ducked
-  const afterNarration = meanVolumeDb(outFile, 2.6, 1.2); // voice gone -> music recovers
-  console.log(`      during narration: ${duringNarration} dB, after: ${afterNarration} dB`);
+  // Measure the MUSIC's own frequency band (its 300Hz tone), not the total mix.
+  //
+  // Total loudness is the wrong ruler: the voice sits on top of the ducked music
+  // and hides the very drop we are trying to see. Isolating the music's tone
+  // answers the real question — "is the music quieter while someone speaks?" —
+  // however loud the voice happens to be. (Raising amix to normalize=0 made the
+  // voice 6dB louder and broke the old, cruder assertion.)
+  const musicBand = 'bandpass=f=300:width_type=h:w=40';
+  const duringNarration = meanVolumeDb(outFile, 0.2, 1.5, musicBand);
+  const afterNarration = meanVolumeDb(outFile, 2.6, 1.2, musicBand);
+  console.log(`      music band — during narration: ${duringNarration} dB, after: ${afterNarration} dB`);
   // Regression: sidechaincompress ends when its key input ends, which used to
   // kill the music the instant narration stopped (audio ended at 2s, not 4s).
   assert(afterNarration > -90, 'music still plays after narration ends (sidechain key is padded)');
   assert(
-    afterNarration > duringNarration + 1.5,
-    `music is ducked while narration plays (${duringNarration}dB -> ${afterNarration}dB)`,
+    afterNarration > duringNarration + 6,
+    `music is genuinely ducked while narration plays (${duringNarration}dB -> ${afterNarration}dB)`,
+  );
+  // And it must be genuinely AUDIBLE once the voice stops, not merely present in
+  // the waveform. The old defaults buried the bed near -38dB, which nobody hears.
+  assert(
+    afterNarration > -40,
+    `the bed is audible between lines, not just present (${afterNarration}dB)`,
   );
 
   // The caller's music/voice files must survive cleanup.
@@ -995,6 +1014,66 @@ async function checkCaptionContrast() {
   fs.rmSync(out, { force: true });
 }
 
+/**
+ * The lower third an estate agent expects: address and price burned in for the
+ * opening seconds, then gone. Proven by rendering it onto a white clip and
+ * measuring the block's corner — dark while it shows, white once it leaves.
+ */
+async function checkLowerThird() {
+  console.log('\nChecking the lower third (address + price)...');
+
+  const lt = { title: '14 Maple Court', facts: ['$685,000', '4 bed', '2 bath'], start: 0.5, duration: 2 };
+  const filter = buildLowerThirdFilter(lt);
+  assert(/drawtext/.test(filter), 'a drawtext chain is produced');
+  assert(filter.includes('14 Maple Court'), 'the address is drawn');
+  assert(/685/.test(filter), 'the price is drawn');
+  assert(/bed/.test(filter) && /bath/.test(filter), 'beds and baths are drawn');
+  assert(/between\(t\\,0\.500\\,2\.500\)/.test(filter), 'it is enabled only for its window');
+  assert(formatFacts(['$1', undefined, '2 bed', '']) === '$1  ·  2 bed', 'facts join, blanks dropped');
+  assert(buildLowerThirdFilter({ title: '  ' }) === '', 'no title, no overlay');
+
+  // The address is USER DATA going into a filtergraph. A colon or a quote must
+  // not be able to rewrite it.
+  const hostile = buildLowerThirdFilter({ title: "O'Brien: Ave, 100%" });
+  assert(!/[^\\]:.*fontcolor=red/.test(hostile), 'no injected option survives');
+  assert(!hostile.includes("O'Brien"), 'the apostrophe is stripped, not passed through raw');
+  assert(hostile.includes('\\:'), 'the colon is escaped');
+  assert(hostile.includes('%%'), 'the percent is escaped (drawtext strftime)');
+
+  // A hostile colour must not reach the graph either.
+  const badColor = buildLowerThirdFilter({ title: 'x' }, { accentColor: 'red:fontsize=200' });
+  assert(!badColor.includes('fontsize=200'), 'an invalid accent colour falls back to the default');
+
+  // Render it: dark block while enabled, white once it has gone.
+  const white = path.join(workDir, 'lt_white.mp4');
+  ffmpeg(['-f', 'lavfi', '-i', 'color=white:s=640x360:r=24', '-t', '6', '-pix_fmt', 'yuv420p', white]);
+  const { videoUrl } = await assembleVideo([scene(0, white, 6, 'x')], [], '16:9', {
+    transition: null,
+    lowerThird: { title: '14 Maple Court', facts: ['$685,000', '4 bed'], start: 0.5, duration: 2 },
+  });
+  const out = path.join(process.cwd(), 'public', 'generated', path.basename(videoUrl));
+
+  const brightness = (at: number): number => {
+    const res = spawnSync(
+      ffmpegPath,
+      ['-nostdin', '-ss', String(at), '-i', out, '-frames:v', '1',
+       '-vf', 'crop=520:150:60:830,format=gray,signalstats,metadata=print', '-f', 'null', '-'],
+      { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
+    );
+    return Number((String(res.stderr).match(/lavfi\.signalstats\.YAVG=([\d.]+)/) || [])[1]);
+  };
+
+  const during = brightness(1.5);
+  const after = brightness(5);
+  assert(Number.isFinite(during) && Number.isFinite(after), 'measured the lower-third corner');
+  assert(during < 215, `the block darkens the frame while shown (YAVG ${during.toFixed(1)})`);
+  assert(after > 250, `it is gone afterwards (YAVG ${after.toFixed(1)} back to white)`);
+  assert(after - during > 40, `clear on/off contrast (${(after - during).toFixed(1)} levels)`);
+
+  fs.rmSync(white, { force: true });
+  fs.rmSync(out, { force: true });
+}
+
 function checkClampScenesToMedia() {
   console.log('\nChecking scene count matches the supplied media...');
   const mk = (n: number) => ({
@@ -1060,6 +1139,100 @@ function checkListingCsv() {
   assert(/never invent/i.test(prompt), 'the prompt forbids inventing features');
   const noFacts = listingPrompt({ ref: 'x', address: '2 Elm St', photos: ['a'] }, 3);
   assert(!/bedroom|bathroom|listed at/.test(noFacts), 'absent facts are simply not mentioned');
+}
+
+function checkMlsFeed() {
+  console.log('\nChecking MLS / portal feed ingestion...');
+
+  // RESO Web API: the modern standard. Photos live in Media[].MediaURL.
+  const reso = JSON.stringify({
+    value: [
+      {
+        ListingKey: 'RESO-1',
+        UnparsedAddress: '14 Maple Court, Springfield',
+        ListPrice: 685000,
+        BedroomsTotal: 4,
+        BathroomsTotalInteger: 2,
+        PublicRemarks: 'Renovated kitchen and a large garden.',
+        Media: [
+          { MediaURL: 'https://cdn.test/1.jpg', Order: 1 },
+          { MediaURL: 'https://cdn.test/2.jpg', Order: 2 },
+        ],
+      },
+    ],
+  });
+  const [a] = parseResoJson(reso);
+  assert(a.ref === 'RESO-1' && a.address.startsWith('14 Maple Court'), 'RESO ref and address');
+  assert(a.price === '$685,000', `a numeric ListPrice becomes money (${a.price})`);
+  assert(a.beds === 4 && a.baths === 2, 'RESO bed/bath counts');
+  assert(a.photos.length === 2 && a.photos[0].endsWith('1.jpg'), 'Media[].MediaURL extracted in order');
+  assert(!!a.highlights && a.highlights.includes('Renovated'), 'PublicRemarks become highlights');
+
+  assert(
+    parseResoJson(JSON.stringify([{ Address: '1 High St', Photos: 'https://x.test/a.jpg' }])).length === 1,
+    'a bare array of listings parses',
+  );
+
+  // A portal XML export: photos as child elements AND as attributes.
+  const xml = `<?xml version="1.0"?><Listings>
+    <Property>
+      <MlsNumber>X-9</MlsNumber>
+      <StreetAddress>9 Oak Lane</StreetAddress>
+      <Price>412500</Price>
+      <Bedrooms>3</Bedrooms>
+      <Baths>1</Baths>
+      <Remarks>Close to schools.</Remarks>
+      <Photos><Photo>https://cdn.test/a.jpg</Photo><Photo>https://cdn.test/b.jpg</Photo></Photos>
+    </Property>
+    <Property>
+      <MlsNumber>X-10</MlsNumber>
+      <StreetAddress>2 Elm Road</StreetAddress>
+      <Photos><Photo url="https://cdn.test/c.jpg"/></Photos>
+    </Property>
+  </Listings>`;
+  const xmlListings = parseXmlFeed(xml);
+  assert(xmlListings.length === 2, `both XML properties parse (${xmlListings.length})`);
+  assert(xmlListings[0].ref === 'X-9' && xmlListings[0].beds === 3, 'XML aliases (MlsNumber, Bedrooms)');
+  assert(xmlListings[0].price === '$412,500', 'XML price formatted');
+  assert(xmlListings[0].photos.length === 2, 'photos from child elements');
+  assert(xmlListings[1].photos[0].endsWith('c.jpg'), 'photos from an attribute');
+  assert(xmlListings[1].beds === undefined, 'a missing bed count stays absent, never guessed');
+
+  // Content-type dispatch, and sniffing when the server does not say.
+  assert(parseListingsFeed(reso, 'application/json').length === 1, 'json dispatch');
+  assert(parseListingsFeed(xml, 'text/xml').length === 2, 'xml dispatch');
+  assert(parseListingsFeed(reso, 'text/plain').length === 1, 'sniffs JSON without a content-type');
+  assert(parseListingsFeed(xml, '').length === 2, 'sniffs XML without a content-type');
+
+  // Bad feeds fail LOUDLY: a listing video of the wrong house is worse than none.
+  const bad: Array<[string, string]> = [
+    ['{"value":[{"ListPrice":1}]}', 'application/json'], // no address
+    ['{"value":[{"Address":"x"}]}', 'application/json'], // no photos
+    ['{"value":[]}', 'application/json'], // empty
+    ['not json at all', 'application/json'],
+    ['<Listings></Listings>', 'text/xml'], // no listings
+    ['hello', 'text/plain'], // neither shape
+  ];
+  let rejected = 0;
+  for (const [text, ct] of bad) {
+    try {
+      parseListingsFeed(text, ct);
+    } catch (e) {
+      if (e instanceof ListingParseError) rejected++;
+    }
+  }
+  assert(rejected === bad.length, `every malformed feed is rejected loudly (${rejected}/${bad.length})`);
+
+  // A feed must never smuggle a non-http url through to the renderer.
+  const sneaky = parseResoJson(
+    JSON.stringify({
+      value: [{ Address: '1 High St', Photos: 'file:///etc/passwd https://ok.test/a.jpg javascript:alert(1)' }],
+    }),
+  );
+  assert(
+    sneaky[0].photos.length === 1 && sneaky[0].photos[0] === 'https://ok.test/a.jpg',
+    'only http(s) photo urls survive parsing',
+  );
 }
 
 function checkSilentSceneDrop() {
@@ -1161,8 +1334,10 @@ async function main() {
   checkAvatarContract();
   await checkNarrationAlignment();
   await checkCaptionContrast();
+  await checkLowerThird();
   checkClampScenesToMedia();
   checkListingCsv();
+  checkMlsFeed();
   checkSilentSceneDrop();
   checkSpokenLine();
   checkDurationNormalization();

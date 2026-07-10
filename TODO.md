@@ -227,6 +227,18 @@ Writing actual customer videos found more than a week of testing did.
 - Proven live: a two-row CSV -> two videos, **4 scenes / 4 photos / 0 stock** each, narrating only supplied facts. Loopback photo urls were correctly REFUSED by the SSRF guard and reported per-row.
 - Remaining for a first paying agent: nothing blocking. Nice-to-have: lower-third templates (price/beds burned in), MLS feed ingestion, and a licensed music bed.
 
+**2026-07-10 — lower thirds, MLS feeds, a real music bed, and the loop that learns.**
+- **Lower thirds** (`lib/lower-third.ts`): address + "$685,000 · 4 bed · 2 bath" on a scrim with a brand-coloured accent bar, held for the opening seconds. Text is escaped and colours hex-validated — `O'Brien: Ave` would otherwise rewrite the filtergraph. Proven by rendering onto a white clip: block dark while shown, frame back to 255.0 once it leaves. Wired into `/api/ai` and set automatically for every listing in `/api/listings/batch`.
+- **MLS / portal feeds** (`lib/mls-feed.ts`): RESO Web API JSON (`value[]`, PascalCase, `Media[].MediaURL`) and generic portal XML, with case-insensitive aliases across CRMs, money formatting, and content-type sniffing. `POST /api/listings/batch { feedUrl }` fetches it through the SSRF guard. Malformed feeds are rejected by name; **only `http(s)` photo urls survive parsing** (a feed cannot smuggle `file:///etc/passwd` into the renderer). 18 offline assertions.
+- **MUSIC — and three real bugs it uncovered.** I cannot license a track and will not commit audio of uncertain provenance, so `npm run music:beds` **synthesizes original beds from sine tones** (nobody owns a sine wave). Getting them audible exposed:
+  1. **The ducking never ducked.** `sidechaincompress` needs `level_sc`; a narration at -35 dBFS sat far below `threshold=0.05` and triggered nothing. The 4 dB "duck" the project believed in for months was an `amix` artefact. `level_sc=4` gives a real voice a **13.3 dB duck**.
+  2. **`amix` lacked `normalize=0`** — 6 dB off every stem, silently.
+  3. **The test measured the wrong thing**: total loudness, where the voice masks the music. It now band-passes the music's own tone.
+  Live result: the bed went from -42 dB in the gaps (inaudible) to **-18…-29 dB** (audible), ducked under speech. `loudnorm` was tried in the live mix and removed — its multi-second lookahead desyncs the music from the sidechain key.
+- **The product loop, examined and closed.** Memory existed (`computeUserDefaults` learns style/aspect/voice from the last 20 videos; `getProductInsights` for admin) but the strongest signal was thrown away: **"Swap clip" recorded `{videoId, sceneId}` and not WHICH clip or for WHAT query.** `lib/clip-memory.ts` now remembers both, seeds the stock search's exclusion set with everything a user has rejected, and exposes `rejectionRate()` — the product's own quality score. Verified against the live database.
+- **Claude skills refreshed**: `verify-forgevid` rewritten around the real `verify:*` suites and a mandatory "drive the browser" stage; new `render-pipeline` skill documenting the three-way split of scene text and every ffmpeg footgun that has fired here; `CLAUDE.md` rewritten with the traps.
+- Gates: type-check, verify:generate (241), verify:site, verify:proxy, verify:export, verify:e2e:db, build with every key unset.
+
 ## Phase 0 — Repo hygiene (do before any feature work)
 
 - [ ] Commit or deliberately revert the working tree (510 uncommitted files, ~60 deleted status MDs).

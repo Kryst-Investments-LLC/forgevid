@@ -72,10 +72,13 @@ next-env.d.ts
 # generated videos (large files)
 /public/generated/
 /public/temp/
-# background music: keep the manifest/README, never commit licensed audio
+# background music: keep the manifest/README, never commit licensed audio.
+# `*-bed.m4a` are OUR OWN sine-tone beds (scripts/make-music-beds.ts) — nobody
+# owns a sine wave, so they ship with the repo and the product is never silent.
 /public/music/*
 !/public/music/README.md
 !/public/music/tracks.json
+!/public/music/*-bed.m4a
 
 # per-scene TTS cache
 /.cache/

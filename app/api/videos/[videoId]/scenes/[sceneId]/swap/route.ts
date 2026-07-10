@@ -5,6 +5,7 @@ import { loadScenes, saveScenes } from '@/lib/generation-pipeline';
 import { resolveSceneClip, isStockProviderConfigured } from '@/lib/video-generator';
 import type { AspectRatio } from '@/lib/video-generator';
 import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
+import { recordRejectedClip, rejectedClipUrls } from '@/lib/clip-memory';
 
 /**
  * Swap one scene's stock clip for a different match.
@@ -35,8 +36,16 @@ export async function POST(
     return NextResponse.json({ error: 'Scene not found' }, { status: 404 });
   }
 
-  // Exclude every clip currently in use, including this scene's own.
+  // Exclude every clip currently in use, including this scene's own — AND
+  // everything this user has rejected before. Pressing "Swap" twice on the same
+  // scene used to be able to hand back a clip they had already refused.
   const exclude = new Set(scenes.map((s) => s.clipUrl).filter(Boolean));
+  for (const url of await rejectedClipUrls(access.userId)) exclude.add(url);
+
+  // The clip being swapped away IS the rejection. Remember it, and the query it
+  // came from: this is the only quality signal the product ever gets for free.
+  const rejectedClip = scenes[index].clipUrl;
+  const rejectedQuery = scenes[index].matchedQuery;
 
   // Search in the video's own orientation, otherwise a 9:16 video gets a
   // landscape replacement clip.
@@ -61,6 +70,12 @@ export async function POST(
 
   scenes[index] = replacement;
   await saveScenes(params.videoId, scenes);
+  await recordRejectedClip(access.userId, {
+    clipUrl: rejectedClip,
+    query: rejectedQuery,
+    videoId: params.videoId,
+    sceneId: params.sceneId,
+  });
   await recordProductEvent(access.userId, PRODUCT_ACTIONS.clipSwap, {
     videoId: params.videoId,
     sceneId: params.sceneId,
