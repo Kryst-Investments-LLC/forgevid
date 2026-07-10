@@ -115,6 +115,30 @@ export function spokenLine(scene: Pick<PlannedScene, 'description' | 'narration'
   return line && line.length > 0 ? line : scene.description;
 }
 
+/**
+ * Drop scenes the model invented with nothing to say.
+ *
+ * GPT likes to append a closing card — "Fade out to black with the price and
+ * contact details displayed" — carrying an EMPTY narration. spokenLine() then
+ * falls back to the description, and an estate agent's voiceover ends by
+ * reading a stage direction aloud. (Whisper caught this in a real listing ad.)
+ *
+ * The fallback itself is still right for scenes planned before `narration`
+ * existed — those have no narration at all, anywhere. So only prune when the
+ * plan clearly uses narration and this particular scene has none: that is a
+ * card, not a legacy scene.
+ */
+export function dropSilentScenes(scenes: PlannedScene[]): PlannedScene[] {
+  const usesNarration = scenes.some((s) => (s.narration ?? '').trim().length > 0);
+  if (!usesNarration) return scenes;
+
+  const kept = scenes.filter((s) => (s.narration ?? '').trim().length > 0);
+  if (kept.length === 0) return scenes;
+
+  // Renumber so ids stay contiguous (scene-1, scene-2, ...).
+  return kept.map((s, i) => ({ ...s, id: sceneId(i), index: i }));
+}
+
 /** A planned scene with its chosen stock clip. */
 export interface ResolvedScene extends PlannedScene {
   clipUrl: string;
@@ -583,7 +607,8 @@ export async function planScenes(script: string, totalDuration: number): Promise
 
   const withIds = (raw: any[]): PlannedScene[] =>
     normalizeSceneDurations(
-      raw
+      dropSilentScenes(
+        raw
         .filter((s) => s && typeof s.description === 'string')
         .map((s, i) => ({
           id: sceneId(i),
@@ -595,6 +620,7 @@ export async function planScenes(script: string, totalDuration: number): Promise
           duration: Number(s.duration) > 0 ? Number(s.duration) : Math.max(1, totalDuration / raw.length),
           visualElements: Array.isArray(s.visualElements) ? s.visualElements.map(String) : [],
         })),
+      ),
       totalDuration,
     );
 
@@ -648,6 +674,14 @@ Return ONLY a JSON array with this structure:
     "visualElements": ["flour dust", "wooden counter", "baking preparation"]
   }
 ]
+
+Hard rules:
+- EVERY scene must have non-empty "narration". A scene with nothing to say does
+  not exist.
+- Do NOT invent a title card, end card, logo screen, "fade to black", or any
+  scene showing text. There is no such footage, and the voice would end up
+  reading the stage direction aloud. Put the call to action in the LAST real
+  scene's narration instead.
 
 Be specific and focus on filmable, real-world visuals. Avoid abstract concepts.`,
         },

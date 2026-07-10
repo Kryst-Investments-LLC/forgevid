@@ -19,6 +19,7 @@ import {
   renderDims,
   resolveLocalSource,
   resolveSceneClips,
+  dropSilentScenes,
   spokenLine,
   type ResolvedScene,
   type AspectRatio,
@@ -933,6 +934,39 @@ async function checkNarrationAlignment() {
   fs.rmSync(out, { force: true });
 }
 
+function checkSilentSceneDrop() {
+  console.log('\nChecking invented end-cards are dropped...');
+  const mk = (n: number, narration?: string) => ({
+    id: `scene-${n}`, index: n - 1, description: `desc ${n}`, narration,
+    keywords: [], duration: 3, visualElements: [],
+  });
+
+  // The real failure: GPT appended a card with no narration, so the voiceover
+  // read "Fade out to black with the price and contact details displayed".
+  const withCard = [
+    mk(1, 'Welcome to 14 Maple Court.'),
+    mk(2, 'Four spacious bedrooms.'),
+    { ...mk(3), description: 'Fade out to black with the price displayed', narration: '' },
+  ];
+  const pruned = dropSilentScenes(withCard);
+  assert(pruned.length === 2, `the silent end-card scene is dropped (${pruned.length} scenes left)`);
+  assert(
+    !pruned.some((s) => /fade out to black/i.test(spokenLine(s))),
+    'no stage direction survives into the spoken script',
+  );
+  assert(pruned[0].id === 'scene-1' && pruned[1].id === 'scene-2', 'remaining scenes are renumbered contiguously');
+
+  // Legacy plans have NO narration anywhere; their descriptions must still be
+  // spoken, or every old video would fall silent on re-render.
+  const legacy = [mk(1), mk(2)];
+  assert(dropSilentScenes(legacy).length === 2, 'a legacy plan (no narration at all) is left untouched');
+  assert(spokenLine(dropSilentScenes(legacy)[0]) === 'desc 1', 'legacy scenes still speak their description');
+
+  // Never return an empty plan.
+  const allBlank = [mk(1, '  '), mk(2, '')];
+  assert(dropSilentScenes(allBlank).length === 2, 'an all-blank plan is not pruned to nothing');
+}
+
 function checkSpokenLine() {
   console.log('\nChecking spoken narration vs stage direction...');
 
@@ -998,6 +1032,7 @@ async function main() {
   await checkLocalSourceResolution();
   checkAvatarContract();
   await checkNarrationAlignment();
+  checkSilentSceneDrop();
   checkSpokenLine();
   checkDurationNormalization();
   checkRenderDims();
