@@ -23,24 +23,6 @@ function buildExternalRewrites() {
   ];
 }
 
-function buildConnectSrc(isDev) {
-  return [
-    "'self'",
-    isDev ? 'ws://localhost:3001' : null,
-    'wss://forgevid.com',
-    'https://api.stripe.com',
-    'https://api.pexels.com',
-    'https://api.openai.com',
-    'https://api.replicate.com',
-    'https://us.i.posthog.com',
-    '*.vercel-insights.com',
-    '*.vercel-analytics.com',
-    process.env.CDN_BASE_URL || null,
-    backendApiOrigin || null,
-    collaborationUrl || null,
-    collaborationWsUrl || null,
-  ].filter(Boolean).join(' ');
-}
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
@@ -69,27 +51,12 @@ const nextConfig = {
     ]
   },
   async headers() {
-    const isDev = process.env.NODE_ENV !== 'production';
-    const cspDirectives = [
-      "default-src 'self'",
-      `script-src 'self' https://js.stripe.com${isDev ? " 'unsafe-eval'" : ''}`,
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' https://fonts.gstatic.com",
-      "img-src 'self' data: https: blob: https://res.cloudinary.com",
-      `connect-src ${buildConnectSrc(isDev)}`,
-      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "frame-ancestors 'none'",
-      "upgrade-insecure-requests"
-    ].join('; ');
-
     return [
       {
         source: '/(.*)',
         headers: [
-          { key: 'Content-Security-Policy', value: cspDirectives },
+          // CSP is set per-request in middleware/csp.ts: it needs a nonce for
+          // Next's inline bootstrap scripts, and a static header cannot carry one.
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-XSS-Protection', value: '1; mode=block' },

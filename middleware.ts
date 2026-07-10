@@ -1,8 +1,8 @@
 import createMiddleware from 'next-intl/middleware';
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { applySecurity } from './middleware/security';
 import { verifyCsrf, attachCsrfToken } from './middleware/csrf';
+import { buildCsp, generateNonce } from './middleware/csp';
 
 // Define supported locales
 const locales = ['en', 'es', 'hi', 'zh', 'ja', 'fr', 'it', 'ko', 'pt', 'de'];
@@ -47,6 +47,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/generated/') ||
     pathname.startsWith('/uploads/') ||
     pathname.startsWith('/music/') ||
+    pathname.startsWith('/videos/') ||
+    pathname.startsWith('/images/') ||
     pathname.startsWith('/favicon.ico') ||
     pathname === '/api/health' ||
     pathname === '/api/monitoring/health' ||
@@ -69,6 +71,15 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // A fresh nonce per request. Next reads it from the CSP header we put on the
+  // REQUEST and stamps it onto its inline bootstrap scripts; without it those
+  // scripts are refused and React never hydrates. See middleware/csp.ts.
+  const nonce = generateNonce();
+  const csp = buildCsp(nonce, process.env.NODE_ENV !== 'production');
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-nonce', nonce);
+  requestHeaders.set('Content-Security-Policy', csp);
+
   // Skip i18n middleware for non-localized routes (dashboard, api, auth, etc.)
   if (
     pathname.startsWith('/api/') ||
@@ -84,14 +95,18 @@ export async function middleware(request: NextRequest) {
     pathname === '/' ||
     pathname === '/en'
   ) {
-    // Attach CSRF token to non-API responses
-    const response = NextResponse.next();
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    response.headers.set('Content-Security-Policy', csp);
     return await attachCsrfToken(response);
   }
 
-  // For localized routes, apply i18n middleware
-  const intlResponse = intlMiddleware(request);
-  return await attachCsrfToken(intlResponse as NextResponse);
+  // For localized routes, apply i18n middleware. It must see the nonce-bearing
+  // request headers too, or the localized pages hydrate no better than / did.
+  const intlResponse = intlMiddleware(
+    new NextRequest(request, { headers: requestHeaders }),
+  ) as NextResponse;
+  intlResponse.headers.set('Content-Security-Policy', csp);
+  return await attachCsrfToken(intlResponse);
 }
 
 export const config = {
