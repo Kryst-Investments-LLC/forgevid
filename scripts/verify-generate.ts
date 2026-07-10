@@ -57,6 +57,7 @@ import { SCENE_AUDIO_PADDING_SECONDS, buildAlignedNarration, synthesizeSceneVoic
 import { ListingParseError, listingPrompt, parseListingsCsv } from '../lib/listing-brief';
 import { buildLowerThirdFilter, formatFacts } from '../lib/lower-third';
 import { parseListingsFeed, parseResoJson, parseXmlFeed } from '../lib/mls-feed';
+import { VariationError, assertBodySupportsAxes, expandVariations } from '../lib/ad-variations';
 
 /** Unique per run, so a previous run's TTS cache can't fake a "first pass". */
 const stampTag = Date.now().toString(36);
@@ -1141,6 +1142,79 @@ function checkListingCsv() {
   assert(!/bedroom|bathroom|listed at/.test(noFacts), 'absent facts are simply not mentioned');
 }
 
+function checkAdVariations() {
+  console.log('\nChecking the ad-variation matrix...');
+
+  // The 3x2x2 framework: 3 hooks x 2 CTAs x 2 placements = 12 variants.
+  const axes = {
+    hooks: [
+      { label: 'urgency', narration: 'Only three left.', searchQuery: 'countdown clock' },
+      { label: 'social', narration: 'Ten thousand people already switched.' },
+      { label: 'question', narration: 'Still doing it the hard way?' },
+    ],
+    ctas: [
+      { label: 'signup', narration: 'Sign up free today.' },
+      { label: 'shop', narration: 'Shop the collection now.' },
+    ],
+    aspectRatios: ['9:16', '1:1'] as const,
+  };
+  const variants = expandVariations(axes);
+  assert(variants.length === 12, `3x2x2 expands to 12 variants (got ${variants.length})`);
+
+  // Each variant carries exactly one hook, one CTA, one placement — a valid test.
+  const v = variants[0];
+  assert(!!v.hookNarration && !!v.ctaNarration && !!v.aspectRatio, 'a variant carries all three axes');
+  assert(v.label.includes('hook:') && v.label.includes('cta:'), `the label is human-readable (${v.label})`);
+  assert(
+    variants.some((x) => x.axes.hook === 'urgency' && x.axes.cta === 'shop' && x.axes.aspect === '1:1'),
+    'the full cross-product is present',
+  );
+  assert(new Set(variants.map((x) => x.label)).size === 12, 'every variant label is unique');
+  assert(variants[0].hookSearchQuery === 'countdown clock', 'the hook footage query is carried through');
+
+  // An empty axis is a single pass-through, not zero.
+  assert(expandVariations({ hooks: axes.hooks }).length === 3, 'hooks-only yields 3 (one per hook)');
+  assert(expandVariations({}).length === 1, 'no axes yields the single base variant');
+  assert(expandVariations({ aspectRatios: ['16:9', '9:16', '1:1'] }).length === 3, 'placements-only yields 3');
+
+  // The matrix cap protects the render farm and the user's wallet.
+  let capped = false;
+  try {
+    expandVariations({
+      hooks: Array.from({ length: 6 }, (_, i) => ({ label: `h${i}`, narration: 'x' })),
+      ctas: Array.from({ length: 3 }, (_, i) => ({ label: `c${i}`, narration: 'x' })),
+      aspectRatios: ['16:9', '9:16'],
+    }); // 6*3*2 = 36 > 24
+  } catch (e) {
+    capped = e instanceof VariationError;
+  }
+  assert(capped, 'an oversized matrix (36) is refused');
+
+  // A one-scene concept cannot host a distinct hook AND a distinct CTA.
+  let conflict = false;
+  try {
+    assertBodySupportsAxes(
+      [{ id: 'scene-1', index: 0, description: 'x', narration: 'x', keywords: [], duration: 5, visualElements: [] }],
+      axes,
+    );
+  } catch (e) {
+    conflict = e instanceof VariationError;
+  }
+  assert(conflict, 'a single-scene body refuses a hook+CTA test');
+
+  // ...but a two-scene body is fine.
+  const twoScene = [0, 1].map((i) => ({
+    id: `scene-${i + 1}`, index: i, description: 'x', narration: 'x', keywords: [], duration: 5, visualElements: [],
+  }));
+  let ok = true;
+  try {
+    assertBodySupportsAxes(twoScene, axes);
+  } catch {
+    ok = false;
+  }
+  assert(ok, 'a two-scene body supports both a hook and a CTA test');
+}
+
 function checkMlsFeed() {
   console.log('\nChecking MLS / portal feed ingestion...');
 
@@ -1337,6 +1411,7 @@ async function main() {
   await checkLowerThird();
   checkClampScenesToMedia();
   checkListingCsv();
+  checkAdVariations();
   checkMlsFeed();
   checkSilentSceneDrop();
   checkSpokenLine();

@@ -245,6 +245,13 @@ Writing actual customer videos found more than a week of testing did.
 - Pushed a render: API returned `mode: queued, jobId: 1` (not inline). The **separate worker process** rendered it (`[worker] completed 1`); the web server logged **zero** assembly lines. Queue drained, 10.00s output on disk. First execution ever of this path.
 - Still open: Cloudinary unconfigured (local disk), Docker image never run.
 
+**2026-07-10 — MARKETING VERTICAL: the ad-variation engine.**
+- Research (2026 performance marketing) is unambiguous: the bottleneck is creative VOLUME against ad fatigue — cold creative burns out in 10-14 days, top teams test 20-50 variants/month, the framework is the 3x2x2 matrix (3 hooks x 2 lengths x 2 CTAs), and the hook drives ~70% of performance. Underserved for SMBs; a perfect fit for ForgeVid's editable-scene architecture + the queue.
+- `POST /api/campaigns/variations`: one concept -> a matrix of ad creatives. The body is planned ONCE (`presetScenes`) and reused, so each variant changes exactly one axis (hook / CTA / placement) — a valid A/B test, not N unrelated videos. `lib/ad-variations.ts` expands the matrix (pure, 12 offline assertions incl. the 24-variant cap and the single-scene hook+CTA conflict). Each variant is quota-checked and queued individually with a readable label ("hook:urgency · 9:16 · cta:signup").
+- New generation seams: `presetScenes` (skip planning, reuse a body), `hookNarration`/`hookSearchQuery` (swap the opening line AND its footage), `ctaNarration` (swap the close).
+- **Proven live through the queue**: one concept -> 4 variants (2 hooks x 2 placements), all rendered by the WORKER (web process rendered 0). All four share the identical 3-scene body; only the hook line ("Drowning in sticky notes?" vs "Finish work an hour early.") and shape (960x540 vs 540x960) differ. Frames confirm the hook footage differs too.
+- **Ops lesson**: the first live run re-planned every variant — the WORKER had been booted before the feature existed and `tsx` does not hot-reload. The Redis payload carried `presetScenes` correctly; the stale worker ignored it. Restart the worker on lib changes (now in CLAUDE.md).
+
 ## Phase 0 — Repo hygiene (do before any feature work)
 
 - [ ] Commit or deliberately revert the working tree (510 uncommitted files, ~60 deleted status MDs).

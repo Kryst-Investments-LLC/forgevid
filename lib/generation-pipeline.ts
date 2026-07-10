@@ -162,6 +162,14 @@ export interface GenerationInput {
   mediaOnly?: boolean;
   /** Address + price burned into the opening seconds (estate-agent lower third). */
   lowerThird?: { title: string; facts?: string[]; start?: number; duration?: number } | null;
+  /** Campaign variation: a shared pre-planned body so only one axis varies. */
+  presetScenes?: import('./video-generator').PlannedScene[];
+  /** Override the opening line (the hook). */
+  hookNarration?: string;
+  /** Footage query for the hook. */
+  hookSearchQuery?: string;
+  /** Override the closing line (the CTA). */
+  ctaNarration?: string;
   enableEmotionAware?: boolean;
 }
 
@@ -342,6 +350,10 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       musicPath: musicOverride,
       mediaOnly: input.mediaOnly,
       lowerThird: input.lowerThird ?? null,
+      presetScenes: input.presetScenes,
+      hookNarration: input.hookNarration,
+      hookSearchQuery: input.hookSearchQuery,
+      ctaNarration: input.ctaNarration,
       userMedia: await userMediaForVideo(videoId, input.mediaAssetIds),
       renderQuality: input.renderQuality,
     });

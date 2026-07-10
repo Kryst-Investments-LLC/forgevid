@@ -36,6 +36,10 @@ npm run music:beds       # regenerate the license-free background beds
 - Small commits, one logical unit each, `type(scope): description`.
 - `npm run dev` is `node server.js`, not `next dev`. Changes to `server.js`,
   `middleware.ts` or `next.config.mjs` need a restart.
+- **The BullMQ worker (`npm run worker`) does NOT hot-reload.** After any change
+  to `lib/` it keeps running the code it booted with — a render can silently use
+  a stale pipeline (a campaign's pinned scenes were ignored because the worker
+  predated the feature). Restart the worker on lib changes, same as the server.
 - Prisma schema edits: `npm run db:generate` plus a migration in the same commit.
 - Update `TODO.md`'s progress log rather than creating new summary files. Note
   that anchored text edits **fail silently when the anchor has moved** — check

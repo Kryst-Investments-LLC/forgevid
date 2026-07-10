@@ -260,6 +260,17 @@ export interface GenerationOptions {
   lowerThird?: LowerThird | null;
   /** Clips this user has already rejected — never serve them again. */
   excludeClipUrls?: string[];
+  /**
+   * Campaign variations. Reuse ONE pre-planned scene body across every variant
+   * so a hook/CTA/aspect test changes exactly one variable.
+   */
+  presetScenes?: PlannedScene[];
+  /** Override the opening line (the hook — ~70% of ad performance). */
+  hookNarration?: string;
+  /** Footage query for the hook, so the picture matches the new opening words. */
+  hookSearchQuery?: string;
+  /** Override the closing line (the call to action). */
+  ctaNarration?: string;
 }
 
 function sceneId(index: number): string {
@@ -1448,8 +1459,28 @@ export async function generateVideoWithScenes(
     userMedia = [],
   } = options;
 
-  let planned = await planScenes(prompt, duration);
+  // A campaign variation reuses ONE pre-planned body across every variant, so
+  // the only thing that differs between two variants is the axis being tested
+  // (the hook, the CTA, the aspect ratio). Re-planning per variant would change
+  // the body too and make the A/B test meaningless.
+  let planned = options.presetScenes
+    ? options.presetScenes.map((s) => ({ ...s }))
+    : await planScenes(prompt, duration);
   if (planned.length === 0) throw new Error('Failed to plan any scenes from the script');
+
+  // Hook / CTA overrides: swap ONLY the opening or closing line (and, for the
+  // hook, its footage query, so the picture matches the new words).
+  if (options.hookNarration && planned.length > 0) {
+    planned[0] = {
+      ...planned[0],
+      narration: options.hookNarration,
+      ...(options.hookSearchQuery ? { searchQuery: options.hookSearchQuery } : {}),
+    };
+  }
+  if (options.ctaNarration && planned.length > 0) {
+    const last = planned.length - 1;
+    planned[last] = { ...planned[last], narration: options.ctaNarration };
+  }
 
   if (options.mediaOnly) {
     if (userMedia.length === 0) {
