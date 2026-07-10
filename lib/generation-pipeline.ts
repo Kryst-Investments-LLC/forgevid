@@ -157,6 +157,8 @@ export interface GenerationInput {
   narrationAssetId?: string;
   /** A MediaAsset (AUDIO) id: the user's OWN background music track. */
   musicAssetId?: string;
+  /** Use ONLY the supplied media; never pad the plan with stock footage. */
+  mediaOnly?: boolean;
   enableEmotionAware?: boolean;
 }
 
@@ -333,6 +335,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       transition: input.transition,
       voiceoverPath: narrationPath,
       musicPath: musicOverride,
+      mediaOnly: input.mediaOnly,
       userMedia: await userMediaForVideo(videoId, input.mediaAssetIds),
       renderQuality: input.renderQuality,
     });

@@ -139,6 +139,24 @@ export function dropSilentScenes(scenes: PlannedScene[]): PlannedScene[] {
   return kept.map((s, i) => ({ ...s, id: sceneId(i), index: i }));
 }
 
+/**
+ * Cut a plan down to the number of assets the user actually supplied.
+ *
+ * `resolveSceneClips` fills scenes with the user's media in order and covers
+ * the remainder with stock. That is right for "use my product shots"; it is
+ * wrong for an estate agent who uploads five photos of a house and gets a
+ * sixth shot of somebody else's kitchen. Whichever the caller wants, the plan
+ * has to agree with it BEFORE durations are normalised, or the video's runtime
+ * is spread across scenes that get dropped.
+ *
+ * Returns the plan unchanged when there is no media, or when the plan already
+ * fits inside it.
+ */
+export function clampScenesToMedia(scenes: PlannedScene[], mediaCount: number): PlannedScene[] {
+  if (mediaCount <= 0 || scenes.length <= mediaCount) return scenes;
+  return scenes.slice(0, mediaCount).map((s, i) => ({ ...s, id: sceneId(i), index: i }));
+}
+
 /** A planned scene with its chosen stock clip. */
 export interface ResolvedScene extends PlannedScene {
   clipUrl: string;
@@ -231,6 +249,12 @@ export interface GenerationOptions {
    * empty unless the operator has licensed tracks into public/music.
    */
   musicPath?: string | null;
+  /**
+   * Use ONLY the caller's media: never pad the plan with stock footage. An
+   * estate agent's listing must show their five photos, not four of theirs and
+   * one of somebody else's kitchen.
+   */
+  mediaOnly?: boolean;
 }
 
 function sceneId(index: number): string {
@@ -1371,8 +1395,16 @@ export async function generateVideoWithScenes(
     userMedia = [],
   } = options;
 
-  const planned = await planScenes(prompt, duration);
+  let planned = await planScenes(prompt, duration);
   if (planned.length === 0) throw new Error('Failed to plan any scenes from the script');
+
+  if (options.mediaOnly) {
+    if (userMedia.length === 0) {
+      throw new Error('mediaOnly was requested but no media was supplied');
+    }
+    // Trim the plan to the assets, then re-spread the runtime over what is left.
+    planned = normalizeSceneDurations(clampScenesToMedia(planned, userMedia.length), duration);
+  }
 
   const resolved = await resolveSceneClips(planned, aspectRatio, userMedia);
 

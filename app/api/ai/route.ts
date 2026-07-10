@@ -78,6 +78,8 @@ const generateVideoSchema = z.object({
   narrationAssetId: z.string().optional(),
   // A MediaAsset (AUDIO) id: the user's OWN background music track.
   musicAssetId: z.string().optional(),
+  // Use ONLY mediaAssetIds; never pad the plan with stock footage.
+  mediaOnly: z.boolean().default(false),
   // null = hard cuts. Omitted = the default cross-fade.
   transition: z
     .object({ type: z.enum(TRANSITIONS), duration: z.number().min(0).max(3) })
@@ -154,6 +156,7 @@ async function handleGenerateVideo(body: any, userId: string) {
             renderQuality: input.renderQuality,
             narrationAssetId: input.narrationAssetId,
             musicAssetId: input.musicAssetId,
+            mediaOnly: input.mediaOnly,
             // enableEmotionAware is preserved for the pipeline to honor once
             // emotion-aware generation is folded into the worker (TODO Phase 5).
             enableEmotionAware: input.enableEmotionAware ?? false,

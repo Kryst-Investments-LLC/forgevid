@@ -19,6 +19,7 @@ import {
   renderDims,
   resolveLocalSource,
   resolveSceneClips,
+  clampScenesToMedia,
   dropSilentScenes,
   spokenLine,
   type ResolvedScene,
@@ -53,6 +54,7 @@ import { avatarDimension, buildAvatarVideoPayload } from '../lib/avatar-provider
 import { allowsAvatars, allowsVoiceCloning } from '../lib/plan';
 import { estimateGenerationCost } from '../lib/cost-ledger';
 import { SCENE_AUDIO_PADDING_SECONDS, buildAlignedNarration, synthesizeSceneVoiceovers } from '../lib/voiceover';
+import { ListingParseError, listingPrompt, parseListingsCsv } from '../lib/listing-brief';
 
 /** Unique per run, so a previous run's TTS cache can't fake a "first pass". */
 const stampTag = Date.now().toString(36);
@@ -934,6 +936,132 @@ async function checkNarrationAlignment() {
   fs.rmSync(out, { force: true });
 }
 
+/**
+ * White captions with a 2px outline vanish over a white kitchen — which is most
+ * of a real-estate listing. Render onto a WHITE frame and measure the caption
+ * band: with a scrim it must be dark; the outline alone was not enough.
+ */
+async function checkCaptionContrast() {
+  console.log('\nChecking captions stay legible on a white frame...');
+
+  const white = path.join(workDir, 'white.mp4');
+  ffmpeg(['-f', 'lavfi', '-i', 'color=white:s=640x360:r=24', '-t', '2', '-pix_fmt', 'yuv420p', white]);
+
+  const filter = buildCaptionFilter([{ start: 0, end: 2, text: 'Book your private viewing today' }]);
+  assert(/box=1/.test(filter), 'the caption filter draws a scrim box');
+  assert(/boxcolor=black@0\.55/.test(filter), 'the scrim is semi-transparent black');
+
+  const { videoUrl } = await assembleVideo(
+    [scene(0, white, 2, 'Book your private viewing today')],
+    ['subtitles'],
+    '16:9',
+    { transition: null },
+  );
+  const out = path.join(process.cwd(), 'public', 'generated', path.basename(videoUrl));
+  assert(fs.existsSync(out), 'the white-background render succeeded');
+
+  /** Mean luminance of a crop of the frame at t=1s. Pure white is 255. */
+  const brightness = (crop: string): number => {
+    const res = spawnSync(
+      ffmpegPath,
+      ['-nostdin', '-ss', '1', '-i', out, '-frames:v', '1',
+       '-vf', `${crop},format=gray,signalstats,metadata=print`, '-f', 'null', '-'],
+      { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
+    );
+    return Number((String(res.stderr).match(/lavfi\.signalstats\.YAVG=([\d.]+)/) || [])[1]);
+  };
+
+  // Compare the caption's own strip against untouched white higher up the frame,
+  // rather than trusting an absolute number: the box only spans the TEXT, so a
+  // full-width band is mostly margin and hides the effect.
+  const control = brightness('crop=700:40:610:800');
+  const captionStrip = brightness('crop=600:40:660:1014');
+  assert(Number.isFinite(control) && Number.isFinite(captionStrip), 'measured both strips');
+  assert(control > 250, `the untouched frame really is white (YAVG ${control.toFixed(1)})`);
+  assert(
+    captionStrip < 210,
+    `the scrim darkens the caption over white (YAVG ${captionStrip.toFixed(1)} vs white ${control.toFixed(1)})`,
+  );
+  assert(
+    control - captionStrip > 45,
+    `caption is clearly separated from the background (${(control - captionStrip).toFixed(1)} levels)`,
+  );
+
+  // And the scrim can be turned off for callers who want the old look.
+  const bare = buildCaptionFilter([{ start: 0, end: 1, text: 'hello' }], { boxOpacity: 0 });
+  assert(!/box=1/.test(bare), 'boxOpacity: 0 disables the scrim');
+
+  fs.rmSync(white, { force: true });
+  fs.rmSync(out, { force: true });
+}
+
+function checkClampScenesToMedia() {
+  console.log('\nChecking scene count matches the supplied media...');
+  const mk = (n: number) => ({
+    id: `scene-${n}`, index: n - 1, description: `d${n}`, narration: `n${n}`,
+    keywords: [], duration: 4, visualElements: [],
+  });
+  const six = [1, 2, 3, 4, 5, 6].map(mk);
+
+  // The real failure: 6 planned scenes, 5 photos, so shot 6 was somebody else's kitchen.
+  const clamped = clampScenesToMedia(six, 5);
+  assert(clamped.length === 5, `6 scenes against 5 photos becomes 5 (got ${clamped.length})`);
+  assert(clamped[4].id === 'scene-5' && clamped[4].index === 4, 'the survivors are renumbered');
+
+  assert(clampScenesToMedia(six, 0).length === 6, 'no media leaves the plan alone');
+  assert(clampScenesToMedia(six, 9).length === 6, 'more photos than scenes leaves the plan alone');
+  assert(clampScenesToMedia(six, 6).length === 6, 'an exact match leaves the plan alone');
+
+  // The runtime must be re-spread over what survives, not lost with the cut scenes.
+  const renormalised = normalizeSceneDurations(clampScenesToMedia(six, 5), 20);
+  const total = renormalised.reduce((a, s) => a + s.duration, 0);
+  assert(Math.abs(total - 20) < 0.05, `the 20s budget survives the clamp (got ${total.toFixed(2)}s)`);
+}
+
+function checkListingCsv() {
+  console.log('\nChecking the estate agent CSV import...');
+
+  const csv = [
+    'Listing ID,Address,Price,Bedrooms,Bathrooms,Features,Photo URLs',
+    '"A-1","14 Maple Court","$685,000",4,2,"Renovated kitchen, large garden","https://x.test/1.jpg https://x.test/2.jpg"',
+    '"A-2","9 Oak Lane","$412,500",3,1,"Close to schools","https://x.test/3.jpg;https://x.test/4.jpg"',
+  ].join('\n');
+
+  const listings = parseListingsCsv(csv);
+  assert(listings.length === 2, `parsed both rows (got ${listings.length})`);
+  assert(listings[0].ref === 'A-1' && listings[0].address === '14 Maple Court', 'ref and address read');
+  // The price contains a comma INSIDE quotes — the classic CSV trap.
+  assert(listings[0].price === '$685,000', `a quoted comma in the price survives (${listings[0].price})`);
+  assert(listings[0].beds === 4 && listings[0].baths === 2, 'beds and baths parsed as numbers');
+  assert(listings[0].photos.length === 2, 'space-separated photo urls split');
+  assert(listings[1].photos.length === 2, 'semicolon-separated photo urls split');
+  assert(listings[0].highlights === 'Renovated kitchen, large garden', 'quoted features keep their comma');
+
+  // Column aliases: no two CRMs agree on names.
+  const aliased = parseListingsCsv('mls,property,images\nM9,"1 High St","https://x.test/a.jpg"');
+  assert(aliased[0].ref === 'M9' && aliased[0].address === '1 High St', 'column aliases are honoured');
+
+  // Bad rows fail LOUDLY rather than producing a video of nothing.
+  let rejected = 0;
+  for (const bad of [
+    'address,photos\n"",https://x.test/a.jpg',            // no address
+    'address,photos\n"1 High St",""',                     // no photos
+    'address\n"1 High St"',                               // no photos column
+    'beds,photos\n3,https://x.test/a.jpg',                // no address column
+  ]) {
+    try { parseListingsCsv(bad); } catch (e) { if (e instanceof ListingParseError) rejected++; }
+  }
+  assert(rejected === 4, `every malformed CSV is rejected loudly (${rejected}/4)`);
+
+  // The prompt may only contain facts the agent supplied.
+  const prompt = listingPrompt(listings[0], 5);
+  assert(prompt.includes('14 Maple Court') && prompt.includes('4 bedrooms'), 'the prompt states the real facts');
+  assert(prompt.includes('$685,000'), 'the prompt states the real price');
+  assert(/never invent/i.test(prompt), 'the prompt forbids inventing features');
+  const noFacts = listingPrompt({ ref: 'x', address: '2 Elm St', photos: ['a'] }, 3);
+  assert(!/bedroom|bathroom|listed at/.test(noFacts), 'absent facts are simply not mentioned');
+}
+
 function checkSilentSceneDrop() {
   console.log('\nChecking invented end-cards are dropped...');
   const mk = (n: number, narration?: string) => ({
@@ -1032,6 +1160,9 @@ async function main() {
   await checkLocalSourceResolution();
   checkAvatarContract();
   await checkNarrationAlignment();
+  await checkCaptionContrast();
+  checkClampScenesToMedia();
+  checkListingCsv();
   checkSilentSceneDrop();
   checkSpokenLine();
   checkDurationNormalization();

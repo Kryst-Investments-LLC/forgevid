@@ -71,6 +71,16 @@ export interface CaptionStyle {
   fontColor?: string;
   /** Override the resolved system font (brand kit typeface). */
   fontFile?: string | null;
+  /**
+   * Opacity of the scrim drawn behind the text, 0..1. Zero disables it.
+   *
+   * A 2px black outline is enough over stock footage and useless over a white
+   * kitchen — which is most of a real-estate listing. A scrim is the only thing
+   * that keeps captions legible on *any* frame.
+   */
+  boxOpacity?: number;
+  /** Scrim colour. Goes into a filtergraph, so keep it a named colour or hex. */
+  boxColor?: string;
 }
 
 /** Named presets so callers don't hand-tune pixel values. */
@@ -351,6 +361,8 @@ export function buildCaptionFilter(cues: CaptionCue[], style: CaptionStyle = {})
     marginBottom = 60,
     maxCharsPerLine = 42,
     fontColor = 'white',
+    boxOpacity = 0.55,
+    boxColor = 'black',
   } = { ...CAPTION_PRESETS.default, ...style };
 
   // A brand typeface wins, but only if it actually exists on disk.
@@ -361,16 +373,27 @@ export function buildCaptionFilter(cues: CaptionCue[], style: CaptionStyle = {})
   if (!font) return '';
   const fontOpt = `fontfile='${escapeFontPath(font)}':`;
 
+  const opacity = Math.min(Math.max(boxOpacity, 0), 1);
+  const boxed = opacity > 0;
+  const boxBorder = 6;
+  // drawtext draws ONE box per line. Give the lines enough room that adjacent
+  // boxes never overlap — where they do, the alpha compounds and you get a
+  // darker band across the middle of the caption.
+  const lineGap = fontSize + (boxed ? boxBorder * 2 + 6 : 8);
+  const boxOpt = boxed
+    ? `box=1:boxcolor=${boxColor}@${opacity.toFixed(2)}:boxborderw=${boxBorder}:`
+    : '';
+
   const filters: string[] = [];
 
   for (const cue of cues) {
     const lines = wrapText(cue.text, maxCharsPerLine);
     lines.forEach((line, lineIndex) => {
       // Stack lines upward from the bottom margin.
-      const yOffset = marginBottom + (lines.length - 1 - lineIndex) * (fontSize + 8);
+      const yOffset = marginBottom + (lines.length - 1 - lineIndex) * lineGap;
       filters.push(
         `drawtext=${fontOpt}text='${escapeDrawText(line)}':fontsize=${fontSize}:fontcolor=${fontColor}:` +
-          `borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-${yOffset}:` +
+          `${boxOpt}borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-${yOffset}:` +
           `enable='between(t\\,${cue.start.toFixed(3)}\\,${cue.end.toFixed(3)})'`,
       );
     });
