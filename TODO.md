@@ -239,6 +239,12 @@ Writing actual customer videos found more than a week of testing did.
 - **Claude skills refreshed**: `verify-forgevid` rewritten around the real `verify:*` suites and a mandatory "drive the browser" stage; new `render-pipeline` skill documenting the three-way split of scene text and every ffmpeg footgun that has fired here; `CLAUDE.md` rewritten with the traps.
 - Gates: type-check, verify:generate (241), verify:site, verify:proxy, verify:export, verify:e2e:db, build with every key unset.
 
+**2026-07-10 — the BullMQ queue path VERIFIED for the first time.**
+- Env confusion resolved: provider keys were already real in `dev/forgevid/.env.local`; `JWT_SECRET`+`ENCRYPTION_KEY` were stranded in the stale OneDrive copy, now transplanted. Cloudinary empty in BOTH. `REDIS_URL` set but nothing listening.
+- Ran Redis via the compose file that already defined `forgevid-redis` (`npm run redis:up`); booted `npm run worker` (`listening on "video-generation"`, connected as a Redis client).
+- Pushed a render: API returned `mode: queued, jobId: 1` (not inline). The **separate worker process** rendered it (`[worker] completed 1`); the web server logged **zero** assembly lines. Queue drained, 10.00s output on disk. First execution ever of this path.
+- Still open: Cloudinary unconfigured (local disk), Docker image never run.
+
 ## Phase 0 — Repo hygiene (do before any feature work)
 
 - [ ] Commit or deliberately revert the working tree (510 uncommitted files, ~60 deleted status MDs).

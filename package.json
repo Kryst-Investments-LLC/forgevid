@@ -14,6 +14,8 @@
     "verify:providers": "tsx scripts/verify-providers.ts",
     "verify:site": "tsx scripts/verify-site.ts",
     "music:beds": "tsx scripts/make-music-beds.ts",
+    "redis:up": "docker compose up -d redis",
+    "redis:down": "docker compose stop redis",
     "verify:proxy": "tsx scripts/verify-proxy.ts",
     "db:local": "bash scripts/db-local.sh start",
     "db:local:stop": "bash scripts/db-local.sh stop",
