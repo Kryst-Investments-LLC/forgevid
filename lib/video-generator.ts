@@ -222,6 +222,13 @@ function fitFilterFor(width: number, height: number): string {
   );
 }
 
+/**
+ * Language of the spoken narration and burned-in captions. The stock-footage
+ * search always stays English (libraries index English); only what is heard and
+ * shown changes. Defaults to English.
+ */
+export type NarrationLanguage = 'en' | 'es';
+
 export interface GenerationOptions {
   prompt: string;
   style: string;
@@ -232,6 +239,8 @@ export interface GenerationOptions {
   mood?: string;
   /** ElevenLabs voice id for the narration. */
   voiceId?: string;
+  /** Narration + caption language ('es' = Spanish). Stock search stays English. */
+  language?: NarrationLanguage;
   /** Plan-gated branding (watermark / logo / intro / outro). */
   branding?: Branding | null;
   /** Cross-fade between scenes; null for hard cuts. */
@@ -642,8 +651,19 @@ export function normalizeSceneDurations(
 /**
  * Stage 1 — decompose the script into scenes with GPT.
  */
-export async function planScenes(script: string, totalDuration: number): Promise<PlannedScene[]> {
+export async function planScenes(
+  script: string,
+  totalDuration: number,
+  language: NarrationLanguage = 'en',
+): Promise<PlannedScene[]> {
   await initializeModules();
+
+  // Only the spoken/shown text changes language. searchQuery + keywords stay
+  // English because they are sent verbatim to a stock library that indexes it.
+  const languageRule =
+    language === 'es'
+      ? `\n\nOUTPUT LANGUAGE — write EVERY "narration" value in natural, fluent Latin-American Spanish. Keep "searchQuery" and "keywords" in English (they are sent verbatim to a stock-footage library that indexes English). "description" may stay English; it is never shown or spoken.`
+      : '';
 
   const withIds = (raw: any[]): PlannedScene[] =>
     normalizeSceneDurations(
@@ -723,7 +743,7 @@ Hard rules:
   reading the stage direction aloud. Put the call to action in the LAST real
   scene's narration instead.
 
-Be specific and focus on filmable, real-world visuals. Avoid abstract concepts.`,
+Be specific and focus on filmable, real-world visuals. Avoid abstract concepts.${languageRule}`,
         },
         { role: 'user', content: `Parse this script into scenes:\n\n${script}` },
       ],
@@ -1465,7 +1485,7 @@ export async function generateVideoWithScenes(
   // the body too and make the A/B test meaningless.
   let planned = options.presetScenes
     ? options.presetScenes.map((s) => ({ ...s }))
-    : await planScenes(prompt, duration);
+    : await planScenes(prompt, duration, options.language ?? 'en');
   if (planned.length === 0) throw new Error('Failed to plan any scenes from the script');
 
   // Hook / CTA overrides: swap ONLY the opening or closing line (and, for the

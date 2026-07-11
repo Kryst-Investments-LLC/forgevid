@@ -148,6 +148,8 @@ export interface GenerationInput {
   aspectRatio?: AspectRatio;
   /** ElevenLabs voice id for the narration. */
   voiceId?: string;
+  /** Narration + caption language ('es' = Spanish). Stock search stays English. */
+  language?: import('./video-generator').NarrationLanguage;
   /** Cross-fade between scenes; null means hard cuts. */
   transition?: TransitionConfig | null;
   /** Ids of the user's own MediaAssets to use, in scene order. */
@@ -342,6 +344,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       aspectRatio,
       mood: input.style,
       voiceId: input.voiceId,
+      language: input.language,
       branding,
       transition: input.transition,
       // The platform's memory: never serve footage this user already rejected.

@@ -262,6 +262,13 @@ Writing actual customer videos found more than a week of testing did.
 - Gates: type-check, verify:generate (277 assertions), verify:site, verify:proxy, verify:export, verify:e2e:db, build with every key unset.
 - **DECISION: verticals are now FROZEN.** Real estate, automotive, e-commerce, and the marketing ad-variation engine ship on one shared engine. No new verticals until the platform is tested and generating real income.
 
+**2026-07-10 — BILINGUAL narration (English + Spanish), aimed at the Miami dealer.**
+- A `language` option (`'en' | 'es'`) threads from `GenerationOptions` → `planScenes` (writes narration + captions in the target language; stock-search terms stay English) → `GenerationInput` / `generation-pipeline` → `FeedBatchOptions`. TTS needed no change: `eleven_multilingual_v2` already speaks the premade voices in Spanish, and Whisper auto-detects the language for captions.
+- `POST /api/vehicles/batch` gained `languages: ['en','es']` — one call renders every car in both languages, each consuming its own quota (the quota is the meter, so bilingual cost is already priced).
+- NOT a new vertical — an option on the existing automotive one, so it respects the freeze; it's the key differentiator for the Miami lot.
+- **Proven live**: `npx tsx scripts/verify-spanish.ts` renders the same RAV4 twice and asks Whisper (`verbose_json`) which language it actually HEARD. Spanish cut → detected `spanish` ("Presentamos el Toyota RAV4 XLE 2022 con solo 24,000 millas. Un solo dueño, historial limpio, tracción en las cuatro ruedas y cámara de reversa."); English cut → detected `english`. Anti-fabrication held in Spanish — only feed facts, numbers preserved.
+- Gates: type-check exit 0, `verify:spanish` exit 0, `verify:generate` (277 assertions) still green.
+
 ## Phase 0 — Repo hygiene (do before any feature work)
 
 - [ ] Commit or deliberately revert the working tree (510 uncommitted files, ~60 deleted status MDs).

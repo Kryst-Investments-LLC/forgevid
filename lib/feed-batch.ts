@@ -19,7 +19,7 @@ import { withRenderSlot } from './render-semaphore';
 import { checkGenerationQuota, recordGenerationUsage } from './quota';
 import { importSiteImages } from './site-images';
 import { DEFAULT_TRANSITION } from './transitions';
-import type { AspectRatio } from './video-generator';
+import type { AspectRatio, NarrationLanguage } from './video-generator';
 import type { LowerThird } from './lower-third';
 
 export interface FeedItem {
@@ -40,6 +40,8 @@ export interface FeedBatchOptions {
   duration: number;
   aspectRatio: AspectRatio;
   voiceId: string;
+  /** Narration + caption language for every item ('es' = Spanish). */
+  language?: NarrationLanguage;
   renderQuality: 'draft' | 'full' | '4k';
   addOns?: string[];
   maxPhotosPerItem?: number;
@@ -88,6 +90,7 @@ export async function runFeedBatch(
       addOns: opts.addOns ?? ['voiceover', 'subtitles', 'music'],
       aspectRatio: opts.aspectRatio,
       voiceId: opts.voiceId,
+      language: opts.language,
       transition: DEFAULT_TRANSITION,
       mediaAssetIds: images.map((i) => i.assetId),
       // The video shows THIS item. Never pad it with stock footage.

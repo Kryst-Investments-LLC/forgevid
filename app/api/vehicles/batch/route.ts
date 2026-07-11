@@ -47,6 +47,9 @@ const bodySchema = z
     aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
     voiceId: z.string().optional(),
     renderQuality: z.enum(['draft', 'full', '4k']).default('full'),
+    // A Miami lot wants both: pass ['en','es'] to render every car twice, once
+    // per language. Each language consumes its own quota, as intended.
+    languages: z.array(z.enum(['en', 'es'])).min(1).max(2).default(['en']),
   })
   .refine((b) => Boolean(b.feedUrl) !== Boolean(b.vehicles), {
     message: 'Provide either `feedUrl` or `vehicles`, not both',
@@ -64,6 +67,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request', details: parsed.error.issues }, { status: 400 });
   }
   const { feedUrl, duration, aspectRatio, voiceId, renderQuality } = parsed.data;
+  const languages = [...new Set(parsed.data.languages)];
 
   let vehicles: Vehicle[];
   try {
@@ -108,18 +112,31 @@ export async function POST(req: NextRequest) {
     lowerThird: () => vehicleLowerThird(v),
   }));
 
-  const { started, failed, results } = await runFeedBatch(items, {
-    userId,
-    duration,
-    aspectRatio,
-    voiceId: resolvedVoiceId,
-    renderQuality,
-  });
+  // One batch per requested language. A bilingual request renders each car
+  // twice — the English cut for one audience, the Spanish cut for the other.
+  let started = 0;
+  let failed = 0;
+  const results: Array<{ ref: string; label: string; language: string; videoId?: string; photosUsed?: number; error?: string }> = [];
+  for (const language of languages) {
+    const batch = await runFeedBatch(items, {
+      userId,
+      duration,
+      aspectRatio,
+      voiceId: resolvedVoiceId,
+      language,
+      renderQuality,
+    });
+    started += batch.started;
+    failed += batch.failed;
+    for (const r of batch.results) results.push({ ...r, language });
+  }
 
+  const langLabel = languages.join('+');
   return NextResponse.json({
     started,
     failed,
+    languages,
     results,
-    message: `Started ${started} of ${results.length} vehicle videos. Poll /api/ai/jobs/{videoId} for each.`,
+    message: `Started ${started} of ${results.length} vehicle videos (${langLabel}). Poll /api/ai/jobs/{videoId} for each.`,
   });
 }
