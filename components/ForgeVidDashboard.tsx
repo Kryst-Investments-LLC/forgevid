@@ -52,12 +52,12 @@ export default function ForgeVidDashboard() {
   const [templatesError, setTemplatesError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchHyperMind() {
+    async function fetchMetrics() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/hypermind");
-        if (!res.ok) throw new Error("Failed to fetch HyperMind data");
+        const res = await fetch("/api/user/metrics");
+        if (!res.ok) throw new Error("Couldn't load your metrics");
         const data = await res.json();
         setMetrics(data.metrics || []);
         setInsights(data.insights || []);
@@ -67,7 +67,7 @@ export default function ForgeVidDashboard() {
         setLoading(false);
       }
     }
-    fetchHyperMind();
+    fetchMetrics();
   }, []);
 
   useEffect(() => {
@@ -105,22 +105,6 @@ export default function ForgeVidDashboard() {
     }
     fetchTemplates();
   }, []);
-
-  // Group metrics for highlighting
-  const collaborationLabels = [
-    "Active Collaboration Rooms",
-    "Total Collaboration Rooms",
-    "Collaboration Messages",
-    "Collaboration Edits"
-  ];
-  const aiLabels = [
-    "AI Generations (AIGeneration)",
-    "AI Tokens Used",
-    "AI Cost (USD)"
-  ];
-  const collaborationMetrics = metrics.filter(m => collaborationLabels.includes(m.label));
-  const aiMetrics = metrics.filter(m => aiLabels.includes(m.label));
-  const otherMetrics = metrics.filter(m => !collaborationLabels.includes(m.label) && !aiLabels.includes(m.label));
 
   return (
     <div className="min-h-[900px]">
@@ -275,12 +259,11 @@ export default function ForgeVidDashboard() {
             )}
           </div>
 
-          {/* Metrics Section - Moved to bottom */}
+          {/* Your activity */}
           <div className="mt-16">
-            {/* Collaboration Metrics */}
             <div className="flex items-center gap-3 mb-4">
               <div className="w-1 h-8 bg-gradient-to-b from-cyan-500 to-blue-600 rounded-full"></div>
-              <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">Collaboration Metrics</h2>
+              <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">Your activity</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12" style={{minHeight: '130px', contain: 'layout'}}>
               {loading ? (
@@ -291,82 +274,15 @@ export default function ForgeVidDashboard() {
                   </div>
                 ))
               ) : error ? (
-                <div className="col-span-4 text-center text-red-400 py-8">{error}</div>
-              ) : collaborationMetrics.length > 0 ? (
-                collaborationMetrics.map((m, i) => (
+                <div className="col-span-4 text-center text-gray-500 py-8">{error}</div>
+              ) : metrics.length > 0 ? (
+                metrics.map((m, i) => (
                   <div key={i} className="h-[110px] min-w-[200px]" style={{contain: 'strict', contentVisibility: 'auto'}}>
                     <MetricCard title={m.label} value={m.value} delta={m.trend} />
                   </div>
                 ))
               ) : (
-                Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="glass-card p-5 rounded-2xl shadow-lg border border-white/6 flex flex-col h-[110px] min-w-[200px] bg-gray-800/20">
-                    <div className="text-xs text-gray-400">No data</div>
-                    <div className="text-2xl font-semibold text-gray-600 mt-2">--</div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* AI Metrics */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-1 h-8 bg-gradient-to-b from-purple-500 to-pink-600 rounded-full"></div>
-              <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">AI Metrics</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12" style={{minHeight: '130px', contain: 'layout'}}>
-              {loading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="glass-card p-5 rounded-2xl shadow-lg border border-white/6 flex flex-col h-[110px] min-w-[200px] animate-pulse bg-gray-800/40">
-                    <div className="h-4 w-1/3 bg-gray-700 rounded mb-2" />
-                    <div className="h-8 w-1/2 bg-gray-700 rounded" />
-                  </div>
-                ))
-              ) : error ? (
-                <div className="col-span-4 text-center text-red-400 py-8">{error}</div>
-              ) : aiMetrics.length > 0 ? (
-                aiMetrics.map((m, i) => (
-                  <div key={i} className="h-[110px] min-w-[200px]" style={{contain: 'strict', contentVisibility: 'auto'}}>
-                    <MetricCard title={m.label} value={m.value} delta={m.trend} />
-                  </div>
-                ))
-              ) : (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="glass-card p-5 rounded-2xl shadow-lg border border-white/6 flex flex-col h-[110px] min-w-[200px] bg-gray-800/20">
-                    <div className="text-xs text-gray-400">No data</div>
-                    <div className="text-2xl font-semibold text-gray-600 mt-2">--</div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* General Metrics */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-1 h-8 bg-gradient-to-b from-indigo-500 to-purple-600 rounded-full"></div>
-              <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">General Metrics</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12" style={{minHeight: '130px', contain: 'layout'}}>
-              {loading ? (
-                Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="glass-card p-5 rounded-2xl shadow-lg border border-white/6 flex flex-col h-[110px] min-w-[200px] animate-pulse bg-gray-800/40">
-                    <div className="h-4 w-1/3 bg-gray-700 rounded mb-2" />
-                    <div className="h-8 w-1/2 bg-gray-700 rounded" />
-                  </div>
-                ))
-              ) : error ? (
-                <div className="col-span-4 text-center text-red-400 py-8">{error}</div>
-              ) : otherMetrics.length > 0 ? (
-                otherMetrics.map((m, i) => (
-                  <div key={i} className="h-[110px] min-w-[200px]" style={{contain: 'strict', contentVisibility: 'auto'}}>
-                    <MetricCard title={m.label} value={m.value} delta={m.trend} />
-                  </div>
-                ))
-              ) : (
-                Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="glass-card p-5 rounded-2xl shadow-lg border border-white/6 flex flex-col h-[110px] min-w-[200px] bg-gray-800/20">
-                    <div className="text-xs text-gray-400">No data</div>
-                    <div className="text-2xl font-semibold text-gray-600 mt-2">--</div>
-                  </div>
-                ))
+                <div className="col-span-4 text-center text-gray-500 py-8">No activity yet — generate your first video.</div>
               )}
             </div>
           </div>
