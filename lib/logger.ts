@@ -249,7 +249,16 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Uncaught exceptions
+const BENIGN_SOCKET_CODES = new Set(['ECONNRESET', 'EPIPE', 'ECONNABORTED', 'ERR_STREAM_PREMATURE_CLOSE']);
 process.on('uncaughtException', (error) => {
+  // A client aborting a request or resetting the connection surfaces here as an
+  // uncaught error, but it is NOT fatal — exiting on it would let any client
+  // take the whole server down. Log and keep serving.
+  const code = (error as NodeJS.ErrnoException)?.code;
+  if (error?.message === 'aborted' || (code && BENIGN_SOCKET_CODES.has(code))) {
+    logger.warn('Ignoring benign client socket error', { code: code ?? null, message: error?.message });
+    return;
+  }
   logger.error('Uncaught Exception', error);
   process.exit(1);
 });
