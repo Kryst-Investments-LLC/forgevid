@@ -57,6 +57,8 @@ const bodySchema = z
     aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
     voiceId: z.string().optional(),
     renderQuality: z.enum(['draft', 'full', '4k']).default('full'),
+    // Parse + count only; don't render or touch quota.
+    preview: z.boolean().optional(),
   })
   .refine(
     (b) => [b.csv, b.listings, b.feedUrl].filter(Boolean).length === 1,
@@ -123,6 +125,14 @@ export async function POST(req: NextRequest) {
       { error: `At most ${MAX_LISTINGS} listings per batch (got ${listings.length})` },
       { status: 413 },
     );
+  }
+
+  if (parsed.data.preview) {
+    return NextResponse.json({
+      preview: true,
+      count: listings.length,
+      items: listings.map((l) => ({ ref: l.ref, label: l.address, photos: l.photos.length })),
+    });
   }
 
   // Resolve the voice once — it is the same narrator for the whole batch.

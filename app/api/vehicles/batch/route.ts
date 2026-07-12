@@ -50,6 +50,8 @@ const bodySchema = z
     // A Miami lot wants both: pass ['en','es'] to render every car twice, once
     // per language. Each language consumes its own quota, as intended.
     languages: z.array(z.enum(['en', 'es'])).min(1).max(2).default(['en']),
+    // Parse + count only; don't render or touch quota.
+    preview: z.boolean().optional(),
   })
   .refine((b) => Boolean(b.feedUrl) !== Boolean(b.vehicles), {
     message: 'Provide either `feedUrl` or `vehicles`, not both',
@@ -101,6 +103,14 @@ export async function POST(req: NextRequest) {
       { error: `At most ${MAX_VEHICLES} vehicles per batch (got ${vehicles.length})` },
       { status: 413 },
     );
+  }
+
+  if (parsed.data.preview) {
+    return NextResponse.json({
+      preview: true,
+      count: vehicles.length,
+      items: vehicles.map((v) => ({ ref: v.ref, label: v.title, photos: v.photos.length })),
+    });
   }
 
   const resolvedVoiceId = await resolveVoiceIdForUser(userId, voiceId);

@@ -44,6 +44,8 @@ const bodySchema = z
     aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('9:16'),
     voiceId: z.string().optional(),
     renderQuality: z.enum(['draft', 'full', '4k']).default('full'),
+    // Parse + count only; don't render or touch quota.
+    preview: z.boolean().optional(),
   })
   .refine((b) => Boolean(b.feedUrl) !== Boolean(b.products), {
     message: 'Provide either `feedUrl` or `products`, not both',
@@ -94,6 +96,14 @@ export async function POST(req: NextRequest) {
       { error: `At most ${MAX_PRODUCTS} products per batch (got ${products.length})` },
       { status: 413 },
     );
+  }
+
+  if (parsed.data.preview) {
+    return NextResponse.json({
+      preview: true,
+      count: products.length,
+      items: products.map((p) => ({ ref: p.ref, label: p.title, photos: p.photos.length })),
+    });
   }
 
   const resolvedVoiceId = await resolveVoiceIdForUser(userId, voiceId);
