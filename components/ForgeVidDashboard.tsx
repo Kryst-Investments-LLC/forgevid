@@ -6,6 +6,7 @@ import { FiSearch, FiPlus } from "react-icons/fi";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import SubscriptionManager from "./subscription-manager";
+import { EditorProvider } from "@/lib/editor-context";
 const AIEditingPanel = dynamic(() => import("./ai-editing-panel"), { 
   ssr: false,
   loading: () => <div className="h-[400px] bg-gray-800/20 rounded-lg animate-pulse" />
@@ -162,13 +163,15 @@ export default function ForgeVidDashboard() {
               <div className="w-1 h-8 bg-gradient-to-b from-cyan-500 to-blue-600 rounded-full"></div>
               <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">AI-Powered Tools</h2>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" style={{minHeight: '400px'}}>
-              <AIEditingPanel />
-              <StoryboardingPanel />
-              <TemplatesMediaPanel />
-              <VideoPreview />
-              <VoiceToVideoPanel />
-            </div>
+            <EditorProvider>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" style={{minHeight: '400px'}}>
+                <AIEditingPanel />
+                <StoryboardingPanel />
+                <TemplatesMediaPanel />
+                <VideoPreview />
+                <VoiceToVideoPanel />
+              </div>
+            </EditorProvider>
           </div>
 
 

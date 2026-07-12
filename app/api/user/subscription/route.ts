@@ -11,22 +11,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { subscription: true },
+    // The Subscription table is the source of truth: the Stripe webhook writes
+    // it and getUserPlan reads it. The legacy User.subscription JSON column is
+    // never written by the webhook, so reading it always reported "free".
+    const sub = await prisma.subscription.findFirst({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: 'desc' },
+      select: { plan: true, status: true, currentPeriodStart: true, currentPeriodEnd: true },
     });
 
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    // Return default free plan if no subscription
-    const subscription = user.subscription || {
-      planId: 'free',
-      status: 'active',
-      currentPeriodStart: new Date().toISOString(),
-      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    };
+    const subscription = sub
+      ? {
+          planId: sub.plan,
+          status: String(sub.status).toLowerCase(),
+          currentPeriodStart: sub.currentPeriodStart.toISOString(),
+          currentPeriodEnd: sub.currentPeriodEnd.toISOString(),
+        }
+      : {
+          planId: 'free',
+          status: 'active',
+          currentPeriodStart: new Date().toISOString(),
+          currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        };
 
     return NextResponse.json({ subscription });
   } catch (error) {

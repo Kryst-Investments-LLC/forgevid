@@ -101,8 +101,12 @@ export default function SubscriptionManager() {
     );
   }
 
-  const currentPlan = subscription ? PRICING_PLANS[subscription.planId as keyof typeof PRICING_PLANS] : PRICING_PLANS.FREE;
-  const isActive = subscription?.status === 'active';
+  // Plans are keyed UPPERCASE (FREE/PRO) but their `id` and the API's planId are
+  // lowercase ('free'/'pro'), so match on id and always fall back to FREE — never
+  // undefined, which used to crash this page on `currentPlan.name`.
+  const planId = (subscription?.planId ?? 'free').toString().toLowerCase();
+  const currentPlan = Object.values(PRICING_PLANS).find((p) => p.id === planId) ?? PRICING_PLANS.FREE;
+  const isActive = ['active', 'trialing'].includes((subscription?.status ?? '').toLowerCase());
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
