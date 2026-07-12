@@ -5,7 +5,6 @@ import VideoCard from "./VideoCard";
 import { FiSearch, FiPlus } from "react-icons/fi";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
-import SubscriptionManager from "./subscription-manager";
 import { EditorProvider } from "@/lib/editor-context";
 const AIEditingPanel = dynamic(() => import("./ai-editing-panel"), { 
   ssr: false,
@@ -152,10 +151,7 @@ export default function ForgeVidDashboard() {
             </div>
           </div>
 
-          {/* Subscription Manager */}
-          <div className="mb-8">
-            <SubscriptionManager />
-          </div>
+          {/* Subscription lives in Billing (/dashboard/billing), not here. */}
 
           {/* Main Features - Now at the top */}
           <div className="mb-12">
