@@ -269,6 +269,13 @@ Writing actual customer videos found more than a week of testing did.
 - **Proven live**: `npx tsx scripts/verify-spanish.ts` renders the same RAV4 twice and asks Whisper (`verbose_json`) which language it actually HEARD. Spanish cut → detected `spanish` ("Presentamos el Toyota RAV4 XLE 2022 con solo 24,000 millas. Un solo dueño, historial limpio, tracción en las cuatro ruedas y cámara de reversa."); English cut → detected `english`. Anti-fabrication held in Spanish — only feed facts, numbers preserved.
 - Gates: type-check exit 0, `verify:spanish` exit 0, `verify:generate` (277 assertions) still green.
 
+**2026-07-12 — Feed → Videos UI (MVP): the verticals are now self-serve.**
+- The four verticals were API-only — no way for a dealer to use them without someone hitting the endpoint. Added ONE shared screen (`app/dashboard/feed/page.tsx`, nav "Feed → Videos") covering automotive / real estate / e-commerce on the same form: pick vertical → paste a feed (or feed URL) → aspect ratio, duration, and an **EN/ES toggle** (automotive) → a batch of videos. Marketing variations stays advanced/API.
+- Two input modes: Feed URL (public feeds; `localhost` is SSRF-blocked by design) and Paste JSON with a one-click sample using public photo URLs, so it's testable locally.
+- CSRF/auth need no per-call wiring: `installCsrfFetch()` (global, in the session provider) auto-attaches `x-csrf-token` to same-origin fetches.
+- **Verified end-to-end** on the local stack as `pro@forgevid.test`: POST returned `started:2` (EN+ES), photos imported from public URLs through the SSRF guard, and the worker rendered BOTH to COMPLETED (`[worker] job 12/13 done`). Page renders with zero console errors; `tsc --noEmit` exit 0.
+- Not a new vertical — the UI that makes the existing ones sellable. Launch item (P1, elevated for the dealer deal).
+
 ## Phase 0 — Repo hygiene (do before any feature work)
 
 - [ ] Commit or deliberately revert the working tree (510 uncommitted files, ~60 deleted status MDs).

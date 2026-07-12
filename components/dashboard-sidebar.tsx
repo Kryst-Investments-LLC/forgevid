@@ -15,6 +15,7 @@ import {
   Home,
   Zap,
   CreditCard,
+  Rss,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -26,6 +27,7 @@ const navigation = [
   { name: "Templates", href: "/dashboard/templates", icon: Layout },
   { name: "Media Library", href: "/dashboard/media", icon: ImageIcon },
   { name: "AI Studio", href: "/dashboard/ai", icon: Sparkles, badge: "New" },
+  { name: "Feed → Videos", href: "/dashboard/feed", icon: Rss, badge: "New" },
   { name: "Collaboration", href: "/dashboard/collaborate", icon: Users },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
 ]
