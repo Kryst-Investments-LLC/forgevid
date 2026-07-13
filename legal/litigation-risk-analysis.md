@@ -1,0 +1,56 @@
+# ForgeVid — Litigation & Regulatory Risk Analysis (STORM method)
+
+> **Not legal advice.** This is a structured risk analysis by an AI, grounded in the sources below,
+> to inform the drafting of ForgeVid's Terms of Service, Privacy Policy, and Refund Policy. It is
+> **not a substitute for review by a licensed attorney** in your operating jurisdiction(s) before you
+> rely on any of it. Laws cited are US-federal, several US-state, and EU; they change, and several
+> are actively in flux (see the Self-Critique).
+
+## Phase 0 — Source Ledger
+
+- **[S1]** FTC "Click-to-Cancel" / Negative Option Rule — **vacated** by the 8th Circuit (July 2025) on APA procedural grounds; FTC restarted rulemaking (ANPRM, ~March 2026). **ROSCA + FTC Act §5 still enforced**; ~30 states have their own auto-renewal laws, some stricter. (Goodwin, Jones Day, Gibson Dunn, Mayer Brown, 2025–2026)
+- **[S2]** FTC CARS Rule (auto-dealer advertising/junk-fees) — **vacated** by the 5th Circuit (Jan 27 2025), formally withdrawn (Feb 2026). But deceptive/hidden auto pricing **remains illegal under FTC Act §5** — $20M dealer settlement (2024); 97 dealer warning letters (March 2026). (Seyfarth, Holland & Knight, 5th Cir. 24-60013, Crowell, 2025–2026)
+- **[S3]** FTC Rule on **fake & AI-generated reviews/testimonials** — effective **Oct 21 2024**. Bans creating or promoting fake or AI-generated consumer/celebrity testimonials that misrepresent identity, fake celebrity endorsements, and incentivized-sentiment reviews. Civil penalties + consumer redress. (FTC; Sidley Data Matters, 2024)
+- **[S4]** FTC AI-content **disclosure** posture + "Operation AI Comply" crackdown (Sept 2024): disclose when AI materially generates/alters endorsement content; clear & conspicuous. (FTC press release 2024; secondary sources for exact wording — treat wording as directional.)
+- **[S5]** Tennessee **ELVIS Act** (eff. July 1 2024): prohibits unauthorized use of a person's **voice (actual OR simulated)** + name/image/likeness, and **targets technology providers whose tool's "primary purpose" is producing an identifiable individual's voice/likeness** without authorization; civil + criminal (Class A misdemeanor, ≤ $2,500). **Illinois BIPA**: written consent before collecting voiceprints/biometrics; **$1,000–$5,000 per violation**; major class-action driver. **NO FAKES Act** (federal digital-replica right): proposed, not passed. (Holland & Knight, Latham, 2024)
+- **[S6]** **CCPA/CPRA** "service provider" contract terms (purpose limitation, no sale/share, sub-processor flow-down); **GDPR** Art. 28 DPA + SCCs for EU transfers; cumulative GDPR fines ~€7.1B (~€1.2B in 2025). (Secure Privacy, Concerto, IAPP, BCLP, 2025)
+- **[S7]** SaaS contract enforceability: **binding arbitration + class-action waiver** enforceable under the FAA when conspicuous (often with a 30-day opt-out); **limitation-of-liability** must be conspicuous and not unconscionable; **US Copyright Office**: purely AI-generated works are **not copyrightable**; AI ToS must **disclaim output accuracy and put the verification burden on the user**. (Microsoft Services Agreement; TermsFeed; SaaS/AI law firms, 2025–2026)
+
+## Phase 1 — Five adversarial perspectives
+*(The generic STORM voices are adapted here to the five parties who would actually sue or investigate ForgeVid.)*
+
+1. **Consumer / class-action plaintiff's bar.** Targets the *billing relationship*: auto-renewal without clear consent or easy cancellation (ROSCA + state ARLs [S1]), surprise price hikes, "failure to deliver" (renders that fail but bill), and any SMS/email marketing (TCPA/CAN-SPAM). Only-this-voice insight: they don't need the vacated federal rule — **state auto-renewal laws and ROSCA are enough**, and class mechanics make small per-user harm into large exposure. [S1]
+2. **FTC / State AG regulator.** Targets *deception* under §5, which survived both vacated rules [S1][S2]. For ForgeVid specifically: the platform's whole pitch is generating **advertising**, some of it AI-voiced/testimonial-style — squarely in the FTC's fake/AI-review rule [S3] and AI-disclosure posture [S4]. Only-this-voice insight: **§5 reaches "means and instrumentalities"** — providing tools that others use to deceive can itself draw scrutiny, so ForgeVid's *design* (does it enable fake testimonials? undisclosed AI?) matters, not just its customers' conduct.
+3. **Data-privacy regulator / private plaintiff.** CCPA/CPRA + GDPR obligations (notice, rights, service-provider/processor contracts, sub-processor flow-down, SCCs) [S6]; plus **biometric/voice** exposure — BIPA per-violation statutory damages and the ELVIS Act's provider liability if voice/avatar features clone identifiable people [S5]. Only-this-voice insight: **BIPA doesn't require harm** — mere collection of a voiceprint without written consent is the violation, at $1,000–$5,000 each.
+4. **Copyright / IP / right-of-publicity claimant.** Stock/music licensing scope (Pexels terms), third-party photos pulled from feeds, AI-voice/likeness resembling a real person [S5], trademarks appearing in generated ads, and DMCA takedowns. Only-this-voice insight: **the customer's feed may contain content the customer doesn't actually have rights to** (an MLS photo, a manufacturer image) — and ForgeVid reproduced it.
+5. **Payment / contract counterparty.** Chargebacks, breach/SLA claims, indemnity disputes, and enterprise customers demanding uptime guarantees. Only-this-voice insight: without a **damages cap and mutual indemnity**, a single dealer whose "$28,900" ad rendered as "$2,890" could claim consequential losses (lost sales, regulatory fines) far exceeding their subscription fee.
+
+## Phase 2 — Contradiction map
+- **Data minimization (privacy) vs. record retention (FTC/dispute defense).** Privacy law pushes to delete; §5/chargeback defense pushes to keep proof of what the user entered and consented to. **Resolution:** retain a minimal, defined audit trail (inputs, consent, render logs) under a stated retention schedule; delete the rest. *Winner: keep a scoped audit trail — it defends 3 of 5 perspectives.*
+- **Anti-fabrication feature vs. residual liability.** ForgeVid's "only states feed facts" design is a genuine mitigant for the regulator/plaintiff, **but it cuts the other way**: it could be read as ForgeVid taking editorial responsibility for accuracy. **Resolution:** in the ToS, frame anti-fabrication as a *safeguard, not a warranty*, and put verification + legal-compliance squarely on the user.
+- **"You own your output" (marketing) vs. copyright reality [S7].** You can assign whatever rights ForgeVid has, but you **cannot promise the output is copyrightable** when it's substantially AI-generated. **Resolution:** assign ForgeVid's rights + disclaim copyrightability.
+- **Everyone agrees on:** the *customer*, not ForgeVid, must be legally responsible for the ad claims and the rights in their inputs. That consensus is the backbone of the indemnity + AUP.
+- **Blind spot none fully addressed:** **accessibility (ADA/WCAG)** for the web app itself, and **export-control/sanctions** screening of customers — lower-probability but worth a one-liner.
+
+## Phase 3 — Risk register (ranked by likelihood × severity)
+
+| # | Risk | Who brings it | L×S | Primary drafting mitigation |
+|---|------|---------------|-----|-----------------------------|
+| 1 | **Auto-renewal / cancellation** non-compliance (ROSCA + ~30 state ARLs) [S1] | Consumer class action, State AG | **High × High** | ROSCA-style disclosure + express consent at checkout; **cancel as easy as signup**; renewal-reminder emails; clear Refund Policy |
+| 2 | **Deceptive/inaccurate ad** the platform helped make (esp. auto price/mileage) [S2][S4] | FTC/AG, injured consumer, the dealer | **Med × High** | AUP requiring legal compliance; **user solely responsible** for ad legality; accuracy "as-is" disclaimer; **user indemnity**; LoL cap |
+| 3 | **Fake/AI testimonial or undisclosed AI** content [S3][S4] | FTC/AG | **Med × High** | AUP bans fake testimonials & impersonation; **require user AI-disclosure**; product safeguards; disclaimers |
+| 4 | **Voice/likeness cloning** of a real person (ElevenLabs/HeyGen) [S5] | Individual, label, TN/IL AG, BIPA class | **Med × High** | AUP bans unauthorized voice/likeness; **user represents they have rights/consent**; BIPA consent flow if you ever fingerprint a user's own voice; indemnity |
+| 5 | **Privacy-law** breach — notice/rights/DPA/sub-processors/SCCs [S6] | Regulator, data-subject | **Med × High** | Compliant Privacy Policy; **sub-processor list**; DPA on request; CCPA/GDPR rights process; SCCs |
+| 6 | **IP infringement** in output (feed photos, stock, music, trademarks) [S7] | Rights holder | **Med × Med** | User license + **reps/warranties** on input rights; **DMCA agent + takedown**; pass-through of stock terms; indemnity |
+| 7 | **Billing dispute / chargeback / breach** [S7] | Customer | **High × Low-Med** | Clear fees + Refund Policy; **damages cap**; "no consequential damages"; failed-render = credit, not cash; arbitration + **class waiver** |
+| 8 | **Data breach / security incident** | Regulator, class | **Low-Med × High** | Security commitments (reasonable, not absolute); breach-notice language; LoL; cyber insurance (operational, not drafting) |
+| 9 | **Accessibility (ADA) / sanctions/export** | Plaintiff, OFAC | **Low × Med** | Accessibility statement; **prohibited-jurisdiction** clause in AUP |
+
+**Synthesis for a busy founder:** Your top-3 real exposures are **(1) subscription/auto-renewal mechanics**, **(2) responsibility for the ads your customers make**, and **(4/5) voice-likeness + privacy**. The good news: all three are defended primarily by *how you draft three documents and one checkout flow* — a ROSCA-compliant cancel path, a strong Acceptable-Use + indemnity + limitation-of-liability spine, and a real Privacy Policy with a sub-processor list. None require new engineering beyond the cancel flow and an AI-disclosure nudge.
+
+## Phase 4 — Self-critique
+- **Confidence:** Risks 1, 5, 6, 7 are well-settled law (8–9/10). Risk 2/3/4 are **9/10 that the exposure exists** but **6/10 on exactly how it lands on a *tool provider* vs. the advertiser** — §5 "means and instrumentalities" and ELVIS "primary purpose" are fact-specific and evolving.
+- **Weakest link / most in flux:** the **federal auto-renewal rule and CARS rule are both currently vacated** [S1][S2]. Do **not** draft to a specific vacated federal rule; draft to the durable floor (ROSCA, §5, state ARLs), which is stricter-safe. Exact FTC AI-disclosure wording [S4] rests partly on secondary sources — treat as directional, not a verbatim mandate.
+- **Bias check:** analysis is **US-centric**; EU/UK (GDPR, UK GDPR, EU AI Act transparency for AI-generated media) get lighter treatment and matter if you take EU users.
+- **Missing 6th perspective:** an **employment/contractor** angle (if you hire) and **insurance/underwriter** view — both operational, not in these three documents.
+- **Overall grade:** a tough reviewer gives this **B+ as a drafting blueprint, C+ as legal advice** — because jurisdiction specifics, entity formation, and the arbitration clause's exact enforceability in your chosen venue need a licensed attorney. Use it to get 80% of the way, then have counsel do the last 20%.
