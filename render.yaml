@@ -1,0 +1,37 @@
+# Render blueprint for the ForgeVid render worker.
+#
+# The web app stays on Vercel; THIS deploys only the background worker that
+# renders queued videos with ffmpeg (which Vercel can't run). In Render:
+# "New +" > "Blueprint", point it at this repo, then fill the env vars below.
+#
+# The worker shares the SAME managed Postgres, managed Redis, and Cloudinary as
+# the Vercel app — REDIS_URL in particular MUST be identical on both, so Vercel
+# enqueues jobs the worker picks up.
+services:
+  - type: worker
+    name: forgevid-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile.worker
+    plan: standard          # ffmpeg rendering needs real CPU/RAM — not free tier
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # your managed Postgres (same DB as Vercel)
+      - key: REDIS_URL
+        sync: false          # managed Redis (e.g. Upstash); MUST match Vercel
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
+      - key: HEYGEN_API_KEY
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false          # same value as Vercel (decrypts stored secrets)

@@ -1,0 +1,35 @@
+# ForgeVid render worker.
+#
+# The BullMQ worker (workers/video-worker.ts) renders queued videos with ffmpeg.
+# It cannot run on Vercel (no persistent process, no ffmpeg, function limits), so
+# it deploys as a long-lived container on a host like Render / Railway / Fly.
+#
+# Unlike the web Dockerfile, this image carries the FULL dependency tree (the
+# worker runs via tsx, which is a runtime dep) and a system ffmpeg + font.
+FROM node:18-alpine
+
+WORKDIR /app
+
+# ffmpeg for rendering; fontconfig + a real font so drawtext (captions and
+# lower-thirds) has something to draw with — Alpine ships no fonts.
+RUN apk add --no-cache ffmpeg fontconfig ttf-dejavu \
+    && fc-cache -f
+
+# Full install: the worker needs devDeps-turned-runtime like tsx.
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+COPY . .
+
+# Prisma client for this platform (musl/alpine).
+RUN npx prisma generate
+
+# Force the system ffmpeg: ffmpeg-static ships a glibc binary that won't run on
+# Alpine's musl. The apk ffmpeg (6.x) has xfade/zoompan/sidechaincompress/etc.
+ENV NODE_ENV=production \
+    FFMPEG_PATH=/usr/bin/ffmpeg \
+    CAPTION_FONT_FILE=/usr/share/fonts/ttf-dejavu/DejaVuSans.ttf
+
+# The worker takes REDIS_URL, DATABASE_URL, CLOUDINARY_*, OPENAI_API_KEY,
+# ELEVENLABS_API_KEY, etc. from the host's environment. No ports to expose.
+CMD ["npm", "run", "worker"]
