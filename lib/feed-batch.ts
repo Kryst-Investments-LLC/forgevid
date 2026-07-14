@@ -17,6 +17,7 @@ import { enqueueGeneration } from './video-queue';
 import { runGeneration } from './generation-pipeline';
 import { withRenderSlot } from './render-semaphore';
 import { checkGenerationQuota, recordGenerationUsage } from './quota';
+import { moderateText } from './moderation';
 import { importSiteImages } from './site-images';
 import { DEFAULT_TRANSITION } from './transitions';
 import type { AspectRatio, NarrationLanguage } from './video-generator';
@@ -31,6 +32,13 @@ export interface FeedItem {
   photos: string[];
   /** Facts-only prompt built from `photoCount` real images. */
   buildPrompt: (photoCount: number) => string;
+  /**
+   * The raw user-supplied free text for this item (title + highlights/
+   * description), moderated on its own. Moderating this instead of the assembled
+   * prompt keeps the signal concentrated — a dealership template around one
+   * explicit sentence would otherwise dilute the score below threshold.
+   */
+  moderationText?: string;
   /** The address/price/spec bar for the opening seconds. */
   lowerThird: (photoCount: number) => LowerThird;
 }
@@ -98,6 +106,15 @@ export async function runFeedBatch(
       renderQuality: opts.renderQuality,
       lowerThird: item.lowerThird(images.length),
     };
+
+    // Content policy: block prohibited feed text before rendering it. Moderate
+    // the raw item text (concentrated), falling back to the assembled prompt.
+    const promptModeration = await moderateText(item.moderationText || input.prompt);
+    if (!promptModeration.allowed) {
+      result.error = promptModeration.reason ?? 'Blocked by our content policy';
+      results.push(result);
+      continue;
+    }
 
     try {
       const video = await prisma.video.create({

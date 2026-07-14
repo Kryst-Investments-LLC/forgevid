@@ -13,6 +13,7 @@ import { DEFAULT_TTS_MODEL, resolveVoiceId } from '@/lib/voice-catalog';
 import { resolveVoiceIdForUser } from '@/lib/cloned-voices';
 import { DEFAULT_TRANSITION, TRANSITIONS } from '@/lib/transitions';
 import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
+import { moderateText } from '@/lib/moderation';
 import { allows4k } from '@/lib/plan';
 import { withRenderSlot } from '@/lib/render-semaphore';
 
@@ -115,6 +116,12 @@ async function handleGenerateVideo(body: any, userId: string) {
     );
   }
   const input = parsed.data;
+
+  // Content policy: block prohibited prompts before spending anything on them.
+  const promptModeration = await moderateText(input.prompt);
+  if (!promptModeration.allowed) {
+    return NextResponse.json({ error: promptModeration.reason ?? 'Blocked by our content policy.' }, { status: 422 });
+  }
 
   // Quota gate: every generation costs GPT + TTS + Whisper + compute. The
   // rejection names the limit so it doubles as upgrade pressure.

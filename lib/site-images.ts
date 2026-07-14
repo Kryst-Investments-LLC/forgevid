@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { prisma } from './prisma';
 import { safeFetch } from './safe-fetch';
+import { moderateImageUrl } from './moderation';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -100,6 +101,17 @@ export async function importSiteImages(
       const bare = contentType.split(';')[0].trim().toLowerCase();
       const ext = EXT_BY_TYPE[bare];
       if (!ext || body.length === 0) continue;
+
+      // Content policy: moderate the downloaded bytes before they can be
+      // rendered. This is the mediaOnly bypass plug — a user's own photos never
+      // otherwise reach any AI provider. Moderate what we actually have.
+      const imageModeration = await moderateImageUrl(`data:${bare};base64,${body.toString('base64')}`);
+      if (!imageModeration.allowed) {
+        console.warn(
+          `[site-images] blocked image from ${sourceUrl}: ${imageModeration.categories.join(', ') || imageModeration.reason}`,
+        );
+        continue;
+      }
 
       fs.mkdirSync(dir, { recursive: true });
       const id = crypto.randomUUID();

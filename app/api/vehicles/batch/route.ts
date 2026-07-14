@@ -118,6 +118,7 @@ export async function POST(req: NextRequest) {
     ref: v.ref,
     label: v.title,
     photos: v.photos,
+    moderationText: [v.title, v.trim, v.highlights].filter(Boolean).join('. '),
     buildPrompt: (n) => vehiclePrompt(v, n),
     lowerThird: () => vehicleLowerThird(v),
   }));

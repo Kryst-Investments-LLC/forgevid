@@ -111,6 +111,7 @@ export async function POST(req: NextRequest) {
     ref: p.ref,
     label: p.title,
     photos: p.photos,
+    moderationText: [p.title, p.brand, p.description].filter(Boolean).join('. '),
     buildPrompt: (n) => productPrompt(p, n),
     lowerThird: () => productLowerThird(p),
   }));

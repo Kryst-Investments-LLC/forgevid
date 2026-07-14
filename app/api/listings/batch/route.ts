@@ -7,6 +7,7 @@ import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
 import { withRenderSlot } from '@/lib/render-semaphore';
 import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
+import { moderateText } from '@/lib/moderation';
 import { importSiteImages } from '@/lib/site-images';
 import { DEFAULT_TRANSITION } from '@/lib/transitions';
 import { resolveVoiceIdForUser } from '@/lib/cloned-voices';
@@ -156,6 +157,14 @@ export async function POST(req: NextRequest) {
     const images = await importSiteImages(userId, listing.photos, MAX_PHOTOS_PER_LISTING);
     if (images.length === 0) {
       result.error = 'None of the photos could be fetched';
+      results.push(result);
+      continue;
+    }
+
+    // Content policy: moderate the raw listing text before rendering it.
+    const moderation = await moderateText([listing.address, listing.highlights].filter(Boolean).join('. '));
+    if (!moderation.allowed) {
+      result.error = moderation.reason ?? 'Blocked by our content policy';
       results.push(result);
       continue;
     }
