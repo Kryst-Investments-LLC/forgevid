@@ -34,6 +34,7 @@ const nextConfig = {
   swcMinify: true,
   experimental: {
     optimizeCss: true,
+    instrumentationHook: true,
   },
   webpack: (config, { isServer }) => {
     if (isServer) {

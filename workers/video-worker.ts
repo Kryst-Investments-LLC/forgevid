@@ -28,6 +28,14 @@ async function main() {
 
   const concurrency = Number(process.env.WORKER_CONCURRENCY || 2);
 
+  // Observability: capture render failures in Sentry when a DSN is configured.
+  const Sentry = process.env.SENTRY_DSN ? await import('@sentry/node') : null;
+  Sentry?.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+    tracesSampleRate: 0.1,
+  });
+
   const worker = new Worker<import('../lib/video-queue').GenerationJobData>(
     GENERATION_QUEUE_NAME,
     async (job) => {
@@ -44,9 +52,12 @@ async function main() {
   );
 
   worker.on('completed', (job) => console.log(`[worker] completed ${job.id}`));
-  worker.on('failed', (job, err) =>
-    console.error(`[worker] failed ${job?.id}: ${err?.message}`),
-  );
+  worker.on('failed', (job, err) => {
+    console.error(`[worker] failed ${job?.id}: ${err?.message}`);
+    Sentry?.captureException(err, {
+      tags: { videoId: job?.data?.videoId, kind: job?.data?.kind },
+    });
+  });
 
   console.log(`[worker] listening on "${GENERATION_QUEUE_NAME}" (concurrency ${concurrency})`);
 
