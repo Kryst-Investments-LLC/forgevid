@@ -131,3 +131,21 @@ export async function recordGenerationUsage(
     console.error('[Quota] Failed to record usage:', error);
   }
 }
+
+/**
+ * Refund the quota slot for a video whose render failed.
+ *
+ * Usage is recorded up front (at enqueue) so a burst of requests can't blow past
+ * the plan limit. But if the render then fails, that slot must be given back —
+ * otherwise a failed render silently eats a paid-for credit. The videoId lives
+ * inside the usage row's metadata JSON, so we match it there.
+ */
+export async function refundGenerationUsage(videoId: string): Promise<void> {
+  try {
+    await prisma.usageRecord.deleteMany({
+      where: { action: GENERATION_ACTION, metadata: { contains: `"videoId":"${videoId}"` } },
+    });
+  } catch (error) {
+    console.error('[Quota] Failed to refund usage:', error);
+  }
+}

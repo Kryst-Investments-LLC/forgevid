@@ -21,6 +21,7 @@ import { selectMusicPath } from './music-library';
 import { freeBranding, resolveBranding } from './brand-kit';
 import { resolveUserMedia } from './user-media';
 import { estimateGenerationCost, recordGenerationCost } from './cost-ledger';
+import { refundGenerationUsage } from './quota';
 import { sendExportCompleteEmail } from './email';
 import { rejectedClipUrls } from './clip-memory';
 
@@ -395,6 +396,8 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       .update({ where: { id: videoId }, data: { status: 'FAILED' } })
       .catch(() => {});
     await writeProgress(videoId, { stage: 'failed', error: message }).catch(() => {});
+    // Give the quota slot back — a failed render must not consume a paid credit.
+    await refundGenerationUsage(videoId).catch(() => {});
     await settle(false, input.prompt).catch(() => {});
     throw error;
   }
