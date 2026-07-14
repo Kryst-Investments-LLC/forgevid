@@ -17,7 +17,7 @@ import { enqueueGeneration } from './video-queue';
 import { runGeneration } from './generation-pipeline';
 import { withRenderSlot } from './render-semaphore';
 import { checkGenerationQuota, recordGenerationUsage } from './quota';
-import { moderateText } from './moderation';
+import { moderateText, recordModerationBlock } from './moderation';
 import { importSiteImages } from './site-images';
 import { DEFAULT_TRANSITION } from './transitions';
 import type { AspectRatio, NarrationLanguage } from './video-generator';
@@ -111,6 +111,7 @@ export async function runFeedBatch(
     // the raw item text (concentrated), falling back to the assembled prompt.
     const promptModeration = await moderateText(item.moderationText || input.prompt);
     if (!promptModeration.allowed) {
+      void recordModerationBlock('prompt', promptModeration.categories);
       result.error = promptModeration.reason ?? 'Blocked by our content policy';
       results.push(result);
       continue;

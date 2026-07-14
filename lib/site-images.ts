@@ -15,7 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { prisma } from './prisma';
 import { safeFetch } from './safe-fetch';
-import { moderateImageUrl } from './moderation';
+import { moderateImageUrl, recordModerationBlock } from './moderation';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -107,6 +107,7 @@ export async function importSiteImages(
       // otherwise reach any AI provider. Moderate what we actually have.
       const imageModeration = await moderateImageUrl(`data:${bare};base64,${body.toString('base64')}`);
       if (!imageModeration.allowed) {
+        void recordModerationBlock('image', imageModeration.categories);
         console.warn(
           `[site-images] blocked image from ${sourceUrl}: ${imageModeration.categories.join(', ') || imageModeration.reason}`,
         );

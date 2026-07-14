@@ -17,6 +17,7 @@
  * CSAM risk outweighs availability. Override images with MODERATION_IMAGES_FAIL_OPEN=true.
  */
 import { hasOpenAiKey, openAiApiKey } from './openai-key';
+import { prisma } from './prisma';
 
 const MODEL = 'omni-moderation-latest';
 
@@ -82,5 +83,29 @@ export async function moderateImageUrl(url: string): Promise<ModerationResult> {
   } catch (error) {
     console.error('[Moderation] image check failed:', error);
     return failOpen ? OK : { allowed: false, categories: [], reason: 'Image could not be verified.' };
+  }
+}
+
+/**
+ * Audit trail: record a blocked attempt so abuse is visible for review even
+ * though no video is created. Fire-and-forget — never fail the request over it.
+ */
+export async function recordModerationBlock(
+  kind: 'prompt' | 'image',
+  categories: string[],
+  videoId?: string,
+): Promise<void> {
+  try {
+    await prisma.contentReport.create({
+      data: {
+        videoId,
+        reason: `auto-moderation: ${kind} blocked`,
+        categories: categories.join(',') || null,
+        source: 'auto_moderation',
+        status: 'open',
+      },
+    });
+  } catch (error) {
+    console.error('[Moderation] failed to record block:', error);
   }
 }

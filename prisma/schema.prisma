@@ -837,3 +837,21 @@ enum NotificationType {
   SYSTEM
 }
 
+// Abuse reports (from anyone) + an audit trail of auto-moderation blocks, so
+// content can be reviewed, taken down, and preserved for law-enforcement.
+model ContentReport {
+  id            String   @id @default(cuid())
+  videoId       String?
+  reporterEmail String?
+  reason        String
+  details       String?
+  source        String   @default("user") // "user" | "auto_moderation"
+  categories    String? // for auto blocks: which categories tripped
+  status        String   @default("open") // "open" | "reviewed" | "actioned" | "dismissed"
+  createdAt     DateTime @default(now())
+
+  @@index([status])
+  @@index([videoId])
+  @@map("content_reports")
+}
+
