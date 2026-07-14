@@ -307,6 +307,7 @@ export default function RootPage() {
           <div className="flex items-center gap-6">
             <a href="/privacy" className="transition-colors hover:text-gray-300">Privacy</a>
             <a href="/terms" className="transition-colors hover:text-gray-300">Terms</a>
+            <a href="/refund" className="transition-colors hover:text-gray-300">Refunds</a>
             <button
               onClick={(e) => {
                 e.preventDefault();

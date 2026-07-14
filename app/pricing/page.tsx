@@ -147,6 +147,16 @@ export default function PricingPage() {
                   'Get Started'
                 )}
               </button>
+              {plan.id !== 'free' && (
+                <p className="mt-3 text-[11px] leading-snug text-gray-500">
+                  Recurring subscription —{' '}
+                  <span className="font-medium text-gray-700">auto-renews at ${plan.price}/month</span>{' '}
+                  until you cancel (cancel anytime in Billing). By subscribing you agree to our{' '}
+                  <a href="/terms" className="underline hover:text-gray-900">Terms</a>,{' '}
+                  <a href="/privacy" className="underline hover:text-gray-900">Privacy Policy</a>, and{' '}
+                  <a href="/refund" className="underline hover:text-gray-900">Refund Policy</a>.
+                </p>
+              )}
             </div>
           ))}
         </div>
