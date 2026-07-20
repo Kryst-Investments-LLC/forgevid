@@ -439,3 +439,75 @@ never concatenated/overlaid/mapped; text tracks ignored; no transitions. `lib/vi
 ## Portfolio decision (blocking gate)
 
 - [ ] **Decide whether ForgeVid earns build capacity.** Global rules put 100% on SHAREDRIVER BOT; ForgeVid isn't on the active list. Phases 1–5 (P0) are ~4–8 weeks of solo work. Make this call before starting Phase 1.
+
+---
+
+## Launch runbook — Tier 1 (code done → go live)
+
+**2026-07-20 — Tier 1 code is finished and verified.** Production build compiles
+green, `tsc` clean, password-reset flow verified end-to-end against the DB. What
+remains is account/infra config only YOU can do (credentials, money, domain).
+Every var below is documented in `.env.example`. Set [BOTH] vars identically on
+the web app AND the worker.
+
+### Code done this session (verified)
+- [x] Production build green — fixed the legal pages that broke `next build`
+      (client wrappers exported `metadata`); added the missing `/[locale]/refund`.
+- [x] Self-service password reset — `/auth/forgot-password` + `/auth/reset-password`
+      + endpoints; hashed single-use 1h token; round-trip verified on the DB.
+- [x] Content moderation (prompt + image), quota refund on render failure,
+      abuse reporting + audit log, Sentry, real ToS/Privacy/Refund pages + checkout
+      consent, billing/analytics reconciled to real data. (earlier this session)
+
+### 1. Provision services + collect credentials
+- [ ] Managed **Postgres** (Neon/Supabase/RDS) → `DATABASE_URL`
+- [ ] Managed **Redis** (Upstash) → `REDIS_URL`. *Strongly recommended:* without
+      it, generation runs inline in the HTTP request and long renders time out.
+- [ ] **Cloudinary** → `CLOUDINARY_*` + `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`
+      (finished videos already upload here).
+- [ ] AI providers → `OPENAI_API_KEY`, `ELEVENLABS_API_KEY`, `PEXELS_API_KEY`
+      (`HEYGEN_API_KEY` only if you enable avatars).
+- [ ] **Stripe** → create 3 recurring Prices, paste `STRIPE_STARTER/PRO/ENTERPRISE_PRICE_ID`;
+      set `STRIPE_SECRET_KEY` + `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
+- [ ] **Email** (SMTP or Resend/Postmark) → `SMTP_*`. Required for password reset
+      + receipts.
+- [ ] **Sentry** project → `SENTRY_DSN` + `NEXT_PUBLIC_SENTRY_DSN`.
+
+### 2. Generate secrets
+- [ ] `NEXTAUTH_SECRET`, `JWT_SECRET` = `openssl rand -base64 32` (different values)
+- [ ] `ENCRYPTION_KEY` — **must be identical** on web + worker (decrypts stored keys)
+
+### 3. Legal / company identity (fills the legal pages + consent line)
+- [ ] `NEXT_PUBLIC_COMPANY_NAME`, `NEXT_PUBLIC_COMPANY_ADDRESS` (real address),
+      the `*_EMAIL` set, `NEXT_PUBLIC_DMCA_EMAIL`, `NEXT_PUBLIC_GOVERNING_STATE`,
+      `NEXT_PUBLIC_ARBITRATION_VENUE`, `NEXT_PUBLIC_LEGAL_UPDATED`.
+
+### 4. Deploy
+- [ ] Web app → host of choice; set all [WEB]/[BOTH] env vars.
+- [ ] Worker → Render (`render.yaml`, `forgevid-worker`); set all [WORKER]/[BOTH]
+      vars **matching** the web app's `DATABASE_URL`, `REDIS_URL`, `ENCRYPTION_KEY`,
+      provider keys.
+- [ ] Run `npx prisma migrate deploy` against the prod DB (release step).
+- [ ] Register the Stripe webhook → `https://<domain>/api/webhooks/stripe` →
+      paste `STRIPE_WEBHOOK_SECRET`.
+- [ ] DNS → domain to the web host; set `NEXTAUTH_URL` to the exact prod URL.
+
+### 5. First-run
+- [ ] Create the first admin (`prisma/seed.ts` or promote a user's role to ADMIN).
+- [ ] Beta gate: keep `BETA_MODE` on with `BETA_ALLOWED_EMAILS`/`BETA_INVITE_CODES`
+      for a soft launch, or turn off for open signups.
+
+### 6. Prod smoke test (do before sharing the URL)
+- [ ] Sign up → create a feed/listing batch → a video finishes and plays.
+- [ ] Checkout a plan (Stripe test mode first, then live) → webhook flips the plan.
+- [ ] Password reset end-to-end (needs SMTP live).
+- [ ] Submit an abuse report; try a disallowed prompt and confirm it's blocked.
+
+### Open decision (verify before relying on the feed feature in prod)
+- [ ] **Imported-image storage on a split deploy.** Finished videos go to
+      Cloudinary (durable). But `lib/site-images.ts` writes imported feed/listing
+      images to local `public/uploads/`. If the web app and worker run on
+      different hosts with no shared disk, the worker can't read them. Either
+      deploy web+worker with a shared volume, or move `importSiteImages` uploads
+      to Cloudinary. (Tier-2 candidate; not a blocker for the product-URL/site
+      flows that screenshot in-process.)
