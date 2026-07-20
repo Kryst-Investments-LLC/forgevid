@@ -3,7 +3,7 @@ import React from 'react';
 import { useLocale } from 'next-intl';
 
 interface LocaleNoticeProps {
-  pageType: 'privacy' | 'terms' | 'security' | 'accessibility' | 'dpa' | 'subprocessors' | 'do-not-sell';
+  pageType: 'privacy' | 'terms' | 'refund' | 'security' | 'accessibility' | 'dpa' | 'subprocessors' | 'do-not-sell';
 }
 
 const notices: Record<string, Record<string, string>> = {
@@ -30,6 +30,18 @@ const notices: Record<string, Record<string, string>> = {
     ko: '공식 서비스 약관(영어). 현지화 버전이 곧 제공됩니다.',
     pt: 'Termos de Serviço oficiais (inglês). Versão localizada em breve.',
     de: 'Offizielle Nutzungsbedingungen (Englisch). Lokalisierte Version folgt.'
+  },
+  refund: {
+    en: 'Official Refund & Cancellation Policy (English).',
+    es: 'Política de Reembolso y Cancelación oficial (inglés). Próximamente versión localizada.',
+    hi: 'आधिकारिक धनवापसी और रद्दीकरण नीति (अंग्रेज़ी)। स्थानीयकृत संस्करण जल्द उपलब्ध होगा।',
+    zh: '官方退款与取消政策（英文）。本地化版本即将推出。',
+    ja: '公式の返金・キャンセルポリシー（英語）。ローカライズ版は近日公開。',
+    fr: 'Politique de Remboursement et d\'Annulation officielle (anglais). Version localisée à venir.',
+    it: 'Politica di Rimborso e Cancellazione ufficiale (inglese). Versione localizzata in arrivo.',
+    ko: '공식 환불 및 취소 정책(영어). 현지화 버전이 곧 제공됩니다.',
+    pt: 'Política de Reembolso e Cancelamento oficial (inglês). Versão localizada em breve.',
+    de: 'Offizielle Rückerstattungs- und Stornierungsrichtlinie (Englisch). Lokalisierte Version folgt.'
   },
   security: {
     en: 'Official Security Policy (English).',
