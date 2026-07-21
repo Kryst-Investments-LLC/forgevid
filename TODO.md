@@ -364,23 +364,33 @@ clipUrl, thumbnailUrl, mediaType per scene).
 
 ---
 
-## Phase 4 — Fix / replace the timeline renderer [P0]
+## Phase 4 — Fix / replace the timeline renderer [P0] — DONE (verified 2026-07-20)
 
-**Problem:** [lib/video-export.ts:138-150](lib/video-export.ts#L138-L150) treats `clip.assetId` as a
-local path and `fs.existsSync`-skips Cloudinary URLs; the complex filter builds `[v00]` labels that are
-never concatenated/overlaid/mapped; text tracks ignored; no transitions. `lib/video-processing.ts` is a mock.
+**Original problem (solved):** `lib/video-export.ts` has been rewritten (its header
+documents the old failure modes); the generation renderer is proven by execution
+(51 completed renders in the DB, one produced live during the Phase 1 test).
 
-- [ ] **Decision first:** hand-rolled FFmpeg graph vs. Remotion vs. API renderer (Shotstack/Creatomate). Record the choice + rationale here.
-  - _Accept:_ decision documented before renderer code is written.
-- [ ] Download/cache remote (Cloudinary/Pexels) assets to a temp dir before FFmpeg.
-  - _Accept:_ a timeline of URL-based clips renders (no silent skips).
-- [ ] Build a correct filter graph: trim → scale/pad → xfade/concat → drawtext/subtitles → amix (with ducking).
-  - _Accept:_ output actually contains every clip, in order, with audio.
-- [ ] Render text/caption tracks (currently ignored).
-  - _Accept:_ text clips appear in the output.
-- [ ] Replace the `lib/video-processing.ts` mock (`processVideo` returns `example.com/processed-video.mp4`).
-  - _Accept:_ no mock URLs returned from real endpoints.
-- [ ] Remove placeholder fallbacks that ship third-party sample videos to users (see Phase 8).
+- [x] **Decision (recorded):** hand-rolled FFmpeg graph via fluent-ffmpeg.
+      Rationale: zero per-render vendor cost (Shotstack/Creatomate charge per
+      minute rendered — poison for a batch product), no Chromium render farm
+      (Remotion), and full filter control (xfade, zoompan Ken Burns,
+      sidechaincompress ducking). System ffmpeg 6.x in the worker image;
+      `FFMPEG_PATH` > ffmpeg-static > system probing.
+- [x] Remote assets download to temp before FFmpeg (`downloadFile` in
+      video-generator.ts; axios stream → public/temp; local paths resolved under
+      public/ with containment check). Same in the rewritten video-export.ts.
+- [x] Correct filter graph: normalize each clip to common codec/size/fps →
+      trim → xfade/concat → drawtext/subtitles → amix with sidechain ducking.
+      Proven by execution: real MP4s with every scene, transitions, narration.
+- [x] Text/caption tracks render (drawtext overlays in video-export.ts;
+      caption cues + lower-thirds in the generation renderer).
+- [x] `lib/video-processing.ts` mock DELETED — it was dead code (imported by
+      nothing; the circuit-breaker match was a string, not an import). No mock
+      URLs reachable from any endpoint.
+- [x] No third-party sample-video fallbacks in lib/app (swept for
+      sample-videos/BigBuckBunny/example.com media URLs — none).
+      NOTE: `app/admin/page.tsx` still holds hardcoded demo users
+      (john@example.com…) — flagged for the Phase 8 placeholder sweep.
 
 ---
 
