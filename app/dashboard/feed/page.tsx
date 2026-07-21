@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { VOICES, DEFAULT_VOICE_ID } from "@/lib/voice-catalog"
+import { VoicePreviewButton } from "@/components/voice-preview-button"
 import { Car, Home, ShoppingBag, Loader2, ArrowRight, CheckCircle2, AlertCircle, Rss, Eye, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -201,10 +202,13 @@ export default function FeedToVideosPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-200 block">Voice</label>
-              <select value={voiceId} onChange={(e) => setVoiceId(e.target.value)}
-                className="bg-black/30 border border-white/10 text-white rounded-lg px-3 py-2 text-sm min-w-[220px]">
-                {VOICES.map((v) => <option key={v.id} value={v.id} className="bg-gray-900">{v.name} — {v.description} ({v.gender})</option>)}
-              </select>
+              <div className="flex items-center gap-2">
+                <select value={voiceId} onChange={(e) => setVoiceId(e.target.value)}
+                  className="bg-black/30 border border-white/10 text-white rounded-lg px-3 py-2 text-sm min-w-[220px]">
+                  {VOICES.map((v) => <option key={v.id} value={v.id} className="bg-gray-900">{v.name} — {v.description} ({v.gender})</option>)}
+                </select>
+                <VoicePreviewButton voiceId={voiceId} />
+              </div>
             </div>
             {cfg.languages && (
               <div className="space-y-2">

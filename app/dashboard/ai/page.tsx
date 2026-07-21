@@ -16,6 +16,7 @@ import SceneEditorPanel from "@/components/scene-editor-panel"
 import MediaPicker from "@/components/media-picker"
 import AvatarStudioPanel from "@/components/avatar-studio-panel"
 import SiteBriefPanel from "@/components/site-brief-panel"
+import { VoicePreviewButton } from "@/components/voice-preview-button"
 import { withCsrfHeaders } from "@/lib/csrf-client"
 
 export default function AIFeaturesPage() {
@@ -470,18 +471,21 @@ export default function AIFeaturesPage() {
                         </div>
 
                         {voiceMode === "ai" && voices.length > 0 && (
-                          <select
-                            id="voice"
-                            value={selectedVoiceId}
-                            onChange={(e) => setSelectedVoiceId(e.target.value)}
-                            className="w-full rounded-md border border-gray-600 bg-gray-800/50 p-2 text-sm text-gray-200"
-                          >
-                            {voices.map((voice) => (
-                              <option key={voice.id} value={voice.id}>
-                                {voice.name} — {voice.gender}, {voice.description}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="flex items-center gap-2">
+                            <select
+                              id="voice"
+                              value={selectedVoiceId}
+                              onChange={(e) => setSelectedVoiceId(e.target.value)}
+                              className="w-full rounded-md border border-gray-600 bg-gray-800/50 p-2 text-sm text-gray-200"
+                            >
+                              {voices.map((voice) => (
+                                <option key={voice.id} value={voice.id}>
+                                  {voice.name} — {voice.gender}, {voice.description}
+                                </option>
+                              ))}
+                            </select>
+                            <VoicePreviewButton voiceId={selectedVoiceId} />
+                          </div>
                         )}
 
                         {voiceMode === "own" && (

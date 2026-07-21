@@ -63,8 +63,12 @@ export function probeAudioSeconds(file: string): number {
   return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
 }
 
-/** Synthesize one line with ElevenLabs. Returns the mp3 bytes, or null. */
-async function elevenLabsSynth(text: string, voiceId: string): Promise<Buffer | null> {
+/**
+ * Synthesize one line with ElevenLabs. Returns the mp3 bytes, or null.
+ * Exported for the voice-preview endpoint, which runs on the WEB service and
+ * must not depend on ffmpeg (probeAudioSeconds) the way scene synthesis does.
+ */
+export async function elevenLabsSynth(text: string, voiceId: string): Promise<Buffer | null> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) return null;
 
