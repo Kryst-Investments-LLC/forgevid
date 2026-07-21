@@ -337,21 +337,30 @@ processed by the worker during the Phase 1 test) all have `fileUrl`,
 
 ---
 
-## Phase 3 — Scene-based post-editing (InVideo signature) [P0]
+## Phase 3 — Scene-based post-editing (InVideo signature) [P0] — DONE (verified 2026-07-20)
 
-**Problem:** the pipeline computes a scene list then bakes a flat MP4 and discards it; the
-dnd-kit timeline ([components/timeline.tsx](components/timeline.tsx)) is disconnected from generation.
+**Original problem (solved):** the pipeline computed a scene list then baked a flat MP4 and discarded it.
 
-- [ ] Persist the scene list to the project `metadata`: per scene = script line, keywords, chosen clip URL, duration, voiceover segment, caption.
-  - _Accept:_ a generated project reloads with its full scene structure.
-- [ ] Load the persisted scenes into the timeline editor as tracks/clips.
-  - _Accept:_ opening a generated video in the editor shows its scenes, not an empty timeline.
-- [ ] Per-scene "swap clip" — re-search Pexels for that scene and replace the clip.
-  - _Accept:_ swapping one scene doesn't touch the others.
-- [ ] Per-scene "regenerate" — re-run script→footage→voiceover for a single scene.
-  - _Accept:_ a single scene re-renders and the project re-assembles.
-- [ ] Re-render the project from the edited scene list (feeds Phase 4 renderer).
-  - _Accept:_ edited scenes produce a new final MP4.
+**DONE (verified 2026-07-20).** Live DB check: a COMPLETED video carries its full
+persisted scene list (description, narration, searchQuery, keywords, duration,
+clipUrl, thumbnailUrl, mediaType per scene).
+
+- [x] Scene list persisted to `Video.metadata.scenes` (`loadScenes`/`saveScenes`
+      in generation-pipeline.ts). Verified on a real completed video.
+- [x] Persisted scenes load into the scene editor (`components/scene-editor-panel.tsx`
+      via `GET /api/videos/[id]/scenes`). Product direction: InVideo-style scene
+      panel rather than a raw track timeline.
+- [x] Per-scene swap — `POST .../scenes/[sceneId]/swap` re-searches footage for
+      that scene only, excluding its current clip AND every other scene's clip
+      (no duplicates, no cross-scene mutation).
+- [x] Per-scene regenerate — composition of `PATCH .../scenes` (edit script
+      line / narration / searchQuery / duration), swap (footage), and rerender,
+      which re-synthesizes the voiceover for the edited scenes.
+- [x] `POST .../rerender` re-encodes from the edited persisted scenes on the
+      worker (pollable via /api/ai/jobs like a fresh generation), preserving
+      aspect ratio, music, branding, render quality.
+- [x] BONUS beyond the original list: `POST .../scenes/chat` — natural-language
+      scene editing ("make scene 2 faster") via a closed, validated op set.
 
 ---
 
