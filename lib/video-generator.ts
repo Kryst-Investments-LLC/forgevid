@@ -1142,6 +1142,14 @@ export async function assembleVideo(
         if (isStill) {
           // A single image must be looped to fill the clip's duration.
           cmd.inputOptions(['-loop 1']);
+        } else {
+          // A stock VIDEO clip shorter than its scene must also be looped, or
+          // the picture runs out before the narration and the video track
+          // underruns the (longer) audio. -stream_loop -1 loops the input;
+          // setDuration (-t) below caps it, so a clip already long enough is
+          // simply cut at clipDuration exactly as before — only short clips
+          // are affected.
+          cmd.inputOptions(['-stream_loop -1']);
         }
 
         cmd
