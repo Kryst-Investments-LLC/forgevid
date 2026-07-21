@@ -492,6 +492,37 @@ the web app AND the worker.
       paste `STRIPE_WEBHOOK_SECRET`.
 - [ ] DNS → domain to the web host; set `NEXTAUTH_URL` to the exact prod URL.
 
+### 4b. Railway deploy (recommended host)
+
+One Railway project = two services from this repo + two plugins:
+
+- **Postgres plugin** → gives `DATABASE_URL`; reference it into both services.
+- **Redis plugin** → gives `REDIS_URL`; reference into both services.
+- **Web service** — build with Nixpacks (auto-detects Next.js). Start command
+  `npm run start` (`next start`, binds Railway's `$PORT`). Add a pre-deploy/release
+  command `npx prisma migrate deploy` so schema changes apply on every deploy.
+  Gets the [WEB] + [BOTH] env vars.
+- **Worker service** — same repo, but set the Dockerfile path to
+  `./Dockerfile.worker` (it installs ffmpeg + fonts and runs `npm run worker` =
+  `tsx workers/video-worker.ts`). Gets the [WORKER] + [BOTH] env vars.
+
+Env-var split (identical where shared):
+- **Both**: `DATABASE_URL`, `REDIS_URL`, `ENCRYPTION_KEY`, `OPENAI_API_KEY`,
+  `ELEVENLABS_API_KEY`, `PEXELS_API_KEY`, `CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET`,
+  `SENTRY_DSN`, `MODERATION_IMAGES_FAIL_OPEN=false`.
+- **Web only**: `NEXTAUTH_URL` (your domain), `NEXTAUTH_SECRET`, `JWT_SECRET`,
+  `STRIPE_*`, `SMTP_*`, and every `NEXT_PUBLIC_*` (Stripe pk, Cloudinary cloud
+  name, Sentry dsn, the whole legal/company block).
+- **Worker only**: `WORKER_CONCURRENCY`, `RENDER_CONCURRENCY` (start at 2).
+
+Notes:
+- With Redis set, the web never renders in-process — ffmpeg is only needed on the
+  worker (it has it). Don't drop Redis, or long renders run inside the HTTP
+  request and time out.
+- Imported feed/site images upload to Cloudinary automatically when `CLOUDINARY_*`
+  is set, so the two services need **no shared disk** (done in code 2026-07-20).
+- Point the domain at the web service; set `NEXTAUTH_URL` to that exact URL.
+
 ### 5. First-run
 - [ ] Create the first admin (`prisma/seed.ts` or promote a user's role to ADMIN).
 - [ ] Beta gate: keep `BETA_MODE` on with `BETA_ALLOWED_EMAILS`/`BETA_INVITE_CODES`
@@ -503,11 +534,9 @@ the web app AND the worker.
 - [ ] Password reset end-to-end (needs SMTP live).
 - [ ] Submit an abuse report; try a disallowed prompt and confirm it's blocked.
 
-### Open decision (verify before relying on the feed feature in prod)
-- [ ] **Imported-image storage on a split deploy.** Finished videos go to
-      Cloudinary (durable). But `lib/site-images.ts` writes imported feed/listing
-      images to local `public/uploads/`. If the web app and worker run on
-      different hosts with no shared disk, the worker can't read them. Either
-      deploy web+worker with a shared volume, or move `importSiteImages` uploads
-      to Cloudinary. (Tier-2 candidate; not a blocker for the product-URL/site
-      flows that screenshot in-process.)
+### Open decision (resolved)
+- [x] **Imported-image storage on a split deploy.** `lib/site-images.ts`
+      (`importSiteImages` + `saveScreenshots`) now uploads to Cloudinary when
+      `CLOUDINARY_*` is set and falls back to local disk otherwise, so web and
+      worker need no shared disk. The renderer already fetches remote urls
+      (`downloadFile`). Done 2026-07-20; tsc + build green.

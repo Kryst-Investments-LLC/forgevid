@@ -16,6 +16,7 @@ import path from 'path';
 import { prisma } from './prisma';
 import { safeFetch } from './safe-fetch';
 import { moderateImageUrl, recordModerationBlock } from './moderation';
+import { uploadBuffer } from './cloudinary';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -27,6 +28,40 @@ const EXT_BY_TYPE: Record<string, string> = {
   'image/webp': 'webp',
   'image/gif': 'gif',
 };
+
+const LOCAL_UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'site');
+
+function cloudinaryConfigured(): boolean {
+  return Boolean(
+    process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET,
+  );
+}
+
+/**
+ * Store image bytes and return a url the RENDERER can read.
+ *
+ * In production the web app and the render worker run as separate services with
+ * no shared disk, so a local `/uploads/...` path written here would be invisible
+ * to the worker. When Cloudinary is configured we upload there and return the
+ * secure_url (which the renderer's downloadFile fetches to temp). Without it —
+ * local dev, single host — we keep the on-disk behaviour so nothing external is
+ * required to run the app.
+ */
+async function persistImageBuffer(bytes: Buffer, ext: string): Promise<string> {
+  if (cloudinaryConfigured()) {
+    const { secure_url } = await uploadBuffer(bytes, {
+      resource_type: 'image',
+      folder: 'forgevid/site-imports',
+    });
+    return secure_url;
+  }
+  fs.mkdirSync(LOCAL_UPLOAD_DIR, { recursive: true });
+  const filename = `${crypto.randomUUID()}.${ext}`;
+  fs.writeFileSync(path.join(LOCAL_UPLOAD_DIR, filename), bytes);
+  return `/uploads/site/${filename}`;
+}
 
 export interface ImportedImage {
   assetId: string;
@@ -46,22 +81,19 @@ export async function saveScreenshots(
   sourceUrl: string,
 ): Promise<ImportedImage[]> {
   const saved: ImportedImage[] = [];
-  const dir = path.join(process.cwd(), 'public', 'uploads', 'site');
-  fs.mkdirSync(dir, { recursive: true });
 
   for (const png of screenshots) {
     if (!png || png.length === 0) continue;
     try {
       const id = crypto.randomUUID();
-      const filename = `${id}.png`;
-      fs.writeFileSync(path.join(dir, filename), png);
+      const url = await persistImageBuffer(png, 'png');
       const asset = await prisma.mediaAsset.create({
         data: {
           name: `shot-${id}`,
           fileName: `${new URL(sourceUrl).hostname}-screenshot.png`,
           type: 'IMAGE',
           category: 'site-screenshot',
-          url: `/uploads/site/${filename}`,
+          url,
           fileSize: BigInt(png.length),
           uploadedById: userId,
           metadata: JSON.stringify({ sourceUrl, capturedBy: 'headless' }),
@@ -87,7 +119,6 @@ export async function importSiteImages(
   limit = 4,
 ): Promise<ImportedImage[]> {
   const imported: ImportedImage[] = [];
-  const dir = path.join(process.cwd(), 'public', 'uploads', 'site');
 
   for (const sourceUrl of imageUrls.slice(0, limit)) {
     try {
@@ -114,19 +145,17 @@ export async function importSiteImages(
         continue;
       }
 
-      fs.mkdirSync(dir, { recursive: true });
       const id = crypto.randomUUID();
-      const filename = `${id}.${ext}`;
-      fs.writeFileSync(path.join(dir, filename), body);
+      const url = await persistImageBuffer(body, ext);
 
       const asset = await prisma.mediaAsset.create({
         data: {
           // MediaAsset.name is globally unique — the uuid keeps it collision-free.
           name: `site-${id}`,
-          fileName: path.basename(new URL(sourceUrl).pathname) || filename,
+          fileName: path.basename(new URL(sourceUrl).pathname) || `site-${id}.${ext}`,
           type: 'IMAGE',
           category: 'site-import',
-          url: `/uploads/site/${filename}`,
+          url,
           fileSize: BigInt(body.length),
           uploadedById: userId,
           metadata: JSON.stringify({ sourceUrl }),
