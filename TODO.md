@@ -430,31 +430,59 @@ documents the old failure modes); the generation renderer is proven by execution
 
 ---
 
-## Phase 6 — Brand kit + free-tier watermark [P1]
+## Phase 6 — Brand kit + free-tier watermark [P1] — DONE (verified 2026-07-20)
 
-- [ ] Brand kit: logo, colors, fonts, intro/outro stored per user/org.
-  - _Accept:_ brand assets persist and apply to a render.
-- [ ] Free-tier watermark tied to existing Stripe plan gating.
-  - _Accept:_ free plan renders carry a watermark; paid plans don't.
-
----
-
-## Phase 7 — Quality parity with InVideo [P1]
-
-- [ ] Better footage matching: search the full scene phrase, score candidates, dedupe clips across scenes (currently one keyword at a time, random pick from top 3 in [lib/video-generator.ts:486-491](lib/video-generator.ts#L486-L491)).
-  - _Accept:_ no repeated clip across scenes in a typical run.
-- [ ] Transitions & motion: crossfades (`xfade`), Ken Burns on stills, animated text presets.
-- [ ] User media in generations: let "use my product shots" pull from `MediaAsset`.
-- [ ] Chat-based editing ("make scene 2 faster") operating on the Phase 3 scene structure (chat panel + `ai-editing` route are scaffolding today).
-- [ ] Modernize or delete the Replicate path: Zeroscope v2 XL / that SVD version are 2023-era, 576p/8fps. Either integrate current-gen text-to-video (Kling/Wan/Veo/Runway) as a premium add-on, or delete ([lib/replicate-video.ts](lib/replicate-video.ts)).
-- [ ] Rendering infra: confirm persistent VM/container target (not serverless — writes to `public/temp`/`public/generated`); add disk cleanup + concurrency limits. Docker setup already supports this.
+- [x] Brand kit: `BrandKit` model (logoUrl/opacity/position, primaryColor,
+      fontFamily, introUrl, outroUrl) + `/api/brand-kit` (+ /logo upload),
+      applied on BOTH generation and rerender via `brandingForVideo`. Observed
+      executing live during the Phase 1 render (brand_kits query in worker log).
+- [x] Free-tier watermark tied to plan gating: branding resolves SERVER-SIDE
+      from the video's owner (`resolveBranding` → `getUserPlan` →
+      `requiresWatermark(plan)`); free plans get the watermark, paid render
+      clean, custom branding gated by `allowsCustomBranding(plan)`. Client input
+      can't opt out.
 
 ---
 
-## Phase 8 — Fail visibly, never ship placeholders [P0 correctness]
+## Phase 7 — Quality parity with InVideo [P1] — DONE (verified 2026-07-21)
 
-- [ ] Remove silent fallback to Google sample videos (`ForBiggerBlazes.mp4`) at [lib/replicate-video.ts:164](lib/replicate-video.ts#L164) and the Pexels fallback in [lib/video-generator.ts:240](lib/video-generator.ts#L240).
-  - _Accept:_ a failed generation surfaces an error to the user; no third-party demo video is ever returned as "your video."
+- [x] Footage matching: exclude-set threading so "scenes don't reuse the same
+      footage" (video-generator.ts ~841–897) — used clips accumulate across the
+      run and swaps also exclude every other scene's clip.
+- [x] Transitions & motion: `xfade` crossfades, `zoompan` Ken Burns on stills,
+      animated lower-thirds; transition type persisted per video and reused on
+      rerender.
+- [x] User media in generations: `resolveUserMedia` (ownership-checked
+      MediaAsset ids) + `mediaOnly` — exercised live by the listings/feed batch
+      flows.
+- [x] Chat-based editing on the scene structure — done in Phase 3
+      (`POST .../scenes/chat`, closed validated op set).
+- [x] Replicate path DELETED (lib/replicate-video.ts gone; 2023-era 576p models
+      served nobody). Current-gen T2V (Kling/Veo/Runway) stays a possible
+      premium add-on — new decision, not a leftover.
+- [x] Rendering infra: persistent container target (`Dockerfile.worker`,
+      render.yaml, Railway section in the launch runbook), `WORKER_CONCURRENCY`
+      / `RENDER_CONCURRENCY` caps, temp-file tracking + cleanup in the
+      assembler.
+
+---
+
+## Phase 8 — Fail visibly, never ship placeholders [P0 correctness] — DONE (verified 2026-07-21)
+
+- [x] Silent sample-video fallbacks gone: no ForBiggerBlazes/gtv-videos-bucket/
+      sample URLs anywhere in lib/app; the pipeline's catch marks the row FAILED
+      ("never silently substitute") and `GET /api/ai/jobs/[id]` returns the
+      error to the client. Quota is refunded on failure (verified earlier).
+- [x] **Admin placeholder purge (found during this sweep):** `/admin` was a
+      753-line client page of FABRICATED data (fake $89k revenue, invented
+      users) rendered to ANY visitor — the admin APIs were 403-protected but the
+      pages weren't. Fixed: server-side role gate in `app/admin/layout.tsx`
+      (fresh DB role, redirects to /unauthorized), `/admin` rewritten as a lean
+      server component with real prisma aggregates (users, videos by status,
+      MRR from active subs, AI cost, open content reports, recent signups), and
+      the six other fabricated dashboards (users, api, cost-management, data,
+      monitoring, performance, support, security index) DELETED — kept only the
+      real surfaces: `/admin/beta` and `/admin/security/sso`.
 
 ---
 
