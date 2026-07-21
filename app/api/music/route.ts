@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
 import { listMusicTracks } from '@/lib/music-library';
+import { persistUploadBuffer } from '@/lib/upload-storage';
 
 /**
  * Background music the user brings themselves.
@@ -87,19 +86,22 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const dir = path.join(process.cwd(), 'public', 'uploads', 'music');
-    fs.mkdirSync(dir, { recursive: true });
     const id = crypto.randomUUID();
-    const filename = `${id}.${ext}`;
-    fs.writeFileSync(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
+    // Cloudinary when configured (split web/worker deploys share no disk),
+    // local disk otherwise. Audio rides Cloudinary's 'video' resource type.
+    const url = await persistUploadBuffer(Buffer.from(await file.arrayBuffer()), {
+      ext,
+      folder: 'music',
+      resourceType: 'video',
+    });
 
     const asset = await prisma.mediaAsset.create({
       data: {
         name: `music-${id}`, // MediaAsset.name is globally unique
-        fileName: file.name || filename,
+        fileName: file.name || `${id}.${ext}`,
         type: 'AUDIO',
         category: 'music',
-        url: `/uploads/music/${filename}`,
+        url,
         fileSize: BigInt(file.size),
         uploadedById: session.user.id,
       },

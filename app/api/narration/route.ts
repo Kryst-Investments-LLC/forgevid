@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
+import { persistUploadBuffer } from '@/lib/upload-storage';
 
 /**
  * POST /api/narration — upload YOUR OWN narration (a natural human voice)
@@ -59,19 +58,22 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const dir = path.join(process.cwd(), 'public', 'uploads', 'narration');
-    fs.mkdirSync(dir, { recursive: true });
     const id = crypto.randomUUID();
-    const filename = `${id}.${ext}`;
-    fs.writeFileSync(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
+    // Cloudinary when configured (split web/worker deploys share no disk —
+    // audio rides Cloudinary's 'video' resource type), local disk otherwise.
+    const url = await persistUploadBuffer(Buffer.from(await file.arrayBuffer()), {
+      ext,
+      folder: 'narration',
+      resourceType: 'video',
+    });
 
     const asset = await prisma.mediaAsset.create({
       data: {
         name: `narration-${id}`,
-        fileName: file.name || filename,
+        fileName: file.name || `${id}.${ext}`,
         type: 'AUDIO',
         category: 'narration',
-        url: `/uploads/narration/${filename}`,
+        url,
         fileSize: BigInt(file.size),
         uploadedById: session.user.id,
       },

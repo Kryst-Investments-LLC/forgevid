@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
+import { persistUploadBuffer } from '@/lib/upload-storage';
 
 /**
  * POST /api/media/upload — the agent's own photos and clips.
@@ -63,9 +62,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `At most ${MAX_FILES} files per upload` }, { status: 413 });
   }
 
-  const dir = path.join(process.cwd(), 'public', 'uploads', 'media');
-  fs.mkdirSync(dir, { recursive: true });
-
   const assets: Array<{ assetId: string; url: string; name: string; type: string }> = [];
 
   // Sequential, so the returned ids keep the caller's order — that order is what
@@ -84,17 +80,22 @@ export async function POST(req: NextRequest) {
 
     try {
       const id = crypto.randomUUID();
-      const filename = `${id}.${meta.ext}`;
-      fs.writeFileSync(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
+      // Cloudinary when configured (split web/worker deploys share no disk),
+      // local disk otherwise.
+      const url = await persistUploadBuffer(Buffer.from(await file.arrayBuffer()), {
+        ext: meta.ext,
+        folder: 'media',
+        resourceType: meta.kind === 'IMAGE' ? 'image' : 'video',
+      });
 
       const asset = await prisma.mediaAsset.create({
         data: {
           // MediaAsset.name is globally unique — the uuid keeps it collision-free.
           name: `media-${id}`,
-          fileName: file.name || filename,
+          fileName: file.name || `${id}.${meta.ext}`,
           type: meta.kind,
           category: 'upload',
-          url: `/uploads/media/${filename}`,
+          url,
           fileSize: BigInt(file.size),
           uploadedById: session.user.id,
         },
