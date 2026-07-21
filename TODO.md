@@ -276,17 +276,18 @@ Writing actual customer videos found more than a week of testing did.
 - **Verified end-to-end** on the local stack as `pro@forgevid.test`: POST returned `started:2` (EN+ES), photos imported from public URLs through the SSRF guard, and the worker rendered BOTH to COMPLETED (`[worker] job 12/13 done`). Page renders with zero console errors; `tsc --noEmit` exit 0.
 - Not a new vertical — the UI that makes the existing ones sellable. Launch item (P1, elevated for the dealer deal).
 
-## Phase 0 — Repo hygiene (do before any feature work)
+## Phase 0 — Repo hygiene (do before any feature work) — DONE 2026-07-20
 
-- [ ] Commit or deliberately revert the working tree (510 uncommitted files, ~60 deleted status MDs).
-  - _Accept:_ `git status --short` is empty; one real commit message describing the cleanup.
-- [ ] Fix `npm run type-check` — missing type defs for `jsonwebtoken`, `node-fetch`, `triple-beam`, `uuid`.
-  - Try clean `npm install` first; add `@types/*` only if still missing.
-  - _Accept:_ `npm run type-check` exits 0.
-- [ ] Remove the ~40 stale status/audit `*.md` files and loose `forgevid-*.html` test files from the repo root.
-  - _Accept:_ root contains only real docs (README, this TODO, LICENSE, config).
-- [ ] Check for tracked secrets before next push: `git ls-files | grep -i env`.
-  - _Accept:_ no `.env*` with real values tracked.
+- [x] Working tree resolved. Committed the real changes (render `-stream_loop`
+      fix); reverted a stray edit to the dead `pricing-card.tsx`; gitignored the
+      personal dogfood render one-offs (atiende/lumea/lawquest/voice-samples).
+  - _Accept:_ `git status --short` empty. ✓
+- [x] `npm run type-check` exits 0 (`tsc --noEmit`). ✓
+- [x] Removed 31 stale status/guide/audit `*.md` + `audit-report.html` from root.
+      Root now holds only README.md, README-enterprise.md, TODO.md, CLAUDE.md.
+  - _Accept:_ root contains only real docs. ✓
+- [x] Tracked secrets check: `git ls-files | grep -i env` → only `.env.example`
+      (no real values). ✓
 
 ---
 

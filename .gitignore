@@ -85,3 +85,10 @@ next-env.d.ts
 
 # user uploads (narration recordings etc.)
 /public/uploads/
+
+# Personal dogfood/marketing render one-offs (not product code; kept on disk, out of git)
+/scripts/render-atiende-promo.ts
+/scripts/render-lumea-promo.ts
+/scripts/render-lawquest-batch.ts
+/scripts/render-lawquest-lesson.ts
+/scripts/voice-samples.ts
