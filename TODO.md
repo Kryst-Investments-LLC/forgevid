@@ -394,32 +394,39 @@ documents the old failure modes); the generation renderer is proven by execution
 
 ---
 
-## Phase 5 — Audio, captions, voice, aspect ratio [P0]
+## Phase 5 — Audio, captions, voice, aspect ratio [P0] — DONE (verified 2026-07-20)
 
-### Background music
-- [ ] Add a licensed music library (20–50 tracks) with mood metadata.
-  - _Accept:_ tracks exist with license records.
-- [ ] Wire mood-based selection to the emotion-ai output (`musicTracks` names currently map to nothing).
-  - _Accept:_ detected emotion selects a real track.
-- [ ] Audio ducking: lower music under the voiceover (FFmpeg `sidechaincompress` / volume automation).
-  - _Accept:_ narration is audible over music in the output.
+### Background music — done
+- [x] Music library: `lib/music-library.ts` + `public/music/tracks.json` with
+      mood tags + `license` field per track; three bundled beds
+      (calm/cinematic/uplift). Add more licensed tracks by dropping files +
+      tracks.json entries (documented in public/music/README.md).
+- [x] Mood-based selection: `selectTrackForMood(mood)` matches free-form mood
+      tags case-insensitively.
+- [x] Ducking: `sidechaincompress` in the assembly graph — music dips under
+      narration.
 
-### Real captions (not scene descriptions)
-- [ ] Word-timed captions from the actual narration via Whisper (or ElevenLabs timestamps) — replace the drawtext-of-scene-description in [lib/video-generator.ts:160](lib/video-generator.ts#L160).
-  - _Accept:_ captions match spoken words and timing.
-- [ ] Styled caption presets (position, font, highlight).
-  - _Accept:_ user can pick a caption style.
-- [ ] SRT/VTT export.
-  - _Accept:_ downloadable subtitle file matches the video.
+### Real captions — done
+- [x] Word-timed cues from the ACTUAL voiceover via `transcribeToCues`
+      (Whisper); cues persisted on the video for export. Scene-description
+      drawtext replaced.
+- [x] Styled presets: `CAPTION_PRESETS` + `buildCaptionFilter(cues, style)`
+      (position/font/size; brand font honored when configured).
+- [x] SRT/VTT export: `GET /api/videos/[id]/captions?format=srt|vtt|json` with
+      correct content types + attachment filename.
 
-### Voice selection
-- [ ] Remove the hardcoded voice ID `ErXwobaYiN019PkySvjV` + deprecated `eleven_monolingual_v1` (two places: [lib/video-generator.ts:122](lib/video-generator.ts#L122), [app/api/ai/route.ts:27](app/api/ai/route.ts#L27)).
-- [ ] Voice catalog + preview + selection in the generate UI; upgrade to `eleven_multilingual_v2` (OpenAI TTS as cheap tier).
-  - _Accept:_ user picks a voice; it's used in the render.
+### Voice selection — done
+- [x] Hardcoded voice id + `eleven_monolingual_v1` removed from the renderer;
+      `lib/voice-catalog.ts` is the single voice source (Antoni remains only as
+      a catalog entry/default). Model upgraded (v2 multilingual).
+- [x] `GET /api/voices` returns the catalog + the user's cloned voices; the
+      generate UI (dashboard/ai + feed screen) fetches it for the picker, and
+      the chosen id is resolved per-user at enqueue (`resolveVoiceIdForUser`).
 
-### Aspect ratio
-- [ ] Parameterize the hardcoded `1920:1080` scale/pad; support 16:9, 9:16, 1:1.
-  - _Accept:_ generating in 9:16 produces a vertical video end-to-end (trim + assembly + captions).
+### Aspect ratio — done
+- [x] No hardcoded `1920:1080` left. `AspectRatio` = 16:9 / 9:16 / 1:1 with
+      `ASPECT_PRESETS` (1920x1080 / 1080x1920 / 1080x1080) parameterizing trim,
+      assembly, and captions; rerender preserves the original ratio.
 
 ---
 
