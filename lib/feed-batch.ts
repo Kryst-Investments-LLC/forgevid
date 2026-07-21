@@ -51,6 +51,8 @@ export interface FeedBatchOptions {
   /** Narration + caption language for every item ('es' = Spanish). */
   language?: NarrationLanguage;
   renderQuality: 'draft' | 'full' | '4k';
+  /** Caption look; 'karaoke' = word-by-word highlight (Reels/TikTok style). */
+  captionPreset?: import('./captions').CaptionPresetName;
   addOns?: string[];
   maxPhotosPerItem?: number;
 }
@@ -104,6 +106,7 @@ export async function runFeedBatch(
       // The video shows THIS item. Never pad it with stock footage.
       mediaOnly: true,
       renderQuality: opts.renderQuality,
+      captionPreset: opts.captionPreset,
       lowerThird: item.lowerThird(images.length),
     };
 

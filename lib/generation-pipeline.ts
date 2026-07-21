@@ -18,6 +18,7 @@ import { hasOpenAiKey, openAiApiKey } from './openai-key';
 import { assembleVideo, generateVideoWithScenes, renderDims } from './video-generator';
 import type { AspectRatio, ResolvedScene } from './video-generator';
 import { selectMusicPath } from './music-library';
+import { CAPTION_PRESETS, isCaptionPreset } from './captions';
 import { freeBranding, resolveBranding } from './brand-kit';
 import { resolveUserMedia } from './user-media';
 import { estimateGenerationCost, recordGenerationCost } from './cost-ledger';
@@ -80,6 +81,24 @@ async function brandingForVideo(videoId: string) {
   });
   if (!video) return freeBranding();
   return resolveBranding(video.userId);
+}
+
+/**
+ * Resolve the PiP presenter clip (a VIDEO MediaAsset) to its url,
+ * ownership-checked against the video's owner. The assembler localizes it.
+ */
+async function pipUrlForVideo(videoId: string, pipAssetId?: string): Promise<string | null> {
+  if (!pipAssetId) return null;
+  const video = await prisma.video.findUnique({
+    where: { id: videoId },
+    select: { userId: true },
+  });
+  if (!video) return null;
+  const asset = await prisma.mediaAsset.findFirst({
+    where: { id: pipAssetId, uploadedById: video.userId, type: 'VIDEO' },
+    select: { url: true },
+  });
+  return asset?.url ?? null;
 }
 
 /**
@@ -159,6 +178,18 @@ export interface GenerationInput {
   renderQuality?: import('./video-generator').RenderQuality;
   /** A MediaAsset (AUDIO) id: the user's OWN narration instead of AI TTS. */
   narrationAssetId?: string;
+  /** Caption look; 'karaoke' = word-by-word highlight (Reels/TikTok style). */
+  captionPreset?: import('./captions').CaptionPresetName;
+  /**
+   * Presenter picture-in-picture: a VIDEO MediaAsset id overlaid in a corner
+   * over the whole video, muted (the voice belongs to the narration track).
+   */
+  pip?: {
+    assetId: string;
+    position?: import('./brand-kit').LogoPosition;
+    /** Fraction of the frame width the overlay occupies (0.15–0.45). */
+    size?: number;
+  } | null;
   /** A MediaAsset (AUDIO) id: the user's OWN background music track. */
   musicAssetId?: string;
   /** Use ONLY the supplied media; never pad the plan with stock footage. */
@@ -353,6 +384,13 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       voiceoverPath: narrationPath,
       musicPath: musicOverride,
       mediaOnly: input.mediaOnly,
+      captionPreset: input.captionPreset,
+      pip: await (async () => {
+        const url = await pipUrlForVideo(videoId, input.pip?.assetId);
+        return url
+          ? { url, position: input.pip?.position, widthFraction: input.pip?.size }
+          : null;
+      })(),
       lowerThird: input.lowerThird ?? null,
       presetScenes: input.presetScenes,
       hookNarration: input.hookNarration,
@@ -466,6 +504,10 @@ export async function rerenderVideo(videoId: string): Promise<string> {
       meta.request?.renderQuality === 'draft' || meta.request?.renderQuality === '4k'
         ? meta.request.renderQuality
         : 'full';
+    // Re-render keeps the caption look the video was generated with.
+    const captionPreset = isCaptionPreset(meta.request?.captionPreset)
+      ? meta.request.captionPreset
+      : null;
     const assembled = await assembleVideo(scenes, addOns, aspectRatio, {
       musicPath,
       voiceId: meta.request?.voiceId,
@@ -475,6 +517,23 @@ export async function rerenderVideo(videoId: string): Promise<string> {
       // Re-render must reuse the same transition, or the output changes shape.
       transition: transitionFromMetadata(meta.request?.transition),
       renderQuality,
+      // Same presenter overlay the video was generated with (re-ownership-checked).
+      pip: await (async () => {
+        const url = await pipUrlForVideo(videoId, meta.request?.pip?.assetId);
+        return url
+          ? {
+              url,
+              position: meta.request?.pip?.position,
+              widthFraction: meta.request?.pip?.size,
+            }
+          : null;
+      })(),
+      ...(captionPreset
+        ? {
+            captionStyle: CAPTION_PRESETS[captionPreset],
+            captionAnimation: captionPreset === 'karaoke' ? ('karaoke' as const) : null,
+          }
+        : {}),
     });
     const { videoUrl, cues, thumbnailUrl } = assembled;
 

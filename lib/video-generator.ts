@@ -21,14 +21,18 @@ import { selectMusicPath } from './music-library';
 import { DEFAULT_TTS_MODEL, DEFAULT_VOICE_ID } from './voice-catalog';
 import {
   buildCaptionFilter,
+  buildKaraokeAss,
   buildWatermarkFilter,
+  CAPTION_PRESETS,
   cuesFromScenes,
+  escapeFontPath,
   shiftCues,
   transcribeToCues,
   type CaptionCue,
+  type CaptionPresetName,
   type CaptionStyle,
 } from './captions';
-import { overlayPosition, type Branding } from './brand-kit';
+import { overlayPosition, type Branding, type LogoPosition } from './brand-kit';
 import {
   DEFAULT_TRANSITION,
   buildXfadeChain,
@@ -249,6 +253,13 @@ export interface GenerationOptions {
   userMedia?: UserMediaItem[];
   /** 'draft' = fast preview, 'full' (default), '4k' = paid plans. */
   renderQuality?: RenderQuality;
+  /**
+   * Caption look. Named presets size static captions; 'karaoke' switches to
+   * word-by-word highlight captions (Reels/TikTok style).
+   */
+  captionPreset?: CaptionPresetName;
+  /** Presenter picture-in-picture overlay (see AssembleOptions.pip). */
+  pip?: { url: string; position?: LogoPosition; widthFraction?: number } | null;
   /**
    * A natural human voice: path to the user's own narration recording. When
    * set, AI TTS (and per-scene pacing) is skipped; captions come from Whisper.
@@ -945,6 +956,12 @@ export interface AssembleOptions {
    */
   cues?: CaptionCue[] | null;
   captionStyle?: CaptionStyle;
+  /**
+   * 'karaoke' renders word-by-word highlight captions (Reels/TikTok style) via
+   * an ASS subtitles filter, using Whisper word timestamps. Cues without word
+   * timing fall back to static captions in the same look.
+   */
+  captionAnimation?: 'karaoke' | null;
   /** Plan-gated branding: watermark, logo, intro/outro, caption colour/font. */
   branding?: Branding | null;
   /** Cross-fade between scenes. Pass null for hard cuts. */
@@ -963,6 +980,13 @@ export interface AssembleOptions {
   paceToNarration?: boolean;
   /** 'draft' = fast half-res preview, '4k' = double resolution (paid plans). */
   renderQuality?: RenderQuality;
+  /**
+   * Picture-in-picture: a presenter clip overlaid in a corner over the whole
+   * video ("salesperson talking over the walkaround"). VIDEO ONLY — its audio
+   * is dropped; the voice belongs to the narration track (upload the presenter
+   * audio via narrationAssetId). Plays once, then yields to the main picture.
+   */
+  pip?: { url: string; position?: LogoPosition; widthFraction?: number } | null;
 }
 
 export interface AssembleResult {
@@ -1284,13 +1308,46 @@ export async function assembleVideo(
       cues = shiftCues(cues, introDuration);
     }
 
+    // A brand font uploaded through /api/brand-kit/font lives in cloud storage;
+    // ffmpeg needs a real file. Localize it once for captions AND lower thirds.
+    let brandFontFile = branding?.fontFile ?? null;
+    if (brandFontFile && /^https?:\/\//i.test(brandFontFile)) {
+      try {
+        const font = await downloadFile(brandFontFile, `brandfont_${Date.now()}.ttf`);
+        brandFontFile = font.path;
+        if (font.downloaded) tempFiles.push(font.path);
+      } catch (error) {
+        console.error('[Video Generator] Brand font fetch failed, using system font:', error);
+        brandFontFile = null;
+      }
+    }
+
     const captionStyle: CaptionStyle = {
       ...options.captionStyle,
       ...(branding?.captionColor ? { fontColor: branding.captionColor } : {}),
-      ...(branding?.fontFile ? { fontFile: branding.fontFile } : {}),
+      ...(brandFontFile ? { fontFile: brandFontFile } : {}),
     };
 
-    const textFilter = cues.length > 0 ? buildCaptionFilter(cues, captionStyle) : '';
+    let textFilter = '';
+    if (cues.length > 0 && options.captionAnimation === 'karaoke') {
+      // One subtitles filter renders the whole word-by-word animation; a
+      // per-word drawtext graph would blow past Windows' argv limit on any
+      // video longer than a few sentences.
+      const assPath = path.join(tempDir, `captions_${Date.now()}.ass`);
+      fs.writeFileSync(
+        assPath,
+        buildKaraokeAss(cues, {
+          width: outW,
+          height: outH,
+          highlightColor: branding?.captionColor ?? undefined,
+          marginBottom: captionStyle.marginBottom,
+        }),
+      );
+      tempFiles.push(assPath);
+      textFilter = `subtitles='${escapeFontPath(assPath)}'`;
+    } else if (cues.length > 0) {
+      textFilter = buildCaptionFilter(cues, captionStyle);
+    }
     const watermarkFilter = branding?.watermarkText
       ? buildWatermarkFilter(branding.watermarkText)
       : '';
@@ -1298,14 +1355,18 @@ export async function assembleVideo(
     // Drawn before the captions so a long address never sits on top of them.
     const lowerThirdFilter = options.lowerThird
       ? buildLowerThirdFilter(options.lowerThird, {
-          fontFile: branding?.fontFile ?? null,
+          fontFile: brandFontFile,
           // captionColor is already hex-validated by resolveBranding, so the
           // accent bar can safely reuse it and match the brand.
           accentColor: branding?.captionColor ?? undefined,
         })
       : '';
 
-    const videoFilter = [fit, lowerThirdFilter, textFilter, watermarkFilter]
+    // Split at the PiP boundary: `fit` must run before the presenter overlay,
+    // but text (captions, lower third, watermark) must draw AFTER it — or the
+    // presenter clip covers the captions (seen in a real frame, not theory).
+    const preOverlayFilter = fit;
+    const textOverlayFilter = [lowerThirdFilter, textFilter, watermarkFilter]
       .filter(Boolean)
       .join(',');
 
@@ -1321,6 +1382,19 @@ export async function assembleVideo(
       } catch (error) {
         console.error('[Video Generator] Logo fetch failed, skipping (non-fatal):', error);
         logoPath = null;
+      }
+    }
+
+    // Materialize the picture-in-picture presenter clip the same way.
+    let pipPath: string | null = null;
+    if (options.pip?.url) {
+      try {
+        const pip = await downloadFile(options.pip.url, `pip_${Date.now()}.mp4`);
+        pipPath = pip.path;
+        if (pip.downloaded) tempFiles.push(pip.path);
+      } catch (error) {
+        console.error('[Video Generator] PiP fetch failed, skipping (non-fatal):', error);
+        pipPath = null;
       }
     }
 
@@ -1346,20 +1420,42 @@ export async function assembleVideo(
         command.input(logoPath).inputOptions(['-loop 1']);
         logoIndex = ++inputIndex;
       }
+      let pipIndex = -1;
+      if (pipPath) {
+        command.input(pipPath);
+        pipIndex = ++inputIndex;
+      }
 
       // ffmpeg accepts either -vf or -filter_complex, never both — so the video
-      // chain lives in the complex graph now that audio needs one.
+      // chain lives in the complex graph now that audio needs one. The picture
+      // builds in stages: fit -> +pip -> text (captions over the pip) -> +logo
+      // -> pixel format.
       const filters: string[] = [];
+      let vLabel = 'vbase';
+      filters.push(`[0:v]${preOverlayFilter}[vbase]`);
+      if (pipIndex > 0) {
+        // Even width keeps yuv420p happy; height follows the clip's own ratio.
+        const pipW = Math.max(2, Math.round((outW * (options.pip?.widthFraction ?? 0.28)) / 2) * 2);
+        filters.push(`[${pipIndex}:v]scale=${pipW}:-2[pipv]`);
+        // eof_action=pass: a presenter clip shorter than the video plays once
+        // and yields — looping a talking head restarts their speech visually.
+        filters.push(
+          `[${vLabel}][pipv]overlay=${overlayPosition(options.pip?.position ?? 'bottom-right', 32)}:eof_action=pass[vpip]`,
+        );
+        vLabel = 'vpip';
+      }
+      if (textOverlayFilter) {
+        filters.push(`[${vLabel}]${textOverlayFilter}[vtext]`);
+        vLabel = 'vtext';
+      }
       if (logoIndex > 0) {
-        filters.push(`[0:v]${videoFilter}[vbase]`);
         filters.push(`[${logoIndex}:v]format=rgba,colorchannelmixer=aa=${branding!.logoOpacity}[logo]`);
         filters.push(
-          `[vbase][logo]overlay=${overlayPosition(branding!.logoPosition)}:format=auto,` +
-            `format=yuv420p[vout]`,
+          `[${vLabel}][logo]overlay=${overlayPosition(branding!.logoPosition)}:format=auto[vlogo]`,
         );
-      } else {
-        filters.push(`[0:v]${videoFilter}[vout]`);
+        vLabel = 'vlogo';
       }
+      filters.push(`[${vLabel}]format=yuv420p[vout]`);
 
       // sidechaincompress requires both inputs in the same format.
       const AFMT = 'aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo';
@@ -1540,6 +1636,13 @@ export async function generateVideoWithScenes(
     renderQuality: options.renderQuality,
     voiceoverPath: options.voiceoverPath ?? null,
     lowerThird: options.lowerThird ?? null,
+    pip: options.pip ?? null,
+    ...(options.captionPreset
+      ? {
+          captionStyle: CAPTION_PRESETS[options.captionPreset],
+          captionAnimation: options.captionPreset === 'karaoke' ? ('karaoke' as const) : null,
+        }
+      : {}),
   });
 
   console.log(

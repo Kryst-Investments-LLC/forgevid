@@ -79,6 +79,17 @@ const generateVideoSchema = z.object({
   narrationAssetId: z.string().optional(),
   // A MediaAsset (AUDIO) id: the user's OWN background music track.
   musicAssetId: z.string().optional(),
+  // Caption look; 'karaoke' = word-by-word highlight (Reels/TikTok style).
+  captionPreset: z.enum(['default', 'large', 'subtle', 'karaoke']).optional(),
+  // Presenter picture-in-picture: a VIDEO MediaAsset overlaid in a corner,
+  // muted — pair with narrationAssetId for the presenter's voice.
+  pip: z
+    .object({
+      assetId: z.string(),
+      position: z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right']).default('bottom-right'),
+      size: z.number().min(0.15).max(0.45).default(0.28),
+    })
+    .optional(),
   // Use ONLY mediaAssetIds; never pad the plan with stock footage.
   mediaOnly: z.boolean().default(false),
   // Burned-in title bar: address + price. Text is escaped before it reaches
@@ -175,6 +186,8 @@ async function handleGenerateVideo(body: any, userId: string) {
             renderQuality: input.renderQuality,
             narrationAssetId: input.narrationAssetId,
             musicAssetId: input.musicAssetId,
+            captionPreset: input.captionPreset,
+            pip: input.pip ?? null,
             mediaOnly: input.mediaOnly,
             lowerThird: input.lowerThird ?? null,
             // enableEmotionAware is preserved for the pipeline to honor once

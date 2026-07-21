@@ -44,6 +44,7 @@ const bodySchema = z
     aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('9:16'),
     voiceId: z.string().optional(),
     renderQuality: z.enum(['draft', 'full', '4k']).default('full'),
+    captionPreset: z.enum(['default', 'large', 'subtle', 'karaoke']).optional(),
     // Parse + count only; don't render or touch quota.
     preview: z.boolean().optional(),
   })
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request', details: parsed.error.issues }, { status: 400 });
   }
-  const { feedUrl, duration, aspectRatio, voiceId, renderQuality } = parsed.data;
+  const { feedUrl, duration, aspectRatio, voiceId, renderQuality, captionPreset } = parsed.data;
 
   let products: Product[];
   try {
@@ -122,6 +123,7 @@ export async function POST(req: NextRequest) {
     aspectRatio,
     voiceId: resolvedVoiceId,
     renderQuality,
+    captionPreset,
   });
 
   return NextResponse.json({

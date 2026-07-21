@@ -47,6 +47,7 @@ const bodySchema = z
     aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
     voiceId: z.string().optional(),
     renderQuality: z.enum(['draft', 'full', '4k']).default('full'),
+    captionPreset: z.enum(['default', 'large', 'subtle', 'karaoke']).optional(),
     // A Miami lot wants both: pass ['en','es'] to render every car twice, once
     // per language. Each language consumes its own quota, as intended.
     languages: z.array(z.enum(['en', 'es'])).min(1).max(2).default(['en']),
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid request', details: parsed.error.issues }, { status: 400 });
   }
-  const { feedUrl, duration, aspectRatio, voiceId, renderQuality } = parsed.data;
+  const { feedUrl, duration, aspectRatio, voiceId, renderQuality, captionPreset } = parsed.data;
   const languages = [...new Set(parsed.data.languages)];
 
   let vehicles: Vehicle[];
@@ -136,6 +137,7 @@ export async function POST(req: NextRequest) {
       voiceId: resolvedVoiceId,
       language,
       renderQuality,
+      captionPreset,
     });
     started += batch.started;
     failed += batch.failed;

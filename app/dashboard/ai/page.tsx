@@ -38,6 +38,11 @@ export default function AIFeaturesPage() {
   const [musicName, setMusicName] = useState<string>("")
   const [uploadingMusic, setUploadingMusic] = useState(false)
   const [transitionType, setTransitionType] = useState<string>("fade")
+  const [captionPreset, setCaptionPreset] = useState<string>("default")
+  const [pipAssetId, setPipAssetId] = useState<string | null>(null)
+  const [pipName, setPipName] = useState<string>("")
+  const [uploadingPip, setUploadingPip] = useState(false)
+  const [pipPosition, setPipPosition] = useState<string>("bottom-right")
   const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null)
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
@@ -127,6 +132,10 @@ export default function AIFeaturesPage() {
           ...(voiceMode === "own" && narrationAssetId ? { narrationAssetId } : {}),
           ...(selectedAddOns.includes("music") && musicAssetId ? { musicAssetId } : {}),
           ...(selectedMediaIds.length ? { mediaAssetIds: selectedMediaIds } : {}),
+          ...(selectedAddOns.includes("subtitles") && captionPreset !== "default"
+            ? { captionPreset }
+            : {}),
+          ...(pipAssetId ? { pip: { assetId: pipAssetId, position: pipPosition } } : {}),
           renderQuality: quality,
           transition:
             transitionType === "none" ? null : { type: transitionType, duration: 0.5 },
@@ -368,6 +377,23 @@ export default function AIFeaturesPage() {
                       </div>
                     </div>
 
+                    {/* Caption look — karaoke = word-by-word highlight (Reels/TikTok) */}
+                    {selectedAddOns.includes("subtitles") && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Caption style</label>
+                        <select
+                          value={captionPreset}
+                          onChange={(e) => setCaptionPreset(e.target.value)}
+                          className="w-full rounded-md border border-gray-600 bg-gray-800/50 p-2 text-sm text-gray-200"
+                        >
+                          <option value="default">Standard — clean bottom captions</option>
+                          <option value="large">Large — bigger, bolder text</option>
+                          <option value="subtle">Subtle — smaller, discreet</option>
+                          <option value="karaoke">Karaoke — word-by-word highlight (Reels/TikTok)</option>
+                        </select>
+                      </div>
+                    )}
+
                     {/* Bring-your-own music — the bundled library ships empty
                         (tracks need a licence), so this is how a soundtrack
                         actually gets onto a video. */}
@@ -529,6 +555,64 @@ export default function AIFeaturesPage() {
                         )}
                       </div>
                     )}
+
+                    {/* Presenter overlay (picture-in-picture) */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Presenter overlay (optional)</label>
+                      <input
+                        type="file"
+                        accept="video/mp4,video/quicktime,video/webm"
+                        disabled={uploadingPip}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0]
+                          e.target.value = ""
+                          if (!file) return
+                          setUploadingPip(true)
+                          try {
+                            const body = new FormData()
+                            body.append("file", file)
+                            const res = await fetch("/api/media/upload", { method: "POST", body })
+                            const data = await res.json()
+                            if (!res.ok) throw new Error(data?.error || "Upload failed")
+                            setPipAssetId(data.mediaAssetIds?.[0] ?? null)
+                            setPipName(file.name)
+                            toast.success("Presenter clip ready")
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : "Upload failed")
+                          } finally {
+                            setUploadingPip(false)
+                          }
+                        }}
+                        className="w-full text-sm"
+                      />
+                      {pipAssetId ? (
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span className="truncate">Using: {pipName}</span>
+                          <select
+                            value={pipPosition}
+                            onChange={(e) => setPipPosition(e.target.value)}
+                            className="rounded-md border border-gray-600 bg-gray-800/50 p-1 text-xs text-gray-200"
+                          >
+                            <option value="bottom-right">Bottom right</option>
+                            <option value="bottom-left">Bottom left</option>
+                            <option value="top-right">Top right</option>
+                            <option value="top-left">Top left</option>
+                          </select>
+                          <button
+                            type="button"
+                            className="underline hover:text-foreground"
+                            onClick={() => { setPipAssetId(null); setPipName("") }}
+                          >
+                            remove
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          A clip of you (or the salesperson) overlaid in a corner for the whole
+                          video. Its sound is muted — record the voice as "My own recording" above.
+                        </p>
+                      )}
+                    </div>
 
                     {/* Generate Button */}
                     <Button

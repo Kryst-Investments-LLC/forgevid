@@ -34,9 +34,10 @@ export interface PersistUploadOptions {
   folder: string;
   /**
    * Cloudinary resource type. Audio uploads use 'video' (Cloudinary serves
-   * audio through its video pipeline); mixed/unknown content uses 'auto'.
+   * audio through its video pipeline); fonts and other opaque files use 'raw';
+   * mixed/unknown content uses 'auto'.
    */
-  resourceType: 'image' | 'video' | 'auto';
+  resourceType: 'image' | 'video' | 'raw' | 'auto';
 }
 
 /**

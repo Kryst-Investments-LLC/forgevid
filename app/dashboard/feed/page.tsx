@@ -52,6 +52,7 @@ export default function FeedToVideosPage() {
   const [langEn, setLangEn] = useState(true)
   const [langEs, setLangEs] = useState(false)
   const [voiceId, setVoiceId] = useState(DEFAULT_VOICE_ID)
+  const [captionPreset, setCaptionPreset] = useState<string>("default")
 
   const [previewing, setPreviewing] = useState(false)
   const [preview, setPreview] = useState<{ count: number; items: PreviewItem[] } | null>(null)
@@ -71,6 +72,7 @@ export default function FeedToVideosPage() {
 
   function collectBody(extra: Record<string, unknown>): Record<string, unknown> {
     const body: Record<string, unknown> = { duration, aspectRatio: aspect, voiceId, ...extra }
+    if (captionPreset !== "default") body.captionPreset = captionPreset
     if (mode === "url") {
       if (!feedUrl.trim()) throw new Error("Enter a feed URL, or switch to Paste data.")
       body.feedUrl = feedUrl.trim()
@@ -209,6 +211,16 @@ export default function FeedToVideosPage() {
                 </select>
                 <VoicePreviewButton voiceId={voiceId} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-200 block">Captions</label>
+              <select value={captionPreset} onChange={(e) => setCaptionPreset(e.target.value)}
+                className="bg-black/30 border border-white/10 text-white rounded-lg px-3 py-2 text-sm">
+                <option value="default" className="bg-gray-900">Standard</option>
+                <option value="karaoke" className="bg-gray-900">Karaoke — word-by-word (Reels/TikTok)</option>
+                <option value="large" className="bg-gray-900">Large</option>
+                <option value="subtle" className="bg-gray-900">Subtle</option>
+              </select>
             </div>
             {cfg.languages && (
               <div className="space-y-2">

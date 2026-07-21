@@ -54,11 +54,24 @@ function compressForWhisper(inputPath: string): string | null {
   return out;
 }
 
+export interface CaptionWord {
+  word: string;
+  /** Seconds from the start of the video. */
+  start: number;
+  end: number;
+}
+
 export interface CaptionCue {
   /** Seconds from the start of the video. */
   start: number;
   end: number;
   text: string;
+  /**
+   * Word-level timing inside this cue (Whisper word granularity). Present only
+   * on transcribed cues; scene-fallback cues have none. Powers the karaoke
+   * caption style — absent words degrade cleanly to static captions.
+   */
+  words?: CaptionWord[];
 }
 
 export interface CaptionStyle {
@@ -88,7 +101,16 @@ export const CAPTION_PRESETS: Record<string, CaptionStyle> = {
   default: { fontSize: 28, marginBottom: 60, maxCharsPerLine: 42 },
   large: { fontSize: 40, marginBottom: 80, maxCharsPerLine: 32 },
   subtle: { fontSize: 22, marginBottom: 40, maxCharsPerLine: 52 },
+  // Karaoke sizes itself from the frame (buildKaraokeAss); margin still applies.
+  karaoke: { marginBottom: 80 },
 };
+
+/** The caption looks a user can pick at generation time. */
+export type CaptionPresetName = 'default' | 'large' | 'subtle' | 'karaoke';
+
+export function isCaptionPreset(value: unknown): value is CaptionPresetName {
+  return value === 'default' || value === 'large' || value === 'subtle' || value === 'karaoke';
+}
 
 /**
  * Transcribe an audio file into timed cues with Whisper.
@@ -114,18 +136,38 @@ export async function transcribeToCues(audioPath: string): Promise<CaptionCue[] 
         file: fs.createReadStream(sendPath) as any,
         model: 'whisper-1',
         response_format: 'verbose_json',
+        // Word timing costs nothing extra and powers the karaoke caption style.
+        timestamp_granularities: ['word', 'segment'],
       });
     } finally {
       if (compressed) fs.rmSync(compressed, { force: true });
     }
 
     const segments = Array.isArray(result?.segments) ? result.segments : [];
-    const cues: CaptionCue[] = segments
-      .map((s: any) => ({
-        start: Number(s.start) || 0,
-        end: Number(s.end) || 0,
-        text: String(s.text ?? '').trim(),
+    const allWords: CaptionWord[] = (Array.isArray(result?.words) ? result.words : [])
+      .map((w: any) => ({
+        word: String(w.word ?? '').trim(),
+        start: Number(w.start) || 0,
+        end: Number(w.end) || 0,
       }))
+      .filter((w: CaptionWord) => w.word.length > 0);
+
+    const cues: CaptionCue[] = segments
+      .map((s: any) => {
+        const start = Number(s.start) || 0;
+        const end = Number(s.end) || 0;
+        // Assign each word to the segment its midpoint falls in.
+        const words = allWords.filter((w) => {
+          const mid = (w.start + w.end) / 2;
+          return mid >= start && mid < end;
+        });
+        return {
+          start,
+          end,
+          text: String(s.text ?? '').trim(),
+          ...(words.length > 0 ? { words } : {}),
+        };
+      })
       .filter((c: CaptionCue) => c.text.length > 0 && c.end > c.start);
 
     if (cues.length === 0) return null;
@@ -191,7 +233,20 @@ export function cuesFromScenes(
  */
 export function shiftCues(cues: CaptionCue[], offsetSeconds: number): CaptionCue[] {
   if (!offsetSeconds) return cues;
-  return cues.map((c) => ({ ...c, start: c.start + offsetSeconds, end: c.end + offsetSeconds }));
+  return cues.map((c) => ({
+    ...c,
+    start: c.start + offsetSeconds,
+    end: c.end + offsetSeconds,
+    ...(c.words
+      ? {
+          words: c.words.map((w) => ({
+            ...w,
+            start: w.start + offsetSeconds,
+            end: w.end + offsetSeconds,
+          })),
+        }
+      : {}),
+  }));
 }
 
 /** Greedy word wrap so long cues don't run off the frame. */
@@ -346,6 +401,103 @@ export function cuesToVtt(cues: CaptionCue[]): string {
       .join('\n\n') +
     '\n'
   );
+}
+
+/** ASS timestamps use centiseconds: h:mm:ss.cc */
+function fmtAssTime(seconds: number): string {
+  const clamped = Math.max(0, seconds);
+  const h = Math.floor(clamped / 3600);
+  const m = Math.floor((clamped % 3600) / 60);
+  const s = Math.floor(clamped % 60);
+  const cs = Math.round((clamped - Math.floor(clamped)) * 100);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${h}:${pad(m)}:${pad(s)}.${pad(cs)}`;
+}
+
+/** #RRGGBB -> ASS &HAABBGGRR (note: ASS is BGR). Falls back on bad input. */
+function hexToAss(hex: string | undefined, fallback: string): string {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex ?? '');
+  if (!m) return fallback;
+  const rr = m[1].slice(0, 2);
+  const gg = m[1].slice(2, 4);
+  const bb = m[1].slice(4, 6);
+  return `&H00${bb}${gg}${rr}`.toUpperCase();
+}
+
+export interface KaraokeOptions {
+  /** Output frame size — ASS positions/sizes are in these coordinates. */
+  width: number;
+  height: number;
+  /** Highlight colour for the active word (#RRGGBB). Default: gold. */
+  highlightColor?: string;
+  /** Distance from the bottom of the frame, in pixels. */
+  marginBottom?: number;
+  fontSize?: number;
+}
+
+/**
+ * Word-by-word "karaoke" captions as an ASS file for the `subtitles` filter.
+ *
+ * Reels/TikTok-style: bold centered lines where each word lights up exactly as
+ * it is spoken, driven by Whisper's word timestamps. ASS `\k` tags flip a word
+ * from SecondaryColour (white) to PrimaryColour (the highlight) natively in
+ * libass, so the whole animation costs ONE subtitles filter — no drawtext
+ * explosion, no per-word filter graph.
+ *
+ * Cues without word timing (scene-fallback captions) are rendered as plain
+ * static lines in the same style, so a partial transcription still ships.
+ */
+export function buildKaraokeAss(cues: CaptionCue[], opts: KaraokeOptions): string {
+  const fontSize = opts.fontSize ?? Math.round(opts.height * 0.055);
+  const marginV = opts.marginBottom ?? Math.round(opts.height * 0.08);
+  const marginH = Math.round(opts.width * 0.06);
+  const highlight = hexToAss(opts.highlightColor, '&H0000D7FF'); // gold FFD700 in BGR
+
+  // \k measures from the END of the previous tag, so each word's duration runs
+  // to the NEXT word's start — gaps between words stay highlighted rather than
+  // flickering back and forth.
+  const sanitize = (t: string) => t.replace(/[{}\\]/g, '').trim();
+
+  const events = cues
+    .map((cue) => {
+      const words = (cue.words ?? []).filter((w) => sanitize(w.word).length > 0);
+      if (words.length === 0) {
+        const text = sanitize(cue.text);
+        if (!text) return null;
+        return `Dialogue: 0,${fmtAssTime(cue.start)},${fmtAssTime(cue.end)},Karaoke,,0,0,0,,${text}`;
+      }
+      const start = words[0].start;
+      const end = Math.max(cue.end, words[words.length - 1].end);
+      const body = words
+        .map((w, i) => {
+          const until = i + 1 < words.length ? words[i + 1].start : end;
+          const cs = Math.max(1, Math.round((until - w.start) * 100));
+          return `{\\k${cs}}${sanitize(w.word)}`;
+        })
+        .join(' ');
+      return `Dialogue: 0,${fmtAssTime(start)},${fmtAssTime(end)},Karaoke,,0,0,0,,${body}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  return [
+    '[Script Info]',
+    'ScriptType: v4.00+',
+    `PlayResX: ${opts.width}`,
+    `PlayResY: ${opts.height}`,
+    'WrapStyle: 0',
+    'ScaledBorderAndShadow: yes',
+    '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    // Primary = the ACTIVE (already-sung) colour, Secondary = upcoming words.
+    `Style: Karaoke,DejaVu Sans,${fontSize},${highlight},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,${marginH},${marginH},${marginV},1`,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+    events,
+    '',
+  ].join('\n');
 }
 
 /**

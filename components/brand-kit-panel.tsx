@@ -86,6 +86,23 @@ export function BrandKitPanel() {
     }
   }
 
+  const uploadFont = async (file: File) => {
+    setUploading(true)
+    try {
+      const body = new FormData()
+      body.append("file", file)
+      const res = await fetch("/api/brand-kit/font", { method: "POST", body })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "Font upload failed")
+      patch({ fontFamily: data.url })
+      toast.success("Font uploaded — remember to save")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Font upload failed")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const save = async () => {
     if (kit.primaryColor && !isHex(kit.primaryColor)) {
       toast.error("Caption colour must be a hex value like #38bdf8")
@@ -253,15 +270,33 @@ export function BrandKitPanel() {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="fontFamily">Caption font file</Label>
+              <Label htmlFor="brandFont">Caption font</Label>
               <Input
-                id="fontFamily"
-                placeholder="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-                value={kit.fontFamily ?? ""}
-                onChange={(e) => patch({ fontFamily: e.target.value || null })}
+                id="brandFont"
+                type="file"
+                accept=".ttf,.otf"
+                disabled={uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ""
+                  if (file) void uploadFont(file)
+                }}
               />
+              {kit.fontFamily && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="truncate">Using: {kit.fontFamily.split("/").pop()}</span>
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground"
+                    onClick={() => patch({ fontFamily: null })}
+                  >
+                    remove
+                  </button>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
-                Absolute path to a .ttf on the render host. Falls back to the system font.
+                Upload a .ttf or .otf — your typeface on captions and lower thirds. Falls back
+                to the system font.
               </p>
             </div>
           </div>

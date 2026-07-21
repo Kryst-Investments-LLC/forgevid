@@ -58,6 +58,7 @@ const bodySchema = z
     aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
     voiceId: z.string().optional(),
     renderQuality: z.enum(['draft', 'full', '4k']).default('full'),
+    captionPreset: z.enum(['default', 'large', 'subtle', 'karaoke']).optional(),
     // Parse + count only; don't render or touch quota.
     preview: z.boolean().optional(),
   })
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const { csv, feedUrl, duration, aspectRatio, voiceId, renderQuality } = parsed.data;
+  const { csv, feedUrl, duration, aspectRatio, voiceId, renderQuality, captionPreset } = parsed.data;
 
   let listings: Listing[];
   try {
@@ -182,6 +183,7 @@ export async function POST(req: NextRequest) {
       // The listing shows THIS house. Never pad it with stock footage.
       mediaOnly: true,
       renderQuality,
+      captionPreset,
       // The price is the reason anyone watches a listing video. Burn it in.
       lowerThird: {
         title: listing.address,
