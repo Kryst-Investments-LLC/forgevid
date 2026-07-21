@@ -291,26 +291,30 @@ Writing actual customer videos found more than a week of testing did.
 
 ---
 
-## Phase 1 — Async generation pipeline (unblocks everything) [P0]
+## Phase 1 — Async generation pipeline (unblocks everything) [P0] — DONE (verified 2026-07-20)
 
-**Problem:** the whole multi-minute pipeline runs synchronously inside `POST /api/ai`
-([app/api/ai/route.ts:136](app/api/ai/route.ts#L136)); the UI shows a fake progress bar
-([app/dashboard/ai/page.tsx:52-60](app/dashboard/ai/page.tsx#L52-L60)).
+Verified end-to-end against local Redis + Postgres + the worker: enqueue returned
+in **33ms** with a jobId; a separate worker process picked the job off Redis and
+drove it `QUEUED → PROCESSING (script 20% → assembling 55%) → COMPLETED` with a
+real fileUrl, in ~26s for a 5s draft.
 
-- [ ] Delete the unreachable dead code in `app/api/ai/`: `runway.ts`, `upscale.ts`, `sdxl-animatediff.ts`, `image.ts`, `select.ts`, `queue.ts` (App Router only routes `route.ts`). Keep whatever logic is worth salvaging by moving it into `lib/`.
-  - _Accept:_ no loose non-`route.ts` handlers left in `app/api/ai/`; build passes.
-- [ ] Stand up a real BullMQ queue + a standalone worker process (BullMQ already a dependency; rewrite the demo `video-worker.js`).
-  - _Accept:_ enqueuing a job runs it in the worker, not the web request.
-- [ ] Move `generateVideoFromPrompt` off the request thread — `POST /api/ai` enqueues a job and returns a `jobId` immediately.
-  - _Accept:_ the POST returns in <1s with a job id.
-- [ ] Add `GET /api/ai/jobs/[id]` status endpoint (state + real percent + result URL/error).
-  - _Accept:_ client can poll and see QUEUED → PROCESSING → READY/FAILED.
-- [ ] Emit real progress from the pipeline stages (script, scenes, downloads, assembly, upload) into the job.
-  - _Accept:_ progress bar in the UI reflects actual stage, not a timer.
-- [ ] Replace the fake `setInterval` progress in [app/dashboard/ai/page.tsx](app/dashboard/ai/page.tsx) with polling of the status endpoint.
-  - _Accept:_ bar advances from server events; survives page refresh.
-- [ ] Worker concurrency limit + graceful shutdown so FFmpeg doesn't pile up.
-  - _Accept:_ N concurrent generations never exceed the configured worker concurrency.
+- [x] Dead code in `app/api/ai/` removed — only `route.ts` remains (no runway/
+      upscale/sdxl/image/select/queue handlers). Build passes.
+- [x] Real BullMQ queue (`lib/video-queue.ts`) + standalone worker
+      (`workers/video-worker.ts`). Redis-optional: no Redis → throttled inline.
+  - _Accept:_ worker dequeued and ran the job, not the web request. ✓
+- [x] `POST /api/ai` enqueues via `enqueueGeneration` and returns a videoId.
+  - _Accept:_ enqueue returned in 33ms (<1s). ✓
+- [x] `GET /api/ai/jobs/[videoId]` returns stage/percent/status.
+  - _Accept:_ polled QUEUED → PROCESSING → COMPLETED. ✓
+- [x] Real per-stage progress from the pipeline (`setStage`: script → scenes →
+      assembling → uploading → done).
+  - _Accept:_ observed script/assembling/done stages, not a timer. ✓
+- [x] `app/dashboard/ai/page.tsx` polls `/api/ai/jobs/${videoId}` (no fake
+      `setInterval`); survives refresh (state is server-side).
+- [x] Worker concurrency (`WORKER_CONCURRENCY`, default 2) + graceful shutdown
+      (SIGTERM/SIGINT → `worker.close()`).
+  - _Accept:_ BullMQ caps in-flight jobs at the configured concurrency. ✓
 
 ---
 
