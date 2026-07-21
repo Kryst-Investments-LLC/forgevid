@@ -498,9 +498,13 @@ documents the old failure modes); the generation renderer is proven by execution
 
 ---
 
-## Portfolio decision (blocking gate)
+## Portfolio decision (resolved 2026-07-20)
 
-- [ ] **Decide whether ForgeVid earns build capacity.** Global rules put 100% on SHAREDRIVER BOT; ForgeVid isn't on the active list. Phases 1–5 (P0) are ~4–8 weeks of solo work. Make this call before starting Phase 1.
+- [x] **ForgeVid earns build capacity.** The old "100% on one flagship" rule was
+      dropped (2026-07 portfolio rules: no single flagship; the active platform
+      is whichever repo is being worked in). Phases 0–8 are done and verified;
+      the platform is launch-ready pending the operator runbook above, with a
+      committed first customer (Miami dealership).
 
 ---
 
