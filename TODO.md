@@ -318,19 +318,22 @@ real fileUrl, in ~26s for a 5s draft.
 
 ---
 
-## Phase 2 — Persist generations as real Videos [P0]
+## Phase 2 — Persist generations as real Videos [P0] — DONE (verified 2026-07-20)
 
-**Problem:** generation writes an `AIGeneration` row but never a `Video`; `POST /api/videos` returns 501
-([app/api/videos/route.ts:75](app/api/videos/route.ts#L75)).
+Verified against the live DB: 51 COMPLETED videos; recent rows (including two
+processed by the worker during the Phase 1 test) all have `fileUrl`,
+`resolution=1920x1080`, and `thumbnail` set.
 
-- [ ] Create a `Video` record at job enqueue with status transitions (add `QUEUED`/`FAILED` to `VideoStatus` if missing).
-  - _Accept:_ every generation appears in "My Videos" immediately with a live status.
-- [ ] On success, store the final Cloudinary URL, duration, resolution, thumbnail on the `Video`.
-  - _Accept:_ generated video is downloadable after the 24h temp cleanup.
-- [ ] Implement `POST /api/videos` (currently 501) or remove it and document the generation entrypoint.
-  - _Accept:_ no route returns 501 in the happy path.
-- [ ] Generate + store a thumbnail (FFmpeg frame grab) for the grid.
-  - _Accept:_ "My Videos" shows a real thumbnail, not a placeholder.
+- [x] `Video` row created at enqueue; `VideoStatus` has QUEUED/FAILED (+ DRAFT/
+      CANCELLED). Observed live: QUEUED → PROCESSING → COMPLETED.
+- [x] On success the pipeline stores fileUrl, `${width}x${height}` resolution,
+      and thumbnail (generation-pipeline.ts ~374/488). Cloudinary URL when
+      `CLOUDINARY_*` is configured (prod); local path otherwise (dev).
+- [x] `POST /api/videos` no longer 501 — creates a DRAFT editor project (201),
+      with the generation entrypoint (`POST /api/ai`) documented in its comment.
+- [x] Thumbnail = real ffmpeg frame grab (`extractThumbnail`,
+      video-generator.ts:1447) uploaded to `forgevid/thumbnails`; best-effort so
+      a missing thumb never fails a generation. DB rows confirm `thumbnail=SET`.
 
 ---
 
