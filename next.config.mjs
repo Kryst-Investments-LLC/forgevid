@@ -25,6 +25,10 @@ function buildExternalRewrites() {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Emit a self-contained server bundle (.next/standalone) so the Docker runtime
+  // stage can `COPY .next/standalone` and run `node server.js` without node_modules.
+  // Required by the Dockerfile; do NOT remove.
+  output: 'standalone',
   eslint: {
     ignoreDuringBuilds: false,
   },
