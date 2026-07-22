@@ -12,7 +12,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const videos = await prisma.video.findMany({
+    const rows = await prisma.video.findMany({
       where: { userId: session.user.id },
       orderBy: { createdAt: 'desc' },
       take: 50,
@@ -24,10 +24,18 @@ export async function GET() {
         thumbnail: true,
         duration: true,
         fileSize: true,
+        url: true,
+        fileUrl: true,
         createdAt: true,
         updatedAt: true
       }
     });
+    // fileSize is a BigInt column and JSON cannot serialize BigInt, so coerce it
+    // to a Number (byte counts are well within Number's safe integer range).
+    const videos = rows.map((v) => ({
+      ...v,
+      fileSize: v.fileSize != null ? Number(v.fileSize) : null,
+    }));
     return NextResponse.json({ videos });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch videos' }, { status: 500 });

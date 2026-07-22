@@ -221,9 +221,6 @@ export default function TemplatesPage() {
             title: selectedTemplate.name || selectedTemplate.title,
             duration: selectedTemplate.duration || 0,
             thumbnail: selectedTemplate.thumbnail,
-            views: selectedTemplate.usageCount || 0,
-            size: "",
-            format: "MP4"
           }}
           isOpen={isPreviewOpen}
           onClose={handleClosePreview}

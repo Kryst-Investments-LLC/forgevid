@@ -1,0 +1,29 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+// DELETE a single video the caller owns. Used by the My Videos library.
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { videoId: string } },
+) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+  }
+
+  const video = await prisma.video.findUnique({
+    where: { id: params.videoId },
+    select: { id: true, userId: true },
+  })
+  if (!video) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+  if (video.userId !== session.user.id) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  await prisma.video.delete({ where: { id: params.videoId } })
+  return NextResponse.json({ ok: true })
+}

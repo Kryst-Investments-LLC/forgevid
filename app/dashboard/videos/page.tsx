@@ -1,331 +1,306 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  Play, 
-  Pause, 
-  Download, 
-  Share2, 
-  Trash2, 
-  Plus, 
-  Search, 
-  Filter,
-  MoreVertical,
-  Clock,
-  Eye,
-  Calendar
-} from "lucide-react"
-import { useState } from "react"
-import { useSubscription } from "@/hooks/use-subscription-simple"
+import { Play, Download, Share2, Trash2, Plus, Search, Clock, Eye, Calendar, Loader2 } from "lucide-react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { VideoPlayerModal } from "@/components/video-player-modal"
 
-const mockVideos = [
-  {
-    id: "vid_1",
-    title: "Product Demo 2024",
-    thumbnail: "/placeholder.svg?key=demo",
-    duration: "2:34",
-    status: "completed",
-    createdAt: "2024-03-15",
-    views: 1247,
-    size: "156 MB",
-    format: "MP4"
-  },
-  {
-    id: "vid_2", 
-    title: "Marketing Campaign Video",
-    thumbnail: "/placeholder.svg?key=marketing",
-    duration: "1:45",
-    status: "processing",
-    createdAt: "2024-03-14",
-    views: 892,
-    size: "98 MB",
-    format: "MP4"
-  },
-  {
-    id: "vid_3",
-    title: "Tutorial Series Intro",
-    thumbnail: "/placeholder.svg?key=tutorial",
-    duration: "3:21",
-    status: "completed",
-    createdAt: "2024-03-12",
-    views: 2156,
-    size: "245 MB",
-    format: "MP4"
+interface VideoRow {
+  id: string
+  title: string
+  description?: string | null
+  status: string
+  thumbnail?: string | null
+  duration?: number | null
+  fileSize?: number | null
+  url?: string | null
+  fileUrl?: string | null
+  createdAt: string
+  updatedAt?: string
+}
+
+function formatDuration(sec?: number | null): string {
+  if (sec == null) return ""
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${m}:${s.toString().padStart(2, "0")}`
+}
+
+function formatBytes(bytes?: number | null): string {
+  if (!bytes) return "—"
+  const mb = bytes / (1024 * 1024)
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(0)} MB`
+}
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+  } catch {
+    return ""
   }
-]
+}
+
+function playableUrl(v: VideoRow): string | null {
+  return v.fileUrl || v.url || null
+}
 
 export default function VideosPage() {
+  const [videos, setVideos] = useState<VideoRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTab, setSelectedTab] = useState("all")
-  const [selectedVideo, setSelectedVideo] = useState<typeof mockVideos[0] | null>(null)
+  const [selectedVideo, setSelectedVideo] = useState<VideoRow | null>(null)
   const [isPlayerOpen, setIsPlayerOpen] = useState(false)
-  const { hasFeature } = useSubscription()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const filteredVideos = mockVideos.filter(video => {
-    const matchesSearch = video.title.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesTab = selectedTab === "all" || video.status === selectedTab
+  const loadVideos = useCallback(async () => {
+    try {
+      const res = await fetch("/api/videos")
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && Array.isArray(data.videos)) setVideos(data.videos)
+    } catch {
+      /* leave list empty on failure */
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadVideos()
+  }, [loadVideos])
+
+  const filteredVideos = videos.filter((v) => {
+    const matchesSearch = (v.title || "").toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesTab = selectedTab === "all" || (v.status || "").toLowerCase() === selectedTab
     return matchesSearch && matchesTab
   })
 
-  const handleVideoAction = (action: string, videoId: string) => {
-  // Removed debug log for production
-    
-    // Find the video by ID
-    const video = mockVideos.find(v => v.id === videoId)
-    
-    // Provide user feedback for actions
-    switch(action) {
-      case 'play':
-        if (video) {
-          setSelectedVideo(video)
-          setIsPlayerOpen(true)
-        }
-        break;
-      case 'share':
-        navigator.clipboard?.writeText(`http://localhost:3000/video/${videoId}`)
-        alert('Video link copied to clipboard!')
-        break;
-      case 'download':
-        alert(`Starting download for video: ${videoId}`)
-        // TODO: Implement actual download
-        break;
-      case 'delete':
-        if (confirm('Are you sure you want to delete this video?')) {
-          alert(`Video ${videoId} would be deleted`)
-          // TODO: Implement actual deletion
-        }
-        break;
-      default:
-        // Unknown action: no-op
-    }
-  }
+  const totalStorage = videos.reduce((sum, v) => sum + (v.fileSize || 0), 0)
+  const completedCount = videos.filter((v) => (v.status || "").toLowerCase() === "completed").length
+  const processingCount = videos.filter((v) => (v.status || "").toLowerCase() === "processing").length
 
-  const handleVideoClick = (video: typeof mockVideos[0]) => {
+  const openPlayer = (video: VideoRow) => {
+    if (!playableUrl(video)) return
     setSelectedVideo(video)
     setIsPlayerOpen(true)
   }
 
-  const handleClosePlayer = () => {
-    setIsPlayerOpen(false)
-    setSelectedVideo(null)
+  const downloadVideo = (v: VideoRow) => {
+    const u = playableUrl(v)
+    if (!u) return
+    const a = document.createElement("a")
+    a.href = u
+    a.download = `${v.title || "video"}.mp4`
+    a.target = "_blank"
+    a.rel = "noopener"
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
   }
 
-  const handleUploadVideo = () => {
-    // Create a file input and trigger it
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'video/*'
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0]
-      if (file) {
-        alert(`Selected file: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`)
-        // TODO: Implement actual upload to /api/videos
-      }
+  const shareVideo = async (v: VideoRow) => {
+    const u = playableUrl(v)
+    if (!u) return
+    try {
+      await navigator.clipboard.writeText(u)
+      alert("Video link copied to clipboard!")
+    } catch {
+      alert(u)
     }
-    input.click()
   }
+
+  const deleteVideo = async (v: VideoRow) => {
+    if (!confirm(`Delete "${v.title}"? This cannot be undone.`)) return
+    try {
+      const res = await fetch(`/api/videos/${v.id}`, { method: "DELETE" })
+      if (res.ok) {
+        setVideos((prev) => prev.filter((x) => x.id !== v.id))
+      } else {
+        const data = await res.json().catch(() => ({}))
+        alert(data.error || "Could not delete the video.")
+      }
+    } catch {
+      alert("Network error while deleting.")
+    }
+  }
+
+  const onUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      form.append("title", file.name.replace(/\.[^.]+$/, ""))
+      const res = await fetch("/api/videos/upload", { method: "POST", body: form })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(data.error || "Upload failed.")
+        return
+      }
+      await loadVideos()
+    } catch {
+      alert("Network error during upload.")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div className="min-h-[600px]">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="font-heading text-3xl font-bold">My Videos</h1>
-              <p className="text-muted-foreground mt-1">Manage and organize your video content</p>
-            </div>
+      <input ref={fileInputRef} type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" onChange={onUploadFile} />
 
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search videos..."
-                  className="pl-10 w-64"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="font-heading text-3xl font-bold">My Videos</h1>
+          <p className="text-muted-foreground mt-1">Every video you generate lands here</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search videos..." className="pl-10 w-64" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          </div>
+          <Button onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+            {uploading ? "Uploading…" : "Upload Video"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Cards — real */}
+      <div className="grid md:grid-cols-4 gap-6 mb-8">
+        <Card className="min-h-[110px]">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Total Videos</p>
+                <p className="text-2xl font-bold">{videos.length}</p>
               </div>
-              <Button onClick={handleUploadVideo}>
-                <Plus className="h-4 w-4 mr-2" />
-                Upload Video
-              </Button>
+              <Play className="h-8 w-8 text-primary" />
             </div>
-          </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Completed</p>
+                <p className="text-2xl font-bold">{completedCount}</p>
+              </div>
+              <Eye className="h-8 w-8 text-green-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Storage Used</p>
+                <p className="text-2xl font-bold">{formatBytes(totalStorage)}</p>
+              </div>
+              <Download className="h-8 w-8 text-blue-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Processing</p>
+                <p className="text-2xl font-bold">{processingCount}</p>
+              </div>
+              <Clock className="h-8 w-8 text-orange-500" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-          {/* Stats Cards */}
-          <div className="grid md:grid-cols-4 gap-6 mb-8">
-            <Card className="min-h-[110px] min-w-[200px]">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Total Videos</p>
-                    <p className="text-2xl font-bold">12</p>
-                  </div>
-                  <Play className="h-8 w-8 text-primary" />
-                </div>
-              </CardContent>
-            </Card>
+      {/* Video Tabs */}
+      <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="all">All Videos</TabsTrigger>
+          <TabsTrigger value="completed">Completed</TabsTrigger>
+          <TabsTrigger value="processing">Processing</TabsTrigger>
+          <TabsTrigger value="draft">Drafts</TabsTrigger>
+        </TabsList>
 
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Total Views</p>
-                    <p className="text-2xl font-bold">8.2K</p>
-                  </div>
-                  <Eye className="h-8 w-8 text-green-500" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Storage Used</p>
-                    <p className="text-2xl font-bold">2.1 GB</p>
-                  </div>
-                  <div className="text-xs text-muted-foreground">of 10 GB</div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Processing</p>
-                    <p className="text-2xl font-bold">1</p>
-                  </div>
-                  <Clock className="h-8 w-8 text-orange-500" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Video Tabs */}
-          <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="all">All Videos</TabsTrigger>
-              <TabsTrigger value="completed">Completed</TabsTrigger>
-              <TabsTrigger value="processing">Processing</TabsTrigger>
-              <TabsTrigger value="draft">Drafts</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value={selectedTab}>
-              {/* Video Grid */}
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredVideos.map((video) => (
-                  <Card key={video.id} className="group hover:shadow-lg transition-shadow cursor-pointer">
-                    <div className="relative" onClick={() => handleVideoClick(video)}>
-                      <img
-                        src={video.thumbnail}
-                        alt={video.title}
-                        className="w-full h-48 object-cover rounded-t-lg"
-                      />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-t-lg flex items-center justify-center">
-                        <Button 
-                          variant="secondary"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleVideoAction('play', video.id)
-                          }}
-                        >
-                          <Play className="h-4 w-4 mr-1" />
-                          Play
-                        </Button>
-                      </div>
-                          <img
-                            src={video.thumbnail}
-                            alt={video.title}
-                            className="w-full h-48 object-cover rounded-t-lg"
-                          />
-                          <Badge 
-                            className="absolute top-2 right-2"
-                            variant={video.status === 'completed' ? 'default' : 'secondary'}
-                          >
-                            {video.status}
-                          </Badge>
-                          <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded">
-                            {video.duration}
-                          </div>
+        <TabsContent value={selectedTab}>
+          {loading ? (
+            <div className="flex items-center justify-center py-16 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading your videos…
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredVideos.map((video) => {
+                const url = playableUrl(video)
+                return (
+                  <Card key={video.id} className="group hover:shadow-lg transition-shadow">
+                    <div className="relative cursor-pointer" onClick={() => openPlayer(video)}>
+                      {video.thumbnail ? (
+                        <img src={video.thumbnail} alt={video.title} className="w-full h-48 object-cover rounded-t-lg" />
+                      ) : (
+                        <div className="w-full h-48 rounded-t-lg bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                          <Play className="h-10 w-10 text-white/70" />
+                        </div>
+                      )}
+                      {url && (
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-t-lg flex items-center justify-center">
+                          <Button variant="secondary"><Play className="h-4 w-4 mr-1" /> Play</Button>
+                        </div>
+                      )}
+                      <Badge className="absolute top-2 right-2" variant={(video.status || "").toLowerCase() === "completed" ? "default" : "secondary"}>
+                        {(video.status || "").toLowerCase()}
+                      </Badge>
+                      {video.duration != null && (
+                        <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded">{formatDuration(video.duration)}</div>
+                      )}
                     </div>
 
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <h3 className="font-semibold line-clamp-2 mb-2">{video.title}</h3>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-4 w-4" />
-                              {video.createdAt}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Eye className="h-4 w-4" />
-                              {video.views.toLocaleString()}
-                            </div>
+                            <div className="flex items-center gap-1"><Calendar className="h-4 w-4" />{formatDate(video.createdAt)}</div>
                           </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {video.size} • {video.format}
-                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">{formatBytes(video.fileSize)}</div>
                         </div>
-
                         <div className="flex items-center gap-1 ml-2">
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleVideoAction('share', video.id)}
-                          >
-                            <Share2 className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleVideoAction('download', video.id)}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleVideoAction('delete', video.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <Button variant="ghost" size="sm" disabled={!url} onClick={() => shareVideo(video)}><Share2 className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="sm" disabled={!url} onClick={() => downloadVideo(video)}><Download className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="sm" onClick={() => deleteVideo(video)}><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
-                ))}
-              </div>
+                )
+              })}
+            </div>
+          )}
 
-              {/* Empty State */}
-              {filteredVideos.length === 0 && (
-                <div className="text-center py-12">
-                  <Play className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No videos found</h3>
-                  <p className="text-muted-foreground mb-4">
-                    {searchQuery ? "Try adjusting your search terms" : "Upload your first video to get started"}
-                  </p>
-                  <Button onClick={handleUploadVideo}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Upload Video
-                  </Button>
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
+          {/* Empty State */}
+          {!loading && filteredVideos.length === 0 && (
+            <div className="text-center py-12">
+              <Play className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No videos yet</h3>
+              <p className="text-muted-foreground mb-4">
+                {searchQuery ? "Try adjusting your search." : "Generate your first video in AI Studio and it will show up here."}
+              </p>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {/* Video Player Modal */}
       {selectedVideo && (
-        <VideoPlayerModal 
-          video={selectedVideo}
-          isOpen={isPlayerOpen}
-          onClose={handleClosePlayer}
-        />
+        <VideoPlayerModal video={selectedVideo} isOpen={isPlayerOpen} onClose={() => { setIsPlayerOpen(false); setSelectedVideo(null) }} />
       )}
     </div>
   )
