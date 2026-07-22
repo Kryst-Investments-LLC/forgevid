@@ -45,6 +45,10 @@ WORKDIR /app
 
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
+# Force the system ffmpeg (Alpine 6.x — has sidechaincompress/drawtext/xfade/
+# zoompan). Without this, lib/ffmpeg-env falls back to a limited/older build and
+# the final render errors "Filter not found" on the audio-ducking filter.
+ENV FFMPEG_PATH=/usr/bin/ffmpeg
 
 # Create a non-root user
 RUN addgroup --system --gid 1001 nodejs
