@@ -8,7 +8,6 @@ import {
   Layout,
   ImageIcon,
   Settings,
-  Users,
   BarChart3,
   HelpCircle,
   LogOut,
@@ -30,7 +29,6 @@ const navigation = [
   { name: "Media Library", href: "/dashboard/media", icon: ImageIcon },
   { name: "AI Studio", href: "/dashboard/ai", icon: Sparkles, badge: "New" },
   { name: "Feed → Videos", href: "/dashboard/feed", icon: Rss, badge: "New" },
-  { name: "Collaboration", href: "/dashboard/collaborate", icon: Users },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
 ]
 

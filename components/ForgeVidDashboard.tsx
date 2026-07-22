@@ -6,23 +6,14 @@ import { FiSearch, FiPlus } from "react-icons/fi";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import { EditorProvider } from "@/lib/editor-context";
-const AIEditingPanel = dynamic(() => import("./ai-editing-panel"), { 
+// Only real, working panels are shown. AIEditingPanel (fake analysis + dead
+// edit URLs), TemplatesMediaPanel (mock catalog) and VideoPreview (no real
+// player) were scaffold and are removed until built for real.
+const StoryboardingPanel = dynamic(() => import("./storyboarding-panel"), {
   ssr: false,
   loading: () => <div className="h-[400px] bg-gray-800/20 rounded-lg animate-pulse" />
 });
-const StoryboardingPanel = dynamic(() => import("./storyboarding-panel"), { 
-  ssr: false,
-  loading: () => <div className="h-[400px] bg-gray-800/20 rounded-lg animate-pulse" />
-});
-const TemplatesMediaPanel = dynamic(() => import("./templates-media-panel"), { 
-  ssr: false,
-  loading: () => <div className="h-[600px] bg-gray-800/20 rounded-lg animate-pulse" />
-});
-const VideoPreview = dynamic(() => import("./video-preview"), { 
-  ssr: false,
-  loading: () => <div className="h-[300px] bg-gray-800/20 rounded-lg animate-pulse" />
-});
-const VoiceToVideoPanel = dynamic(() => import("./voice-to-video-panel"), { 
+const VoiceToVideoPanel = dynamic(() => import("./voice-to-video-panel"), {
   ssr: false,
   loading: () => <div className="h-[500px] bg-gray-800/20 rounded-lg animate-pulse" />
 });
@@ -145,10 +136,7 @@ export default function ForgeVidDashboard() {
             </div>
             <EditorProvider>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" style={{minHeight: '400px'}}>
-                <AIEditingPanel />
                 <StoryboardingPanel />
-                <TemplatesMediaPanel />
-                <VideoPreview />
                 <VoiceToVideoPanel />
               </div>
             </EditorProvider>

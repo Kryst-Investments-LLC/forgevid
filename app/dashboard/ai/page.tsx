@@ -217,9 +217,8 @@ export default function AIFeaturesPage() {
               </TabsTrigger>
               <TabsTrigger value="create">AI Creator</TabsTrigger>
               <TabsTrigger value="avatar">AI Presenter</TabsTrigger>
-              <TabsTrigger value="emotion">Emotion AI</TabsTrigger>
-              <TabsTrigger value="recommendations">Smart Suggestions</TabsTrigger>
-              <TabsTrigger value="analytics">AI Analytics</TabsTrigger>
+              {/* Emotion AI / Smart Suggestions / AI Analytics tabs removed —
+                  they showed static/fabricated numbers, not real analysis. */}
             </TabsList>
 
             {/* AI Chat Tab */}

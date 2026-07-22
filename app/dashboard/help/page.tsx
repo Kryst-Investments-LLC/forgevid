@@ -77,10 +77,10 @@ function HelpPage() {
   };
 
   const faqItems = [
-    { question: "How do I create my first AI-generated video?", answer: "Open the Creator Hub and select 'New Video'. Our neural assistant will guide you.", category: "Getting Started" },
-    { question: "Can I generate 3D or holographic content?", answer: "Yes. Premium tiers include volumetric rendering with holographic export support.", category: "AI Features" },
-    { question: "How does ForgeVid adapt to my creative style?", answer: "The AI learns from your projects and recommends matching themes, tones, and transitions.", category: "AI Features" },
-    { question: "Can I collaborate in real time with AR co-editing?", answer: "Absolutely. Use AR Collaboration mode to sync with teammates in shared holographic sessions.", category: "Collaboration" },
+    { question: "How do I create my first AI-generated video?", answer: "Open AI Studio and use the AI Creator (or describe your idea to the AI Video Assistant). It turns your prompt into a script, voiceover, footage and a finished video.", category: "Getting Started" },
+    { question: "What video formats and lengths can I make?", answer: "Vertical (9:16) for TikTok/Reels/Shorts, square and landscape, up to your plan's max duration. Downloads are standard MP4 (H.264).", category: "Getting Started" },
+    { question: "How does ForgeVid build the video?", answer: "It writes a script from your prompt, generates a voiceover, pulls matching stock footage, and renders it together — you can refine scenes in the Scene Editor before finishing.", category: "AI Features" },
+    { question: "Where do my generated videos go?", answer: "Every video you generate is saved to My Videos, where you can play, download, or delete it.", category: "AI Features" },
   ];
 
   const filteredFAQ = faqItems.filter((item) =>
@@ -152,11 +152,11 @@ function HelpPage() {
 
         {/* Tabs */}
         <Tabs defaultValue="faq" className="space-y-10">
-          <TabsList className="grid w-full grid-cols-4 bg-white/10 backdrop-blur-xl rounded-xl border border-white/10">
+          <TabsList className="grid w-full grid-cols-3 bg-white/10 backdrop-blur-xl rounded-xl border border-white/10">
             <TabsTrigger value="faq">FAQ</TabsTrigger>
             <TabsTrigger value="support">Support</TabsTrigger>
             <TabsTrigger value="status">Status</TabsTrigger>
-            <TabsTrigger value="resources">Resources</TabsTrigger>
+            {/* Resources tab removed — it had no content (blank pane). */}
           </TabsList>
 
           {/* FAQ Section */}
