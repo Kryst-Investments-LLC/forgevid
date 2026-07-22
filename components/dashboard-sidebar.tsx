@@ -20,6 +20,8 @@ import {
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { useSession, signOut } from "next-auth/react"
+import { useEffect, useState } from "react"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
@@ -38,8 +40,47 @@ const bottomNavigation = [
   { name: "Help & Support", href: "/dashboard/help", icon: HelpCircle },
 ]
 
+const PLAN_LABELS: Record<string, string> = {
+  free: "Free",
+  starter: "Starter",
+  pro: "Pro",
+  enterprise: "Enterprise",
+}
+
+/** First letters of the name (or the email local-part) for the avatar fallback. */
+function initialsFrom(name?: string | null, email?: string | null): string {
+  const source = (name || email?.split("@")[0] || "").trim()
+  if (!source) return "U"
+  const parts = source.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+  return source.slice(0, 2).toUpperCase()
+}
+
 export function DashboardSidebar() {
   const pathname = usePathname()
+  const { data: session } = useSession()
+  const [planId, setPlanId] = useState<string | null>(null)
+
+  // The real plan comes from the Subscription table via /api/user/subscription
+  // (the Stripe webhook is its source of truth). New accounts read back "free".
+  useEffect(() => {
+    let active = true
+    fetch("/api/user/subscription")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (active && data?.subscription?.planId) setPlanId(data.subscription.planId)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const displayName = session?.user?.name || session?.user?.email || "Your account"
+  const planLabel = planId ? PLAN_LABELS[planId] ?? planId : "…"
+  const initials = initialsFrom(session?.user?.name, session?.user?.email)
+  const isPaid = !!planId && planId !== "free"
+
   return (
     <div className="flex flex-col w-64 bg-sidebar border-r border-sidebar-border">
       {/* Logo */}
@@ -54,17 +95,19 @@ export function DashboardSidebar() {
       <div className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <Avatar className="h-10 w-10">
-            <AvatarImage src="/diverse-user-avatars.png" />
-            <AvatarFallback>JD</AvatarFallback>
+            {session?.user?.image ? <AvatarImage src={session.user.image} /> : null}
+            <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">John Doe</p>
-            <p className="text-xs text-sidebar-foreground/70 truncate">Pro Plan</p>
+            <p className="text-sm font-medium text-sidebar-foreground truncate">{displayName}</p>
+            <p className="text-xs text-sidebar-foreground/70 truncate">{planLabel} Plan</p>
           </div>
-          <Badge variant="secondary" className="text-xs">
-            <Zap className="h-3 w-3 mr-1" />
-            Pro
-          </Badge>
+          {isPaid && (
+            <Badge variant="secondary" className="text-xs">
+              <Zap className="h-3 w-3 mr-1" />
+              {PLAN_LABELS[planId as string] ?? planId}
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -110,6 +153,7 @@ export function DashboardSidebar() {
 
         <Button
           variant="ghost"
+          onClick={() => signOut({ callbackUrl: "/" })}
           className="w-full justify-start gap-3 px-3 py-2 text-sm font-medium text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
         >
           <LogOut className="h-4 w-4" />

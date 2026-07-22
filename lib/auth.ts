@@ -238,11 +238,17 @@ export const authOptions: NextAuthOptions = {
       ;(user as any).organizationId = provisionedUser.organizationId
       return true
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.role = (user as any).role ?? token.role
         token.id = user.id
         token.organizationId = (user as any).organizationId ?? token.organizationId
+      }
+      // Reflect an in-app profile rename (client calls session.update({ name }))
+      // into the JWT, so every useSession() consumer — e.g. the dashboard
+      // sidebar — shows the new name without forcing a re-login.
+      if (trigger === 'update' && typeof (session as any)?.name === 'string') {
+        token.name = (session as any).name
       }
       return token
     },

@@ -21,15 +21,23 @@ import {
   Trash2,
   Save
 } from "lucide-react"
-import { useState } from "react"
-import { useSubscription } from "@/hooks/use-subscription-simple"
+import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
+import { withCsrfHeaders } from "@/lib/csrf-client"
+
+const PLAN_LABELS: Record<string, string> = {
+  free: "Free",
+  starter: "Starter",
+  pro: "Pro",
+  enterprise: "Enterprise",
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState({
     profile: {
-      name: "John Doe",
-      email: "john@example.com",
-      bio: "Video creator and content strategist",
+      name: "",
+      email: "",
+      bio: "",
       avatar: "/placeholder.svg?key=user"
     },
     notifications: {
@@ -52,10 +60,68 @@ export default function SettingsPage() {
     }
   })
 
-  const { subscription, hasFeature } = useSubscription()
+  const { update: updateSession } = useSession()
+  const [realPlan, setRealPlan] = useState<string>("free")
+  const [saving, setSaving] = useState<string | null>(null)
+  const [saveMsg, setSaveMsg] = useState<string>("")
 
-  const handleSaveSettings = (section: string) => {
-    // TODO: Implement actual settings save
+  // Load the real profile (name/email/bio) and the real plan once on mount.
+  useEffect(() => {
+    fetch("/api/user/profile")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.user) {
+          setSettings((prev) => ({
+            ...prev,
+            profile: {
+              ...prev.profile,
+              name: data.user.name ?? "",
+              email: data.user.email ?? "",
+              bio: data.user.bio ?? "",
+            },
+          }))
+        }
+      })
+      .catch(() => {})
+
+    fetch("/api/user/subscription")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.subscription?.planId) setRealPlan(data.subscription.planId)
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleSaveSettings = async (section: string) => {
+    if (section !== "profile") {
+      // Only the profile section persists today; notifications/preferences/
+      // privacy are still local-only UI state.
+      return
+    }
+    setSaving("profile")
+    setSaveMsg("")
+    try {
+      const res = await fetch("/api/user/profile", {
+        method: "PUT",
+        headers: withCsrfHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          name: settings.profile.name,
+          bio: settings.profile.bio,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setSaveMsg(data?.error || "Could not save. Please try again.")
+        return
+      }
+      // Push the new name into the session so the sidebar updates immediately.
+      await updateSession({ name: settings.profile.name })
+      setSaveMsg("Saved ✓")
+    } catch {
+      setSaveMsg("Network error. Please try again.")
+    } finally {
+      setSaving(null)
+    }
   }
 
   const handleDeleteAccount = () => {
@@ -129,15 +195,10 @@ export default function SettingsPage() {
 
                     <div className="space-y-2">
                       <Label htmlFor="email">Email Address</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={settings.profile.email}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          profile: { ...settings.profile, email: e.target.value }
-                        })}
-                      />
+                      <Input id="email" type="email" value={settings.profile.email} disabled />
+                      <p className="text-xs text-muted-foreground">
+                        Email is tied to your login and can&apos;t be changed here.
+                      </p>
                     </div>
                   </div>
 
@@ -153,10 +214,13 @@ export default function SettingsPage() {
                     />
                   </div>
 
-                  <Button onClick={() => handleSaveSettings('profile')}>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Changes
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    <Button onClick={() => handleSaveSettings('profile')} disabled={saving === 'profile'}>
+                      <Save className="h-4 w-4 mr-2" />
+                      {saving === 'profile' ? 'Saving…' : 'Save Changes'}
+                    </Button>
+                    {saveMsg && <span className="text-sm text-muted-foreground">{saveMsg}</span>}
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -482,9 +546,9 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="p-4 bg-muted rounded-lg">
-                    <h3 className="font-semibold mb-2">Current Plan: {subscription?.plan || 'Free'}</h3>
+                    <h3 className="font-semibold mb-2">Current Plan: {PLAN_LABELS[realPlan] ?? realPlan}</h3>
                     <p className="text-sm text-muted-foreground">
-                      You're currently on the {subscription?.plan || 'Free'} plan with access to basic features.
+                      You&apos;re currently on the {PLAN_LABELS[realPlan] ?? realPlan} plan.
                     </p>
                   </div>
 
