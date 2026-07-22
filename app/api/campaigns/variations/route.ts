@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
 import { withRenderSlot } from '@/lib/render-semaphore';
-import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
+import { checkGenerationQuota, settleGenerationEntitlement } from '@/lib/quota';
 import { resolveVoiceIdForUser } from '@/lib/cloned-voices';
 import { DEFAULT_TRANSITION, TRANSITIONS } from '@/lib/transitions';
 import { hasOpenAiKey } from '@/lib/openai-key';
@@ -130,8 +130,10 @@ export async function POST(req: NextRequest) {
     };
 
     // Quota per variant: a 12-variant matrix must not let a user render twelve
-    // videos on a plan that allows five.
-    const quota = await checkGenerationQuota(userId, input.duration);
+    // videos on a plan that allows five. Once the monthly allowance runs out
+    // mid-batch, purchased credits pick up the remaining variants (1 credit
+    // each) instead of hard-denying the rest of the matrix.
+    const quota = await checkGenerationQuota(userId, input.duration, 1);
     if (!quota.allowed) {
       result.error = quota.reason ?? 'Quota exceeded';
       results.push(result);
@@ -165,6 +167,9 @@ export async function POST(req: NextRequest) {
           userId,
           metadata: JSON.stringify({
             generation: { stage: 'queued', percent: 5, updatedAt: new Date().toISOString() },
+            // Paid-credit videos get the watermark removed (lib/generation-pipeline.ts
+            // brandingForVideo) — set server-side ONLY, from the quota verdict.
+            ...(quota.usePurchasedCredit ? { paidCredit: true } : {}),
             request: genInput,
             variant: { label: variant.label, axes: variant.axes },
           }),
@@ -172,7 +177,7 @@ export async function POST(req: NextRequest) {
         select: { id: true },
       });
 
-      await recordGenerationUsage(userId, video.id, input.duration);
+      await settleGenerationEntitlement(userId, video.id, input.duration, quota);
 
       const jobId = await enqueueGeneration({ videoId: video.id, userId, input: genInput });
       if (!jobId) {

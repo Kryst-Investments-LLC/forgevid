@@ -22,6 +22,7 @@ jest.mock('@/lib/prisma', () => ({
       aggregate: jest.fn(),
       create: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
   },
 }))
@@ -108,7 +109,7 @@ describe('lib/credits', () => {
   })
 
   describe('consumeCredit', () => {
-    it('writes a -1 ledger row tagged with the video', async () => {
+    it('defaults to a -1 ledger row tagged with the video', async () => {
       mockPrisma.creditLedger.create.mockResolvedValue({} as any)
 
       await consumeCredit({ userId: 'user-1', videoId: 'video-1' })
@@ -117,13 +118,23 @@ describe('lib/credits', () => {
         data: { userId: 'user-1', delta: -1, reason: 'consume_generation', videoId: 'video-1' },
       })
     })
+
+    it('writes ONE row with delta -credits for a pricier generation (e.g. avatars)', async () => {
+      mockPrisma.creditLedger.create.mockResolvedValue({} as any)
+
+      await consumeCredit({ userId: 'user-1', videoId: 'video-2', credits: 2 })
+
+      expect(mockPrisma.creditLedger.create).toHaveBeenCalledTimes(1)
+      expect(mockPrisma.creditLedger.create).toHaveBeenCalledWith({
+        data: { userId: 'user-1', delta: -2, reason: 'consume_generation', videoId: 'video-2' },
+      })
+    })
   })
 
   describe('refundCreditForVideo', () => {
     it('refunds when a consume row exists and no refund has been recorded yet', async () => {
-      mockPrisma.creditLedger.findFirst
-        .mockResolvedValueOnce({ id: 'consume-1', userId: 'user-1' } as any) // consume lookup
-        .mockResolvedValueOnce(null as any) // refund lookup
+      mockPrisma.creditLedger.findMany.mockResolvedValue([{ userId: 'user-1', delta: -1 }] as any)
+      mockPrisma.creditLedger.findFirst.mockResolvedValue(null as any) // no prior refund
       mockPrisma.creditLedger.create.mockResolvedValue({} as any)
 
       await refundCreditForVideo('video-1')
@@ -133,7 +144,20 @@ describe('lib/credits', () => {
       })
     })
 
+    it('refunds the TOTAL consumed, not a hardcoded 1 (the 2-credit avatar case)', async () => {
+      mockPrisma.creditLedger.findMany.mockResolvedValue([{ userId: 'user-1', delta: -2 }] as any)
+      mockPrisma.creditLedger.findFirst.mockResolvedValue(null as any)
+      mockPrisma.creditLedger.create.mockResolvedValue({} as any)
+
+      await refundCreditForVideo('video-avatar-1')
+
+      expect(mockPrisma.creditLedger.create).toHaveBeenCalledWith({
+        data: { userId: 'user-1', delta: 2, reason: 'refund_failed_render', videoId: 'video-avatar-1' },
+      })
+    })
+
     it('is a no-op when the video never consumed a purchased credit', async () => {
+      mockPrisma.creditLedger.findMany.mockResolvedValue([] as any)
       mockPrisma.creditLedger.findFirst.mockResolvedValue(null as any)
 
       await refundCreditForVideo('video-1')
@@ -142,9 +166,8 @@ describe('lib/credits', () => {
     })
 
     it('is a no-op when the video was already refunded (no double grant)', async () => {
-      mockPrisma.creditLedger.findFirst
-        .mockResolvedValueOnce({ id: 'consume-1', userId: 'user-1' } as any)
-        .mockResolvedValueOnce({ id: 'refund-1' } as any)
+      mockPrisma.creditLedger.findMany.mockResolvedValue([{ userId: 'user-1', delta: -1 }] as any)
+      mockPrisma.creditLedger.findFirst.mockResolvedValue({ id: 'refund-1' } as any)
 
       await refundCreditForVideo('video-1')
 

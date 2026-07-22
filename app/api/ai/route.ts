@@ -12,8 +12,7 @@ import { runGeneration } from '@/lib/generation-pipeline';
 import { DEFAULT_TTS_MODEL, resolveVoiceId } from '@/lib/voice-catalog';
 import { resolveVoiceIdForUser } from '@/lib/cloned-voices';
 import { DEFAULT_TRANSITION, TRANSITIONS } from '@/lib/transitions';
-import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
-import { consumeCredit } from '@/lib/credits';
+import { checkGenerationQuota, settleGenerationEntitlement } from '@/lib/quota';
 import { moderateText, recordModerationBlock } from '@/lib/moderation';
 import { allows4k } from '@/lib/plan';
 import { withRenderSlot } from '@/lib/render-semaphore';
@@ -204,14 +203,11 @@ async function handleGenerateVideo(body: any, userId: string) {
       select: { id: true },
     });
 
-    // The job is accepted — consume quota now, not on completion, or a user
-    // could requeue endlessly while jobs run.
-    await recordGenerationUsage(userId, video.id, input.duration);
-    // Monthly allowance was already exhausted (checkGenerationQuota fell back
-    // to the purchased-credit pool) — spend the credit too, at the same point.
-    if (quota.usePurchasedCredit) {
-      await consumeCredit({ userId, videoId: video.id });
-    }
+    // The job is accepted — settle the entitlement now, not on completion, or
+    // a user could requeue endlessly while jobs run. Records monthly usage
+    // and, if the monthly allowance was already exhausted, spends the
+    // purchased credit the verdict priced in — see lib/quota.ts.
+    await settleGenerationEntitlement(userId, video.id, input.duration, quota);
 
     const jobId = await enqueueGeneration({ videoId: video.id, userId, input });
     if (!jobId) {

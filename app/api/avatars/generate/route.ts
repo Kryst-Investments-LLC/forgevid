@@ -4,7 +4,8 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { allowsAvatars } from '@/lib/plan';
-import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
+import { checkGenerationQuota, settleGenerationEntitlement, refundGenerationUsage } from '@/lib/quota';
+import { refundCreditForVideo } from '@/lib/credits';
 import { estimateGenerationCost, recordGenerationCost } from '@/lib/cost-ledger';
 import { setStage } from '@/lib/generation-pipeline';
 import {
@@ -19,7 +20,11 @@ import {
  * Same contract as every other generation: returns a videoId immediately, poll
  * GET /api/ai/jobs/[videoId]. The render happens on the provider's
  * infrastructure; we poll until the video URL exists. Pro plans only; counts
- * against the same monthly quota as normal generations.
+ * against the same monthly quota as normal generations — and, once that's
+ * exhausted, against purchased credits at AVATAR_CREDIT_COST each. Purchased
+ * credits are an ADDITIONAL path for an already-Pro+ user, never a way
+ * around the allowsAvatars() gate below (checkGenerationQuota only reports
+ * usePurchasedCredit for the user's REAL plan; it can't upgrade them).
  */
 
 const bodySchema = z.object({
@@ -32,6 +37,10 @@ const bodySchema = z.object({
 
 const POLL_INTERVAL_MS = 5000;
 const POLL_DEADLINE_MS = 15 * 60 * 1000;
+// HeyGen bills ~$0.50/minute — a single purchased credit ($19 for one video,
+// or ~$1.16-1.50 amortized in a top-up) would be a straight loss on anything
+// past a couple minutes. Avatar renders cost 2 purchased credits.
+const AVATAR_CREDIT_COST = 2;
 
 async function pollUntilDone(videoId: string, providerVideoId: string, userId: string, script: string, duration: number) {
   const deadline = Date.now() + POLL_DEADLINE_MS;
@@ -69,6 +78,12 @@ async function pollUntilDone(videoId: string, providerVideoId: string, userId: s
       .update({ where: { id: videoId }, data: { status: 'FAILED' } })
       .catch(() => {});
     await setStage(videoId, 'failed', { error: message }).catch(() => {});
+    // A failed avatar render must not silently eat quota or purchased
+    // credits — give both back, same as generation-pipeline.ts's runGeneration
+    // does for the standard pipeline (this route has its own failure path
+    // since it polls a provider instead of running local ffmpeg).
+    await refundGenerationUsage(videoId).catch(() => {});
+    await refundCreditForVideo(videoId).catch(() => {});
     await recordGenerationCost({
       userId,
       videoId,
@@ -96,14 +111,18 @@ export async function POST(req: NextRequest) {
   const input = parsed.data;
 
   // Avatar renders share the monthly generation quota — provider minutes are
-  // the most expensive thing the platform buys.
-  const quota = await checkGenerationQuota(userId, input.duration);
+  // the most expensive thing the platform buys. Once that's exhausted,
+  // purchased credits can pick this up too, at AVATAR_CREDIT_COST each.
+  const quota = await checkGenerationQuota(userId, input.duration, AVATAR_CREDIT_COST);
   if (!quota.allowed) {
     return NextResponse.json(
       { error: quota.reason, upgradeRequired: quota.upgradeRequired ?? false },
       { status: 429 },
     );
   }
+  // Purchased credits do NOT bypass the Pro+ requirement — checkGenerationQuota
+  // reports the user's real plan regardless of usePurchasedCredit, so a free
+  // user who somehow had credits would still be blocked here.
   if (!allowsAvatars(quota.plan)) {
     return NextResponse.json(
       { error: `Avatar videos require the Pro plan (you are on ${quota.plan})`, upgradeRequired: true },
@@ -134,6 +153,12 @@ export async function POST(req: NextRequest) {
         userId,
         metadata: JSON.stringify({
           generation: { stage: 'queued', percent: 5, updatedAt: new Date().toISOString() },
+          // Recorded for consistency with every other generation path, set
+          // server-side ONLY from the quota verdict. NOTE: unlike the ffmpeg
+          // pipeline, this flag has no watermark effect here — HeyGen renders
+          // the avatar directly and never passes through
+          // lib/generation-pipeline.ts's brandingForVideo.
+          ...(quota.usePurchasedCredit ? { paidCredit: true } : {}),
           source: 'avatar',
           provider: { name: 'heygen', videoId: providerVideoId, avatarId: input.avatarId },
           request: { aspectRatio: input.aspectRatio, duration: input.duration },
@@ -142,7 +167,9 @@ export async function POST(req: NextRequest) {
       select: { id: true },
     });
 
-    await recordGenerationUsage(userId, video.id, input.duration);
+    // Consume AFTER the provider has accepted the job (video row created) —
+    // never spend credits on a request that never actually started.
+    await settleGenerationEntitlement(userId, video.id, input.duration, quota);
 
     // Polling is lightweight (no local ffmpeg), so no render slot needed.
     void pollUntilDone(video.id, providerVideoId, userId, input.script, input.duration);

@@ -8,7 +8,7 @@ import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
 import { DEFAULT_TRANSITION } from '@/lib/transitions';
 import { resolveVoiceId } from '@/lib/voice-catalog';
-import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
+import { checkGenerationQuota, settleGenerationEntitlement } from '@/lib/quota';
 import { withRenderSlot } from '@/lib/render-semaphore';
 import {
   VOICE_STYLE_MAP,
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
   const duration = opts.duration ?? 30;
 
   // Same budget as any other generation — voice input isn't a quota bypass.
-  const quota = await checkGenerationQuota(session.user.id, duration);
+  const quota = await checkGenerationQuota(session.user.id, duration, 1);
   if (!quota.allowed) {
     return NextResponse.json(
       {
@@ -119,6 +119,9 @@ export async function POST(request: NextRequest) {
         userId: session.user.id,
         metadata: JSON.stringify({
           generation: { stage: 'queued', percent: 5, updatedAt: new Date().toISOString() },
+          // Paid-credit videos get the watermark removed (lib/generation-pipeline.ts
+          // brandingForVideo) — set server-side ONLY, from the quota verdict.
+          ...(quota.usePurchasedCredit ? { paidCredit: true } : {}),
           source: 'voice-to-video',
           transcript,
           request: {
@@ -134,7 +137,7 @@ export async function POST(request: NextRequest) {
       select: { id: true },
     });
 
-    await recordGenerationUsage(session.user.id, video.id, duration);
+    await settleGenerationEntitlement(session.user.id, video.id, duration, quota);
 
     const jobId = await enqueueGeneration({ videoId: video.id, userId: session.user.id, input });
     if (!jobId) {

@@ -6,7 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
 import { withRenderSlot } from '@/lib/render-semaphore';
-import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
+import { checkGenerationQuota, settleGenerationEntitlement } from '@/lib/quota';
 import { moderateText, recordModerationBlock } from '@/lib/moderation';
 import { importSiteImages } from '@/lib/site-images';
 import { DEFAULT_TRANSITION } from '@/lib/transitions';
@@ -145,8 +145,10 @@ export async function POST(req: NextRequest) {
     const result: BatchResult = { ref: listing.ref, address: listing.address };
 
     // Quota is per generation, checked per listing: a batch of twenty must not
-    // let a user render twenty videos on a plan that allows five.
-    const quota = await checkGenerationQuota(userId, duration);
+    // let a user render twenty videos on a plan that allows five. Purchased
+    // credits (1 each) pick up the remaining listings once the monthly
+    // allowance runs out mid-batch.
+    const quota = await checkGenerationQuota(userId, duration, 1);
     if (!quota.allowed) {
       result.error = quota.reason ?? 'Quota exceeded';
       results.push(result);
@@ -208,6 +210,9 @@ export async function POST(req: NextRequest) {
           userId,
           metadata: JSON.stringify({
             generation: { stage: 'queued', percent: 5, updatedAt: new Date().toISOString() },
+            // Paid-credit videos get the watermark removed (lib/generation-pipeline.ts
+            // brandingForVideo) — set server-side ONLY, from the quota verdict.
+            ...(quota.usePurchasedCredit ? { paidCredit: true } : {}),
             request: input,
             listing: { ref: listing.ref, address: listing.address },
           }),
@@ -215,7 +220,7 @@ export async function POST(req: NextRequest) {
         select: { id: true },
       });
 
-      await recordGenerationUsage(userId, video.id, duration);
+      await settleGenerationEntitlement(userId, video.id, duration, quota);
 
       const jobId = await enqueueGeneration({ videoId: video.id, userId, input });
       if (!jobId) {

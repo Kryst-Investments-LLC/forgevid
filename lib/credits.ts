@@ -80,13 +80,24 @@ export async function grantCredits(args: GrantCreditsArgs): Promise<void> {
   }
 }
 
-/** Consume one purchased credit for a generation. Call ONLY after the job is accepted. */
-export async function consumeCredit(args: { userId: string; videoId: string }): Promise<void> {
+/**
+ * Consume purchased credit(s) for a generation. Call ONLY after the job is
+ * accepted. `credits` defaults to 1 (a standard video); pricier generations
+ * (e.g. avatar renders, which bill provider minutes) pass a higher cost —
+ * written as ONE row with `delta: -credits`, not N single-credit rows, so
+ * the ledger stays one row per generation event.
+ */
+export async function consumeCredit(args: {
+  userId: string;
+  videoId: string;
+  credits?: number;
+}): Promise<void> {
+  const amount = args.credits ?? 1;
   try {
     await prisma.creditLedger.create({
       data: {
         userId: args.userId,
-        delta: -1,
+        delta: -amount,
         reason: 'consume_generation',
         videoId: args.videoId,
       },
@@ -97,19 +108,23 @@ export async function consumeCredit(args: { userId: string; videoId: string }): 
 }
 
 /**
- * Refund the purchased credit spent on a video whose render failed — mirrors
- * refundGenerationUsage() in lib/quota.ts for the monthly pool.
+ * Refund the purchased credit(s) spent on a video whose render failed —
+ * mirrors refundGenerationUsage() in lib/quota.ts for the monthly pool.
  *
- * Only refunds once: if this video never consumed a purchased credit (it used
- * the monthly allowance instead) there is nothing to refund, and if it was
- * already refunded, a second failure must not grant a free credit.
+ * Refunds the TOTAL previously consumed for this video (sum of the
+ * `consume_generation` deltas, which is a single row today but summed
+ * defensively), not a hardcoded 1 — a 2-credit avatar failure must give back
+ * both credits, not just one. Only refunds once: if this video never
+ * consumed a purchased credit (it used the monthly allowance instead) there
+ * is nothing to refund, and if it was already refunded, a second failure
+ * must not grant free credits.
  */
 export async function refundCreditForVideo(videoId: string): Promise<void> {
   try {
-    const [consumed, refunded] = await Promise.all([
-      prisma.creditLedger.findFirst({
+    const [consumedRows, refunded] = await Promise.all([
+      prisma.creditLedger.findMany({
         where: { videoId, reason: 'consume_generation' },
-        select: { id: true, userId: true },
+        select: { userId: true, delta: true },
       }),
       prisma.creditLedger.findFirst({
         where: { videoId, reason: 'refund_failed_render' },
@@ -117,12 +132,15 @@ export async function refundCreditForVideo(videoId: string): Promise<void> {
       }),
     ]);
 
-    if (!consumed || refunded) return;
+    if (consumedRows.length === 0 || refunded) return;
+
+    const totalConsumed = consumedRows.reduce((sum, row) => sum + Math.abs(row.delta), 0);
+    if (totalConsumed <= 0) return;
 
     await prisma.creditLedger.create({
       data: {
-        userId: consumed.userId,
-        delta: 1,
+        userId: consumedRows[0].userId,
+        delta: totalConsumed,
         reason: 'refund_failed_render',
         videoId,
       },

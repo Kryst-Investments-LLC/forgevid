@@ -21,7 +21,7 @@
 
 import { prisma } from './prisma';
 import { getUserPlan, type Plan } from './plan';
-import { getCreditBalance } from './credits';
+import { getCreditBalance, consumeCredit } from './credits';
 
 export const GENERATION_ACTION = 'video_generation';
 
@@ -57,6 +57,8 @@ export interface QuotaVerdict {
   upgradeRequired?: boolean;
   /** true when this generation must be paid for with a purchased credit, not monthly quota. */
   usePurchasedCredit?: boolean;
+  /** Set alongside usePurchasedCredit: how many purchased credits this generation costs. */
+  creditCost?: number;
   /** Denial only: the user could unblock themselves with a Single/top-up purchase instead of upgrading. */
   topUpAvailable?: boolean;
 }
@@ -68,10 +70,17 @@ function monthStart(now = new Date()): Date {
 /**
  * May this user start a generation of `durationSeconds`?
  * Fails CLOSED on lookup errors — an unprovable entitlement is a denial.
+ *
+ * `creditCost` is how many purchased credits this generation would spend IF
+ * the monthly allowance is already exhausted — 1 for a standard video, more
+ * for pricier generation types (e.g. avatar renders bill provider minutes,
+ * so they cost 2). It has no effect at all when the monthly allowance still
+ * has room; it only matters for the purchased-credit fallback below.
  */
 export async function checkGenerationQuota(
   userId: string,
   durationSeconds: number,
+  creditCost: number = 1,
 ): Promise<QuotaVerdict> {
   const plan = await getUserPlan(userId);
   const quota = PLAN_QUOTAS[plan];
@@ -112,8 +121,10 @@ export async function checkGenerationQuota(
   if (used >= quota.videosPerMonth) {
     // Monthly allowance is spent — fall back to the purchased-credit pool
     // (never-expiring, bought via Single/top-up) before denying outright.
+    // Must cover the FULL cost of this generation, not just be non-zero —
+    // a 2-credit avatar render must not proceed on a 1-credit balance.
     const balance = await getCreditBalance(userId);
-    if (balance > 0) {
+    if (balance >= creditCost) {
       return {
         allowed: true,
         plan,
@@ -121,6 +132,7 @@ export async function checkGenerationQuota(
         limit: quota.videosPerMonth,
         maxDurationSeconds: Math.max(quota.maxDurationSeconds, PURCHASED_CREDIT_MIN_DURATION_SECONDS),
         usePurchasedCredit: true,
+        creditCost,
       };
     }
 
@@ -132,7 +144,8 @@ export async function checkGenerationQuota(
       maxDurationSeconds: quota.maxDurationSeconds,
       reason:
         `Monthly limit reached (${used}/${quota.videosPerMonth} videos on the ${plan} plan). ` +
-        `Buy a Single video or a top-up pack to keep going without upgrading.`,
+        `This needs ${creditCost} purchased credit${creditCost === 1 ? '' : 's'} — buy a Single video ` +
+        `or a top-up pack to keep going without upgrading.`,
       upgradeRequired: plan !== 'enterprise' && plan !== 'custom',
       topUpAvailable: true,
     };
@@ -166,6 +179,30 @@ export async function recordGenerationUsage(
   } catch (error) {
     // Never fail a paid-for generation over bookkeeping; log loudly instead.
     console.error('[Quota] Failed to record usage:', error);
+  }
+}
+
+/**
+ * Settle the entitlement `checkGenerationQuota` decided, once the generation
+ * job has actually been accepted (the Video row exists). This is the ONE
+ * place every generation path should call after creating its Video row —
+ * always records the monthly usage row, and additionally spends the
+ * purchased-credit amount the verdict priced in (`verdict.creditCost`,
+ * default 1) when the monthly allowance was already exhausted.
+ *
+ * Centralizing this means every generation path (AI Studio, campaigns,
+ * listings batch, feed batch, voice-to-video, avatars) shares one entitlement
+ * bookkeeping path instead of six copies that can drift.
+ */
+export async function settleGenerationEntitlement(
+  userId: string,
+  videoId: string,
+  durationSeconds: number,
+  verdict: QuotaVerdict,
+): Promise<void> {
+  await recordGenerationUsage(userId, videoId, durationSeconds);
+  if (verdict.usePurchasedCredit) {
+    await consumeCredit({ userId, videoId, credits: verdict.creditCost ?? 1 });
   }
 }
 

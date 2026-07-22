@@ -16,7 +16,7 @@ import { prisma } from './prisma';
 import { enqueueGeneration } from './video-queue';
 import { runGeneration } from './generation-pipeline';
 import { withRenderSlot } from './render-semaphore';
-import { checkGenerationQuota, recordGenerationUsage } from './quota';
+import { checkGenerationQuota, settleGenerationEntitlement } from './quota';
 import { moderateText, recordModerationBlock } from './moderation';
 import { importSiteImages } from './site-images';
 import { DEFAULT_TRANSITION } from './transitions';
@@ -76,8 +76,9 @@ export async function runFeedBatch(
     const result: FeedBatchResult = { ref: item.ref, label: item.label };
 
     // Quota per item: a 25-item batch must not let a user render 25 videos on a
-    // plan that allows five.
-    const quota = await checkGenerationQuota(opts.userId, opts.duration);
+    // plan that allows five. Purchased credits (1 each) pick up the remaining
+    // items once the monthly allowance runs out mid-batch.
+    const quota = await checkGenerationQuota(opts.userId, opts.duration, 1);
     if (!quota.allowed) {
       result.error = quota.reason ?? 'Quota exceeded';
       results.push(result);
@@ -131,6 +132,9 @@ export async function runFeedBatch(
           userId: opts.userId,
           metadata: JSON.stringify({
             generation: { stage: 'queued', percent: 5, updatedAt: new Date().toISOString() },
+            // Paid-credit videos get the watermark removed (lib/generation-pipeline.ts
+            // brandingForVideo) — set server-side ONLY, from the quota verdict.
+            ...(quota.usePurchasedCredit ? { paidCredit: true } : {}),
             request: input,
             item: { ref: item.ref, label: item.label },
           }),
@@ -138,7 +142,7 @@ export async function runFeedBatch(
         select: { id: true },
       });
 
-      await recordGenerationUsage(opts.userId, video.id, opts.duration);
+      await settleGenerationEntitlement(opts.userId, video.id, opts.duration, quota);
 
       const jobId = await enqueueGeneration({ videoId: video.id, userId: opts.userId, input });
       if (!jobId) {

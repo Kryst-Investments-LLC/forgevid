@@ -18,6 +18,7 @@ jest.mock('@/lib/prisma', () => ({
   prisma: {
     usageRecord: {
       count: jest.fn(),
+      create: jest.fn(),
     },
   },
 }))
@@ -28,16 +29,24 @@ jest.mock('@/lib/plan', () => ({
 
 jest.mock('@/lib/credits', () => ({
   getCreditBalance: jest.fn(),
+  consumeCredit: jest.fn(),
 }))
 
 import { prisma } from '@/lib/prisma'
 import { getUserPlan } from '@/lib/plan'
-import { getCreditBalance } from '@/lib/credits'
-import { checkGenerationQuota, PLAN_QUOTAS, PURCHASED_CREDIT_MIN_DURATION_SECONDS } from '@/lib/quota'
+import { getCreditBalance, consumeCredit } from '@/lib/credits'
+import {
+  checkGenerationQuota,
+  settleGenerationEntitlement,
+  PLAN_QUOTAS,
+  PURCHASED_CREDIT_MIN_DURATION_SECONDS,
+  type QuotaVerdict,
+} from '@/lib/quota'
 
 const mockPrisma = prisma as jest.Mocked<typeof prisma>
 const mockGetUserPlan = getUserPlan as jest.Mock
 const mockGetCreditBalance = getCreditBalance as jest.Mock
+const mockConsumeCredit = consumeCredit as jest.Mock
 
 describe('checkGenerationQuota', () => {
   beforeEach(() => {
@@ -111,5 +120,84 @@ describe('checkGenerationQuota', () => {
 
     expect(verdict.allowed).toBe(false)
     expect(mockGetCreditBalance).not.toHaveBeenCalled()
+  })
+
+  // creditCost > 1 — the avatar-render case ($0.50/min on the provider makes
+  // a single credit a loss, so avatars/generate passes creditCost: 2).
+  describe('creditCost > 1 (e.g. avatar renders)', () => {
+    it('denies with topUpAvailable when the balance (1) is below the cost (2)', async () => {
+      mockGetUserPlan.mockResolvedValue('pro')
+      mockPrisma.usageRecord.count.mockResolvedValue(PLAN_QUOTAS.pro.videosPerMonth)
+      mockGetCreditBalance.mockResolvedValue(1)
+
+      const verdict = await checkGenerationQuota('user-1', 60, 2)
+
+      expect(verdict.allowed).toBe(false)
+      expect(verdict.usePurchasedCredit).toBeUndefined()
+      expect(verdict.topUpAvailable).toBe(true)
+      expect(verdict.reason).toMatch(/2 purchased credits/i)
+    })
+
+    it('allows with usePurchasedCredit + creditCost 2 when the balance (2) covers the cost (2)', async () => {
+      mockGetUserPlan.mockResolvedValue('pro')
+      mockPrisma.usageRecord.count.mockResolvedValue(PLAN_QUOTAS.pro.videosPerMonth)
+      mockGetCreditBalance.mockResolvedValue(2)
+
+      const verdict = await checkGenerationQuota('user-1', 60, 2)
+
+      expect(verdict.allowed).toBe(true)
+      expect(verdict.usePurchasedCredit).toBe(true)
+      expect(verdict.creditCost).toBe(2)
+    })
+  })
+})
+
+describe('settleGenerationEntitlement', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  const baseVerdict: QuotaVerdict = {
+    allowed: true,
+    plan: 'free',
+    used: 2,
+    limit: 2,
+    maxDurationSeconds: 90,
+  }
+
+  it('always records monthly usage, and does not touch credits when usePurchasedCredit is unset', async () => {
+    mockPrisma.usageRecord.create.mockResolvedValue({} as any)
+
+    await settleGenerationEntitlement('user-1', 'video-1', 30, baseVerdict)
+
+    expect(mockPrisma.usageRecord.create).toHaveBeenCalledTimes(1)
+    expect(mockConsumeCredit).not.toHaveBeenCalled()
+  })
+
+  it('consumes verdict.creditCost purchased credits (defaulting to 1) alongside usage', async () => {
+    mockPrisma.usageRecord.create.mockResolvedValue({} as any)
+
+    await settleGenerationEntitlement('user-1', 'video-1', 30, {
+      ...baseVerdict,
+      usePurchasedCredit: true,
+    })
+
+    expect(mockConsumeCredit).toHaveBeenCalledWith({ userId: 'user-1', videoId: 'video-1', credits: 1 })
+  })
+
+  it('consumes exactly the avatar 2-credit cost when the verdict priced it in', async () => {
+    mockPrisma.usageRecord.create.mockResolvedValue({} as any)
+
+    await settleGenerationEntitlement('user-1', 'video-avatar-1', 60, {
+      ...baseVerdict,
+      usePurchasedCredit: true,
+      creditCost: 2,
+    })
+
+    expect(mockConsumeCredit).toHaveBeenCalledWith({
+      userId: 'user-1',
+      videoId: 'video-avatar-1',
+      credits: 2,
+    })
   })
 })
