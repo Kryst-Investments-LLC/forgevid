@@ -20,7 +20,7 @@ WORKDIR /app
 # stage still ships only the pruned `.next/standalone` output, so image size is
 # unaffected.
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund --loglevel=error
 COPY . .
 
 # Install FFmpeg for video processing
@@ -28,6 +28,12 @@ COPY . .
 # ttf-dejavu -> font-dejavu across releases, so accept either.
 RUN apk add --no-cache ffmpeg fontconfig \
     && (apk add --no-cache font-dejavu || apk add --no-cache ttf-dejavu)
+
+# Generate the Prisma client BEFORE the build. App code (e.g. app/admin/page.tsx)
+# consumes Prisma's generated query result types; without a generated client those
+# resolve to `any` and `next build` fails type-checking under noImplicitAny. Needs
+# no DB connection. Also bakes the (musl) client into the traced standalone output.
+RUN npx prisma generate
 
 # Build the application
 ENV NEXT_TELEMETRY_DISABLED 1
