@@ -1,5 +1,6 @@
+"use client";
 import React, { useState } from 'react';
-import axios from 'axios';
+import { withCsrfHeaders } from '@/lib/csrf-client';
 
 interface StoryboardScene {
   id: number;
@@ -24,17 +25,25 @@ const StoryboardingPanel: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('jwt');
-      const res = await axios.post('/api/storyboarding', { script }, {
-        headers: { Authorization: `Bearer ${token}` }
+      // Session-cookie auth (next-auth) + double-submit CSRF header — the same
+      // scheme the rest of the app uses. No localStorage JWT.
+      const res = await fetch('/api/storyboarding', {
+        method: 'POST',
+        headers: withCsrfHeaders({ 'Content-Type': 'application/json' }),
+        credentials: 'same-origin',
+        body: JSON.stringify({ script }),
       });
-      setStoryboard(res.data.storyboard);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to generate storyboard');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || 'Failed to generate storyboard');
+        return;
+      }
+      setStoryboard(data.storyboard);
+    } catch {
+      setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }
-
   };
 
   return (
