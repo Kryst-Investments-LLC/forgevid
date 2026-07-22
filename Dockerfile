@@ -55,10 +55,18 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Install FFmpeg for video processing
-# ffmpeg's drawtext needs a real font file. Alpine ships none, and it renamed
-# ttf-dejavu -> font-dejavu across releases, so accept either.
-RUN apk add --no-cache ffmpeg fontconfig \
+# Prisma CLI + engines + schema/migrations so `prisma migrate deploy` can run on
+# boot (see CMD). The standalone trace bundles @prisma/client but NOT the CLI or
+# the schema/migration engine, so copy them from the builder — same alpine base,
+# so the musl engine binaries match the runtime.
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/prisma ./prisma
+
+# Install FFmpeg for video processing (+ openssl: Prisma's engine needs libssl on
+# Alpine). ffmpeg's drawtext needs a real font file; Alpine renamed ttf-dejavu ->
+# font-dejavu across releases, so accept either.
+RUN apk add --no-cache ffmpeg fontconfig openssl \
     && (apk add --no-cache font-dejavu || apk add --no-cache ttf-dejavu)
 
 # Create uploads directory
@@ -77,4 +85,7 @@ EXPOSE 3000
 ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
-CMD ["node", "server.js"]
+# Apply pending DB migrations, THEN start the server. On a fresh database this
+# creates every table; on subsequent boots it's a no-op. Fails loud (&&) so a
+# broken migration surfaces instead of silently serving a half-migrated schema.
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
