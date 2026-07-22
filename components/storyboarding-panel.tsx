@@ -38,10 +38,10 @@ const StoryboardingPanel: React.FC = () => {
   };
 
   return (
-    <div className="p-6 bg-white rounded shadow" style={{minHeight: '400px', contain: 'layout'}}>
-      <h2 className="text-xl font-bold mb-4">AI-Driven Storyboarding</h2>
+    <div className="p-6 bg-white rounded shadow text-gray-900" style={{minHeight: '400px', contain: 'layout'}}>
+      <h2 className="text-xl font-bold mb-4 text-gray-900">AI-Driven Storyboarding</h2>
       <textarea
-        className="w-full border rounded p-2 mb-4"
+        className="w-full border border-gray-300 rounded p-2 mb-4 bg-white text-gray-900 placeholder-gray-500"
         rows={6}
         placeholder="Enter your video script..."
         value={script}
