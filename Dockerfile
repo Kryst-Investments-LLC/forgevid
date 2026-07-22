@@ -13,7 +13,14 @@ RUN npm ci --only=production
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# The build needs devDependencies — next.config.mjs imports @next/bundle-analyzer
+# and next-intl/plugin at load time, and `next build` needs its dev toolchain. The
+# `deps` stage above is production-only (npm ci --only=production), so install the
+# FULL dependency set here instead of copying that pruned tree. The final `runner`
+# stage still ships only the pruned `.next/standalone` output, so image size is
+# unaffected.
+COPY package.json package-lock.json* ./
+RUN npm ci
 COPY . .
 
 # Install FFmpeg for video processing
