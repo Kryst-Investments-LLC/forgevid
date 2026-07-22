@@ -211,13 +211,20 @@ async function handleGenerateVideo(body: any, userId: string) {
 
     const jobId = await enqueueGeneration({ videoId: video.id, userId, input });
     if (!jobId) {
-      // No Redis: run inline, throttled so N clicks can't fork N ffmpeg chains.
-      void withRenderSlot(() => runGeneration(video.id, input)).catch((err) => {
+      // No Redis worker: render synchronously within this request, throttled so N
+      // clicks can't fork N ffmpeg chains. This MUST be awaited — a fire-and-forget
+      // task does not survive the Next.js request lifecycle (the render would never
+      // run and the video would sit at QUEUED forever). Railway keeps the container
+      // alive for the full render; short videos finish well inside its limits.
+      // runGeneration marks the Video FAILED on error, so we swallow here.
+      try {
+        await withRenderSlot(() => runGeneration(video.id, input));
+      } catch (err) {
         console.error(
           '[AI API] inline generation failed:',
           err instanceof Error ? err.message : err,
         );
-      });
+      }
     }
 
     return NextResponse.json({
