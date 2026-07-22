@@ -70,8 +70,13 @@ COPY --from=builder /app/prisma ./prisma
 RUN apk add --no-cache ffmpeg fontconfig openssl \
     && (apk add --no-cache font-dejavu || apk add --no-cache ttf-dejavu)
 
-# Create uploads directory
-RUN mkdir -p /app/uploads && chown nextjs:nodejs /app/uploads
+# Writable dirs the render pipeline needs at runtime: uploads, plus the ffmpeg
+# scratch (public/temp) and the local render output staged before the Cloudinary
+# upload (public/generated). The image runs as non-root `nextjs` and /app/public
+# was COPYed as root, so without this the render fails with
+# `EACCES: permission denied, mkdir '/app/public/temp'`.
+RUN mkdir -p /app/uploads /app/public/temp /app/public/generated \
+    && chown -R nextjs:nodejs /app/uploads /app/public
 
 # Switch to non-root user
 USER nextjs
