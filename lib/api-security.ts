@@ -163,22 +163,15 @@ export function withSecurity(config: SecurityConfig = {}) {
         return await handler(req, ...args);
 
       } catch (error) {
-        const detail = error instanceof Error ? (error.stack || error.message) : String(error);
-        logger.error('Security middleware error:', detail);
+        // Log the full stack server-side (the response stays generic — the real
+        // error is never leaked to clients).
+        logger.error('Security middleware error:', error instanceof Error ? error.stack : error);
         SecurityAuditLogger.logSecurityEvent('security_middleware_error', {
           path: req.nextUrl.pathname,
           error: error instanceof Error ? error.message : String(error),
           severity: 'high'
         });
-        // Diagnostic: surface the real error only when explicitly requested with a
-        // debug header (never leaked to normal clients). Remove once stable.
-        const expose = req.headers.get('x-debug-errors') === '1';
-        return NextResponse.json(
-          expose
-            ? { error: 'Internal server error', detail }
-            : { error: 'Internal server error' },
-          { status: 500 },
-        );
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
       }
     };
   };
