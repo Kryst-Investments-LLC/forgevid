@@ -142,6 +142,38 @@ export async function synthesizeSceneVoiceovers(
   return out;
 }
 
+export interface CachedSegmentPeek {
+  sceneId: string;
+  /** True when a cache file already exists for this scene's line + voice. */
+  cached: boolean;
+  /** Character count of the scene's spoken line — costs a cache MISS's TTS spend. */
+  chars: number;
+}
+
+/**
+ * Which of these scenes already have a cached TTS segment — WITHOUT
+ * synthesizing anything (zero API spend). Computes the identical cache key
+ * synthesizeSceneVoiceovers() uses, so "cached here" means the real synth call
+ * would also hit cache.
+ *
+ * Used by rerenderVideo (lib/generation-pipeline.ts) to classify a re-render
+ * as cosmetic (every scene a cache hit — free, capped at 30/video) vs a
+ * narration edit (any cache miss — capped at 15/video) BEFORE committing to
+ * the render, so the edit-limit check never costs a synthesis call.
+ */
+export function peekCachedSegments(
+  scenes: SceneLine[],
+  voiceId?: string | null,
+): CachedSegmentPeek[] {
+  const voice = voiceId || DEFAULT_VOICE_ID;
+  return scenes.map((scene) => {
+    const text = scene.description.trim();
+    const file = path.join(cacheDir(), `${sceneCacheKey(text, voice)}.mp3`);
+    const cached = fs.existsSync(file) && fs.statSync(file).size > 0;
+    return { sceneId: scene.id, cached, chars: text.length };
+  });
+}
+
 /**
  * Concatenate the segments into one narration file for the mixer.
  * Segments are same-codec mp3 (both ElevenLabs and the cache), so the concat

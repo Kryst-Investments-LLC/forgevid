@@ -43,6 +43,12 @@ STRIPE_WEBHOOK_SECRET=
 STRIPE_STARTER_PRICE_ID=
 STRIPE_PRO_PRICE_ID=
 STRIPE_ENTERPRISE_PRICE_ID=
+# One-time purchased-credit packs (lib/credits.ts CreditLedger pool — never
+# expire, consumed only once the monthly plan allowance runs out).
+# TOPUP10/TOPUP25 are gated to active paid subscribers server-side.
+STRIPE_SINGLE_PRICE_ID=
+STRIPE_TOPUP10_PRICE_ID=
+STRIPE_TOPUP25_PRICE_ID=
 
 # --- Redis (OPTIONAL) ---
 # Leave UNSET for launch → generation runs inline (fine at low volume).

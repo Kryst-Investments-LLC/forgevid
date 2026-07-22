@@ -3,7 +3,15 @@ import { stripe } from '@/lib/stripe';
 import { prisma } from '@/lib/prisma';
 import { headers } from 'next/headers';
 import { sendSubscriptionReceiptEmail, sendSubscriptionCancelledEmail } from '@/lib/email';
+import { grantCredits } from '@/lib/credits';
 import type Stripe from 'stripe';
+
+/** Maps a Stripe checkout metadata `pack` id to the CreditLedger reason. */
+const CREDIT_PURCHASE_REASON: Record<string, 'purchase_single' | 'purchase_topup10' | 'purchase_topup25'> = {
+  single: 'purchase_single',
+  topup10: 'purchase_topup10',
+  topup25: 'purchase_topup25',
+};
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -30,6 +38,52 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
+
+        // One-time credit-pack purchase (SINGLE/TOPUP10/TOPUP25) — a distinct
+        // flow from the subscription checkout below: grant the ledger, record a
+        // Payment for the revenue dashboard, and stop. No Subscription touched.
+        if (session.mode === 'payment' && session.metadata?.type === 'credit_purchase') {
+          const creditUserId = session.metadata.userId || session.client_reference_id;
+          const credits = Number(session.metadata.credits);
+          const reason = session.metadata.pack ? CREDIT_PURCHASE_REASON[session.metadata.pack] : undefined;
+
+          if (!creditUserId || !reason || !Number.isFinite(credits) || credits <= 0) {
+            console.error('[Webhook] Missing/invalid credit_purchase metadata:', session.metadata);
+            break;
+          }
+
+          await grantCredits({
+            userId: creditUserId,
+            credits,
+            reason,
+            stripeSessionId: session.id,
+          });
+
+          try {
+            await prisma.payment.create({
+              data: {
+                userId: creditUserId,
+                amount: session.amount_total ? session.amount_total / 100 : 0,
+                currency: session.currency || 'usd',
+                status: 'SUCCEEDED',
+                stripePaymentId: (session.payment_intent as string) || session.id,
+                description: `Credit pack: ${session.metadata.pack} (${credits} credits)`,
+                metadata: JSON.stringify({
+                  type: 'credit_purchase',
+                  pack: session.metadata.pack,
+                  credits,
+                  stripeSessionId: session.id,
+                }),
+              },
+            });
+          } catch (error) {
+            console.error('[Webhook] Failed to record credit-pack payment:', error);
+          }
+
+          console.log(`[Webhook] Granted ${credits} credits (${session.metadata.pack}) to user ${creditUserId}`);
+          break;
+        }
+
         const userId = session.client_reference_id || session.metadata?.userId;
         const planId = session.metadata?.planId || session.metadata?.plan;
 

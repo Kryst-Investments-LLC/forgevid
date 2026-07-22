@@ -13,6 +13,7 @@ import { DEFAULT_TTS_MODEL, resolveVoiceId } from '@/lib/voice-catalog';
 import { resolveVoiceIdForUser } from '@/lib/cloned-voices';
 import { DEFAULT_TRANSITION, TRANSITIONS } from '@/lib/transitions';
 import { checkGenerationQuota, recordGenerationUsage } from '@/lib/quota';
+import { consumeCredit } from '@/lib/credits';
 import { moderateText, recordModerationBlock } from '@/lib/moderation';
 import { allows4k } from '@/lib/plan';
 import { withRenderSlot } from '@/lib/render-semaphore';
@@ -174,6 +175,10 @@ async function handleGenerateVideo(body: any, userId: string) {
         userId,
         metadata: JSON.stringify({
           generation: { stage: 'queued', percent: 5, updatedAt: new Date().toISOString() },
+          // Paid-credit videos get the watermark removed (lib/generation-pipeline.ts
+          // brandingForVideo) and a relaxed duration floor — set server-side ONLY,
+          // from the quota verdict, never from client input.
+          ...(quota.usePurchasedCredit ? { paidCredit: true } : {}),
           request: {
             style: input.style,
             duration: input.duration,
@@ -202,6 +207,11 @@ async function handleGenerateVideo(body: any, userId: string) {
     // The job is accepted — consume quota now, not on completion, or a user
     // could requeue endlessly while jobs run.
     await recordGenerationUsage(userId, video.id, input.duration);
+    // Monthly allowance was already exhausted (checkGenerationQuota fell back
+    // to the purchased-credit pool) — spend the credit too, at the same point.
+    if (quota.usePurchasedCredit) {
+      await consumeCredit({ userId, videoId: video.id });
+    }
 
     const jobId = await enqueueGeneration({ videoId: video.id, userId, input });
     if (!jobId) {

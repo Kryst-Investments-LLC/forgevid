@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireVideoOwner } from '@/lib/video-access';
 import { enqueueRerender } from '@/lib/video-queue';
-import { loadScenes, rerenderVideo, setStage } from '@/lib/generation-pipeline';
+import { loadScenes, planRerender, rerenderVideo, setStage } from '@/lib/generation-pipeline';
 import { withRenderSlot } from '@/lib/render-semaphore';
 import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
 
@@ -21,6 +21,22 @@ export async function POST(_req: NextRequest, { params }: { params: { videoId: s
   if (scenes.length === 0) {
     return NextResponse.json(
       { error: 'This video has no persisted scenes to re-render' },
+      { status: 422 },
+    );
+  }
+
+  // Edit metering (lib/generation-pipeline.ts) is a fast DB + filesystem check
+  // — cheap enough to run up front, synchronously, so a capped user gets a
+  // friendly 429 immediately instead of the job silently failing later on the
+  // worker (Redis path) or in the fire-and-forget inline path.
+  try {
+    await planRerender(params.videoId);
+  } catch (err: any) {
+    if (err?.code === 'edit_limit') {
+      return NextResponse.json({ error: err.message, code: 'edit_limit' }, { status: 429 });
+    }
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'This video has no persisted scenes to re-render' },
       { status: 422 },
     );
   }

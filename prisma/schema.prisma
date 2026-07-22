@@ -82,6 +82,7 @@ model User {
   betaAccessEntriesCreated BetaAccessEntry[] @relation("BetaAccessCreatedBy")
   brandKit       BrandKit?
   clonedVoices   ClonedVoice[]
+  creditLedgerEntries CreditLedger[]
 
   @@map("users")
   @@index([email])
@@ -746,6 +747,32 @@ model BrandKit {
 
   @@map("brand_kits")
   @@index([userId])
+}
+
+/// Purchased-credit ledger — the second of the two credit pools (see lib/quota.ts).
+/// Append-only: a credit purchase is a +delta row, a generation paid for with a
+/// purchased credit is a -delta row. Balance = SUM(delta) for the user; never
+/// mutated in place, so it doubles as an audit trail. stripeSessionId is unique
+/// so the Stripe webhook can retry `checkout.session.completed` without
+/// double-granting (see lib/credits.ts grantCredits).
+model CreditLedger {
+  id              String   @id @default(cuid())
+  userId          String
+  /// +grant, -consume. Whole credits (1 credit = 1 video, per the product design).
+  delta           Int
+  /// purchase_single | purchase_topup10 | purchase_topup25 | consume_generation | refund_failed_render
+  reason          String
+  videoId         String?
+  /// Idempotency key for webhook grants — @unique so a re-delivered Stripe event
+  /// can't grant the same purchase twice.
+  stripeSessionId String?  @unique
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("credit_ledger")
+  @@index([userId])
+  @@index([videoId])
 }
 
 enum VideoStatus {

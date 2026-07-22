@@ -15,7 +15,7 @@
 
 import { prisma } from './prisma';
 import { hasOpenAiKey, openAiApiKey } from './openai-key';
-import { assembleVideo, generateVideoWithScenes, renderDims } from './video-generator';
+import { assembleVideo, generateVideoWithScenes, renderDims, spokenLine } from './video-generator';
 import type { AspectRatio, ResolvedScene } from './video-generator';
 import { selectMusicPath } from './music-library';
 import { CAPTION_PRESETS, isCaptionPreset } from './captions';
@@ -23,6 +23,8 @@ import { freeBranding, resolveBranding } from './brand-kit';
 import { resolveUserMedia } from './user-media';
 import { estimateGenerationCost, recordGenerationCost } from './cost-ledger';
 import { refundGenerationUsage } from './quota';
+import { refundCreditForVideo } from './credits';
+import { peekCachedSegments, synthesizeSceneVoiceovers } from './voiceover';
 import { sendExportCompleteEmail } from './email';
 import { rejectedClipUrls } from './clip-memory';
 
@@ -73,14 +75,26 @@ function transitionFromMetadata(raw: any): TransitionConfig | null {
 /**
  * Branding is resolved from the video's OWNER on the server, never from client
  * input — otherwise a free user could simply ask for no watermark.
+ *
+ * Exception: a video paid for with a purchased credit (metadata.paidCredit,
+ * set server-side by checkGenerationQuota's usePurchasedCredit verdict — see
+ * app/api/ai/route.ts) gets the watermark removed even on the free plan,
+ * because "no watermark" is exactly what SINGLE/top-up credits are sold on.
+ * This does NOT unlock 4K, avatars, voice cloning, or custom branding — those
+ * stay governed by the user's actual plan via resolveBranding/allows4k/etc.
  */
 async function brandingForVideo(videoId: string) {
   const video = await prisma.video.findUnique({
     where: { id: videoId },
-    select: { userId: true },
+    select: { userId: true, metadata: true },
   });
   if (!video) return freeBranding();
-  return resolveBranding(video.userId);
+  const branding = await resolveBranding(video.userId);
+  const paidCredit = parseMetadata(video.metadata).paidCredit === true;
+  if (paidCredit && branding.watermarkText) {
+    return { ...branding, watermarkText: null };
+  }
+  return branding;
 }
 
 /**
@@ -436,6 +450,9 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
     await writeProgress(videoId, { stage: 'failed', error: message }).catch(() => {});
     // Give the quota slot back — a failed render must not consume a paid credit.
     await refundGenerationUsage(videoId).catch(() => {});
+    // If this generation ran on a purchased credit instead, give that back too
+    // (a no-op when it didn't — see refundCreditForVideo).
+    await refundCreditForVideo(videoId).catch(() => {});
     await settle(false, input.prompt).catch(() => {});
     throw error;
   }
@@ -466,20 +483,89 @@ export async function saveScenes(videoId: string, scenes: ResolvedScene[]): Prom
 }
 
 /**
+ * Load a video's persisted scenes + classify the re-render it's about to run,
+ * THROWING the edit-metering errors before any rendering work starts.
+ *
+ * A re-render is COSMETIC when every scene's line still hits the TTS cache
+ * (nothing was actually re-synthesized) — free, but capped at 30 total per
+ * video (a backstop). It's a NARRATION EDIT when any scene is a cache MISS
+ * (the user changed what a scene says) — capped at 15 per video, since each
+ * one spends real ElevenLabs money. Both throw a friendly
+ * `{code:'edit_limit'}` error over the cap.
+ *
+ * Exported so the API route can run this cheap, DB/fs-only check up front
+ * (see app/api/videos/[videoId]/rerender) and return 429 synchronously,
+ * without needing to await the (much slower) full ffmpeg render just to
+ * observe a limit that was already knowable before assembly started.
+ */
+export async function planRerender(videoId: string) {
+  const video = await prisma.video.findUnique({
+    where: { id: videoId },
+    select: { metadata: true, userId: true, title: true },
+  });
+  const meta = parseMetadata(video?.metadata ?? null);
+  const scenes = Array.isArray(meta.scenes) ? (meta.scenes as ResolvedScene[]) : [];
+  if (!video || scenes.length === 0) {
+    throw new Error('This video has no persisted scenes to re-render');
+  }
+
+  const rerenderCount: number = Number(meta.rerenderCount) || 0;
+  if (rerenderCount >= 30) {
+    throw Object.assign(new Error('Re-render limit reached for this video'), { code: 'edit_limit' });
+  }
+
+  const addOns: string[] = Array.isArray(meta.request?.addOns) ? meta.request.addOns : [];
+  const wantVoiceover = addOns.length === 0 || addOns.includes('voiceover');
+  // A user-uploaded narration track (narrationAssetId) bypasses per-scene TTS
+  // entirely — assembleVideo prioritizes options.voiceoverPath over synthesis —
+  // so there is no TTS cache to miss and such a re-render is never a narration edit.
+  const narrationAssetId: string | undefined = meta.request?.narrationAssetId;
+  const usesPerSceneTts = wantVoiceover && !narrationAssetId;
+
+  // What is SPOKEN is the narration, never the stage direction — same mapping
+  // assembleVideo uses internally, so the cache key here matches the real one.
+  const spoken = scenes.map((s) => ({ id: s.id, description: spokenLine(s) }));
+  const peeked = usesPerSceneTts ? peekCachedSegments(spoken, meta.request?.voiceId) : [];
+  const missed = peeked.filter((p) => !p.cached);
+  const isNarrationEdit = usesPerSceneTts && missed.length > 0;
+
+  const narrationEditCount: number = Number(meta.narrationEditCount) || 0;
+  if (isNarrationEdit && narrationEditCount >= 15) {
+    throw Object.assign(new Error('Narration edit limit reached for this video'), { code: 'edit_limit' });
+  }
+
+  return {
+    video,
+    meta,
+    scenes,
+    addOns,
+    usesPerSceneTts,
+    spoken,
+    missed,
+    isNarrationEdit,
+    rerenderCount,
+    narrationEditCount,
+  };
+}
+
+/**
  * Re-assemble a video from its already-persisted (and possibly edited) scenes.
  * Skips planning and footage matching entirely.
  */
 export async function rerenderVideo(videoId: string): Promise<string> {
-  const video = await prisma.video.findUnique({
-    where: { id: videoId },
-    select: { metadata: true },
-  });
-  const meta = parseMetadata(video?.metadata ?? null);
-  const scenes = Array.isArray(meta.scenes) ? (meta.scenes as ResolvedScene[]) : [];
-  if (scenes.length === 0) {
-    throw new Error('This video has no persisted scenes to re-render');
-  }
-  const addOns: string[] = Array.isArray(meta.request?.addOns) ? meta.request.addOns : [];
+  const {
+    video,
+    meta,
+    scenes,
+    addOns,
+    usesPerSceneTts,
+    spoken,
+    missed,
+    isNarrationEdit,
+    rerenderCount,
+    narrationEditCount,
+  } = await planRerender(videoId);
+
   // Reuse the ratio the video was generated with, or a re-render would silently
   // turn a vertical video landscape.
   const aspectRatio: AspectRatio = meta.request?.aspectRatio ?? '16:9';
@@ -508,10 +594,20 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     const captionPreset = isCaptionPreset(meta.request?.captionPreset)
       ? meta.request.captionPreset
       : null;
+
+    // Synthesize (or hit cache for) narration explicitly HERE, rather than
+    // letting assembleVideo derive it internally, so the segments actually
+    // rendered are exactly the ones peeked/priced above — no second,
+    // potentially-inconsistent synthesis call.
+    const sceneVoiceovers = usesPerSceneTts
+      ? await synthesizeSceneVoiceovers(spoken, meta.request?.voiceId)
+      : null;
+
     const assembled = await assembleVideo(scenes, addOns, aspectRatio, {
       musicPath,
       voiceId: meta.request?.voiceId,
       voiceoverPath: await audioAssetForVideo(videoId, meta.request?.narrationAssetId),
+      sceneVoiceovers,
       lowerThird: meta.request?.lowerThird ?? null,
       branding,
       // Re-render must reuse the same transition, or the output changes shape.
@@ -552,11 +648,34 @@ export async function rerenderVideo(videoId: string): Promise<string> {
     // Persist the scenes as rendered: narration pacing may have re-timed them
     // and each now carries a poster frame. Otherwise the editor drifts.
     await saveScenes(videoId, assembled.scenes);
+    // Edit-metering bookkeeping: every re-render counts against the 30-total
+    // backstop; only a narration edit (a TTS cache miss) also counts against
+    // the 15 cap.
     await writeProgress(
       videoId,
       { stage: 'done', percent: 100, videoUrl, provider: 'stock-assembler' },
-      { captions: cues },
+      {
+        captions: cues,
+        rerenderCount: rerenderCount + 1,
+        narrationEditCount: isNarrationEdit ? narrationEditCount + 1 : narrationEditCount,
+      },
     );
+
+    // EVERY re-render records its cost — previously re-renders recorded
+    // nothing, silently under-counting spend on the busiest edit path.
+    const renderSeconds = assembled.scenes.reduce((n, s) => n + s.duration, 0);
+    await recordGenerationCost({
+      userId: video.userId,
+      videoId,
+      prompt: `[rerender] ${video.title ?? videoId}`,
+      succeeded: true,
+      breakdown: estimateGenerationCost({
+        // Only the MISSED segments actually spent TTS money — cache hits are free.
+        ttsChars: missed.reduce((n, s) => n + s.chars, 0),
+        whisperSeconds: renderSeconds,
+        renderSeconds,
+      }),
+    }).catch(() => {});
 
     return videoUrl;
   } catch (error) {

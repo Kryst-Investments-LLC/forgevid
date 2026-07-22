@@ -8,13 +8,25 @@
  * This is also the upgrade pressure that makes the Stripe plans sell: the
  * rejection names the limit and flags `upgradeRequired`.
  *
+ * Two credit pools: this monthly allowance is consumed FIRST. Once it's
+ * exhausted, checkGenerationQuota falls back to the purchased-credit pool
+ * (lib/credits.ts) — never-expiring credits bought via SINGLE/TOPUP10/TOPUP25.
+ * A generation that runs on a purchased credit is flagged `usePurchasedCredit`
+ * so the caller can consume the credit instead of (already-exhausted) quota,
+ * and gets a `maxDurationSeconds` floor of 90s regardless of plan (see
+ * lib/stripe.ts CREDIT_PACKS and the business design in TODO/PRD notes).
+ *
  * Relative imports only — reachable from the worker process.
  */
 
 import { prisma } from './prisma';
 import { getUserPlan, type Plan } from './plan';
+import { getCreditBalance } from './credits';
 
 export const GENERATION_ACTION = 'video_generation';
+
+/** Videos rendered on a purchased credit get at least this long, regardless of plan cap. */
+export const PURCHASED_CREDIT_MIN_DURATION_SECONDS = 90;
 
 export interface PlanQuota {
   /** Generations per calendar month. */
@@ -23,12 +35,16 @@ export interface PlanQuota {
   maxDurationSeconds: number;
 }
 
+// Margins-protecting allowances (2026-07 credit-system relaunch). A purchased
+// credit (SINGLE/TOPUP10/TOPUP25) can still buy a longer render than the plan
+// cap — see PURCHASED_CREDIT_MIN_DURATION_SECONDS — but never unlocks 4K,
+// avatars, voice cloning, or custom branding (those stay plan-gated in lib/plan.ts).
 export const PLAN_QUOTAS: Record<Plan, PlanQuota> = {
-  free: { videosPerMonth: 3, maxDurationSeconds: 60 },
-  starter: { videosPerMonth: 20, maxDurationSeconds: 180 },
-  pro: { videosPerMonth: 100, maxDurationSeconds: 600 },
-  enterprise: { videosPerMonth: 1000, maxDurationSeconds: 600 },
-  custom: { videosPerMonth: 1000, maxDurationSeconds: 600 },
+  free: { videosPerMonth: 2, maxDurationSeconds: 60 },
+  starter: { videosPerMonth: 30, maxDurationSeconds: 90 },
+  pro: { videosPerMonth: 100, maxDurationSeconds: 120 },
+  enterprise: { videosPerMonth: 250, maxDurationSeconds: 150 },
+  custom: { videosPerMonth: 250, maxDurationSeconds: 150 },
 };
 
 export interface QuotaVerdict {
@@ -39,6 +55,10 @@ export interface QuotaVerdict {
   maxDurationSeconds: number;
   reason?: string;
   upgradeRequired?: boolean;
+  /** true when this generation must be paid for with a purchased credit, not monthly quota. */
+  usePurchasedCredit?: boolean;
+  /** Denial only: the user could unblock themselves with a Single/top-up purchase instead of upgrading. */
+  topUpAvailable?: boolean;
 }
 
 function monthStart(now = new Date()): Date {
@@ -90,14 +110,31 @@ export async function checkGenerationQuota(
   }
 
   if (used >= quota.videosPerMonth) {
+    // Monthly allowance is spent — fall back to the purchased-credit pool
+    // (never-expiring, bought via Single/top-up) before denying outright.
+    const balance = await getCreditBalance(userId);
+    if (balance > 0) {
+      return {
+        allowed: true,
+        plan,
+        used,
+        limit: quota.videosPerMonth,
+        maxDurationSeconds: Math.max(quota.maxDurationSeconds, PURCHASED_CREDIT_MIN_DURATION_SECONDS),
+        usePurchasedCredit: true,
+      };
+    }
+
     return {
       allowed: false,
       plan,
       used,
       limit: quota.videosPerMonth,
       maxDurationSeconds: quota.maxDurationSeconds,
-      reason: `Monthly limit reached (${used}/${quota.videosPerMonth} videos on the ${plan} plan)`,
+      reason:
+        `Monthly limit reached (${used}/${quota.videosPerMonth} videos on the ${plan} plan). ` +
+        `Buy a Single video or a top-up pack to keep going without upgrading.`,
       upgradeRequired: plan !== 'enterprise' && plan !== 'custom',
+      topUpAvailable: true,
     };
   }
 
