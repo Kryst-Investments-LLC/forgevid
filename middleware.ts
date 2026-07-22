@@ -74,8 +74,11 @@ export async function middleware(request: NextRequest) {
   // A fresh nonce per request. Next reads it from the CSP header we put on the
   // REQUEST and stamps it onto its inline bootstrap scripts; without it those
   // scripts are refused and React never hydrates. See middleware/csp.ts.
+  // A per-request nonce is still exposed as `x-nonce` for any future strict-CSP
+  // work, but the CSP itself no longer relies on it — see middleware/csp.ts for
+  // why (static prerendering can't stamp a per-request nonce onto scripts).
   const nonce = generateNonce();
-  const csp = buildCsp(nonce, process.env.NODE_ENV !== 'production');
+  const csp = buildCsp(process.env.NODE_ENV !== 'production');
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);

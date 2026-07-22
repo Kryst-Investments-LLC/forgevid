@@ -24,7 +24,7 @@ export function generateNonce(): string {
   return btoa(binary);
 }
 
-export function buildCsp(nonce: string, isDev: boolean): string {
+export function buildCsp(isDev: boolean): string {
   const connectSrc = [
     "'self'",
     isDev ? 'ws://localhost:3000' : null,
@@ -46,11 +46,17 @@ export function buildCsp(nonce: string, isDev: boolean): string {
 
   return [
     "default-src 'self'",
-    // The nonce authorises Next's inline bootstrap. 'strict-dynamic' then lets
-    // those trusted scripts load the chunks they need, and instructs modern
-    // browsers to IGNORE the 'unsafe-inline' fallback below (which exists only
-    // for browsers too old to understand strict-dynamic).
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-inline' https:${isDev ? " 'unsafe-eval'" : ''}`,
+    // Scripts: 'self' authorises the /_next/static chunks, 'unsafe-inline'
+    // authorises Next's inline bootstrap (self.__next_f.push(...)), and https:
+    // lets trusted third parties (Stripe.js) load. We deliberately do NOT use a
+    // nonce or 'strict-dynamic': Next statically prerenders these pages, so the
+    // per-request nonce generated in middleware can never be stamped onto the
+    // build-time <script> tags. Under 'strict-dynamic' that left EVERY script
+    // unauthorised and the app a dead, un-hydrated shell (no Generate button, no
+    // nav, no signup). And per the CSP spec a nonce makes browsers ignore
+    // 'unsafe-inline', so the two cannot coexist — this is the policy that
+    // actually hydrates in production.
+    `script-src 'self' 'unsafe-inline' https:${isDev ? " 'unsafe-eval'" : ''}`,
     // Tailwind and styled-jsx emit inline <style>; there is no nonce path for
     // them, and inline CSS is not a script-execution vector.
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
