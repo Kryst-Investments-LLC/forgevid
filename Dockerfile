@@ -75,8 +75,8 @@ RUN apk add --no-cache ffmpeg fontconfig openssl \
 # upload (public/generated). The image runs as non-root `nextjs` and /app/public
 # was COPYed as root, so without this the render fails with
 # `EACCES: permission denied, mkdir '/app/public/temp'`.
-RUN mkdir -p /app/uploads /app/public/temp /app/public/generated \
-    && chown -R nextjs:nodejs /app/uploads /app/public
+RUN mkdir -p /app/uploads /app/public/temp /app/public/generated /app/.cache/tts \
+    && chown -R nextjs:nodejs /app/uploads /app/public /app/.cache
 
 # Switch to non-root user
 USER nextjs
