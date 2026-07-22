@@ -44,11 +44,18 @@ export const apiRateLimit = rateLimit({
   legacyHeaders: false,
 });
 
-// Slow down configuration
+// Slow down configuration.
+// express-slow-down v2 requires delayMs to be a FUNCTION — the old numeric form
+// (`delayMs: 500`) throws a WRN_ESD_DELAYMS validation error, which was crashing
+// the security middleware on /api/ai (every generation 500'd before it started).
+// This preserves the original "add 500ms per request past the limit" behavior.
 export const speedLimiter = slowDown({
   windowMs: 15 * 60 * 1000, // 15 minutes
   delayAfter: 50, // allow 50 requests per 15 minutes, then...
-  delayMs: 500, // add 500ms delay per request above delayAfter
+  delayMs: (used, req) => {
+    const delayAfter = req.slowDown.limit;
+    return (used - delayAfter) * 500; // +500ms per request above the limit
+  },
 });
 
 // Helmet security configuration
