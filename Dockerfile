@@ -55,12 +55,13 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Prisma CLI + engines + schema/migrations so `prisma migrate deploy` can run on
-# boot (see CMD). The standalone trace bundles @prisma/client but NOT the CLI or
-# the schema/migration engine, so copy them from the builder — same alpine base,
-# so the musl engine binaries match the runtime.
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# Full node_modules + schema/migrations so `prisma migrate deploy` runs on boot
+# (see CMD). The standalone trace bundles @prisma/client but NOT the CLI, its
+# schema/migration engine, or the CLI's un-bundled transitive deps (@prisma/config
+# -> `effect`, etc.) — copying just prisma/@prisma missed those. The full tree from
+# the builder (same alpine base, so musl engines match) is a safe superset for the
+# standalone server too. This overwrites the pruned node_modules from standalone.
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 
 # Install FFmpeg for video processing (+ openssl: Prisma's engine needs libssl on
