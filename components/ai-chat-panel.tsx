@@ -4,7 +4,6 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { MessageCircle, Send, Sparkles, Loader2, Video, RotateCcw } from 'lucide-react';
@@ -187,11 +186,11 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
           <div className="text-sm whitespace-pre-wrap leading-relaxed">{displayContent}</div>
         )}
         {msg.videoBrief && (
-          <Card className="border-cyan-500/50 bg-cyan-950/30">
+          <Card className="border-cyan-200 bg-cyan-50">
             <CardContent className="p-4 space-y-3">
               <div className="flex items-center gap-2">
-                <Video className="h-4 w-4 text-cyan-400" />
-                <span className="font-semibold text-cyan-300">{msg.videoBrief.title}</span>
+                <Video className="h-4 w-4 text-cyan-600" />
+                <span className="font-semibold text-cyan-800">{msg.videoBrief.title}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div>
@@ -209,8 +208,8 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
               </div>
               <div className="space-y-1">
                 {msg.videoBrief.scenes.map((scene, i) => (
-                  <div key={i} className="text-xs text-muted-foreground flex gap-2">
-                    <span className="text-cyan-400 font-mono shrink-0">Scene {i + 1}:</span>
+                  <div key={i} className="text-xs text-gray-600 flex gap-2">
+                    <span className="text-cyan-700 font-mono shrink-0">Scene {i + 1}:</span>
                     <span>{scene.description} ({scene.duration}s)</span>
                   </div>
                 ))}
@@ -249,8 +248,10 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
         </Button>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
-        {/* Messages */}
-        <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+        {/* Messages — a real overflow container so long replies scroll and
+            auto-scroll-to-bottom actually works (a ref on radix ScrollArea
+            targets the wrong element and never scrolled). */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
           <div className="space-y-4">
             {messages.map((msg) => (
               <div
@@ -265,12 +266,12 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
                 <div
                   className={`max-w-[80%] rounded-lg p-3 ${
                     msg.role === 'user'
-                      ? 'bg-cyan-600/20 border border-cyan-500/30'
-                      : 'bg-gray-800/50 border border-gray-700/50'
+                      ? 'bg-cyan-600 text-white border border-cyan-700'
+                      : 'bg-gray-100 text-gray-900 border border-gray-200'
                   }`}
                 >
                   {renderMessageContent(msg)}
-                  <div className="text-[10px] text-muted-foreground mt-1">
+                  <div className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-cyan-100' : 'text-gray-500'}`}>
                     {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
@@ -281,8 +282,8 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
                 <Avatar className="h-8 w-8 shrink-0">
                   <AvatarFallback className="bg-cyan-600 text-white">AI</AvatarFallback>
                 </Avatar>
-                <div className="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="bg-gray-100 border border-gray-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Thinking...
                   </div>
@@ -290,7 +291,7 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Input */}
         <div className="p-4 border-t">
