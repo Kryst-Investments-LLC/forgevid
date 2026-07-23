@@ -818,6 +818,43 @@ model VideoComment {
   @@map("video_comments")
 }
 
+/// Ad Studio: a marketing campaign — one concept generated into a matrix of ad
+/// creatives (hook x CTA x placement) for a target platform.
+model AdCampaign {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  brief     String
+  platform  String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("ad_campaigns")
+}
+
+/// One ad variant in a campaign. Links to the generated Video and carries the
+/// marketing axes under test plus performance (isWinner / roas) for the winners
+/// library + "make more like this" loop.
+model AdCreative {
+  id         String   @id @default(cuid())
+  userId     String
+  campaignId String
+  videoId    String?
+  label      String
+  hook       String?
+  cta        String?
+  aspect     String?
+  platform   String
+  isWinner   Boolean  @default(false)
+  roas       Float?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([campaignId])
+  @@map("ad_creatives")
+}
+
 enum VideoStatus {
   DRAFT // created (e.g. from a template) but never rendered
   QUEUED // generation job enqueued, not yet picked up
