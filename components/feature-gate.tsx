@@ -50,16 +50,18 @@ export function UsageLimit({ feature, currentUsage, children }: UsageLimitProps)
 
   if (!subscription || !canUseFeature(feature, currentUsage)) {
     return (
+      // Light card in a dark-token app: every color must be explicit, or the
+      // title/body inherit near-white foreground and vanish on orange-50.
       <Card className="border-orange-200 bg-orange-50">
         <CardContent className="flex flex-col items-center justify-center py-8 text-center">
           <div className="flex items-center justify-center w-12 h-12 bg-orange-100 rounded-full mb-4">
             <Zap className="h-6 w-6 text-orange-600" />
           </div>
-          <h3 className="font-semibold mb-2">Usage Limit Reached</h3>
-          <p className="text-sm text-muted-foreground mb-4">
+          <h3 className="font-semibold mb-2 text-orange-950">Usage Limit Reached</h3>
+          <p className="text-sm text-orange-900/70 mb-4">
             You've reached your {feature} limit for this billing period
           </p>
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="outline" className="border-orange-300 bg-white text-orange-900 hover:bg-orange-100">
             <ArrowUpRight className="h-4 w-4 mr-2" />
             Upgrade Plan
           </Button>

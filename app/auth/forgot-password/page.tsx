@@ -64,7 +64,7 @@ export default function ForgotPasswordPage() {
                   <CheckCircle2 className="h-12 w-12 text-green-600" />
                 </div>
                 <p className="text-sm text-gray-500">
-                  If an account exists for <span className="font-medium text-foreground">{email}</span>,
+                  If an account exists for <span className="font-medium text-gray-900">{email}</span>,
                   a reset link is on its way. The link expires in one hour.
                 </p>
                 <Link href="/auth/login">

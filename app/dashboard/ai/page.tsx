@@ -135,6 +135,7 @@ export default function AIFeaturesPage() {
   const [musicName, setMusicName] = useState<string>("")
   const [uploadingMusic, setUploadingMusic] = useState(false)
   const [transitionType, setTransitionType] = useState<string>("fade")
+  const [activeTab, setActiveTab] = useState<string>("chat")
   const [captionPreset, setCaptionPreset] = useState<string>("default")
   const [pipAssetId, setPipAssetId] = useState<string | null>(null)
   const [pipName, setPipName] = useState<string>("")
@@ -257,8 +258,20 @@ export default function AIFeaturesPage() {
     }
   }, [isVideoFullscreen])
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()) {
+  // `overrides` exists for callers that just changed state (the chat brief):
+  // React state set a moment ago is NOT visible to this closure yet, so the
+  // brief passes its values explicitly instead of hoping setState landed.
+  const handleGenerate = async (overrides?: {
+    prompt?: string
+    style?: string
+    duration?: number
+    addOns?: string[]
+  }) => {
+    const effPrompt = overrides?.prompt ?? prompt
+    const effStyle = overrides?.style ?? selectedStyle
+    const effDuration = overrides?.duration ?? videoLength[0]
+    const effAddOns = overrides?.addOns ?? selectedAddOns
+    if (!effPrompt.trim()) {
       toast.error('Please enter a video description')
       return
     }
@@ -274,16 +287,16 @@ export default function AIFeaturesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'generate_video',
-          prompt,
-          style: selectedStyle,
-          duration: videoLength[0],
-          addOns: selectedAddOns,
+          prompt: effPrompt,
+          style: effStyle,
+          duration: effDuration,
+          addOns: effAddOns,
           aspectRatio: selectedAspectRatio,
           ...(voiceMode === "ai" && selectedVoiceId ? { voiceId: selectedVoiceId } : {}),
           ...(voiceMode === "own" && narrationAssetId ? { narrationAssetId } : {}),
-          ...(selectedAddOns.includes("music") && musicAssetId ? { musicAssetId } : {}),
+          ...(effAddOns.includes("music") && musicAssetId ? { musicAssetId } : {}),
           ...(selectedMediaIds.length ? { mediaAssetIds: selectedMediaIds } : {}),
-          ...(selectedAddOns.includes("subtitles") && captionPreset !== "default"
+          ...(effAddOns.includes("subtitles") && captionPreset !== "default"
             ? { captionPreset }
             : {}),
           ...(pipAssetId ? { pip: { assetId: pipAssetId, position: pipPosition } } : {}),
@@ -360,7 +373,7 @@ export default function AIFeaturesPage() {
             </p>
           </div>
 
-          <Tabs defaultValue="chat" className="space-y-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="chat" className="flex items-center gap-1">
                 <MessageCircle className="h-3 w-3" />
@@ -386,13 +399,22 @@ export default function AIFeaturesPage() {
             <TabsContent value="chat">
               <AIChatPanel
                 onGenerateVideo={(brief) => {
+                  // Mirror the brief into the form so the Creator tab shows it...
                   setPrompt(brief.description)
                   setSelectedStyle(brief.style)
                   setVideoLength([brief.duration])
                   setSelectedAddOns(brief.addOns)
-                  toast.success('Brief loaded! Switching to AI Creator to generate...')
-                  // Auto-trigger generation
-                  setTimeout(() => handleGenerate(), 500)
+                  // ...but generate from the brief DIRECTLY: state set one line
+                  // up is not visible to handleGenerate's closure yet, which is
+                  // exactly how this button used to silently do nothing.
+                  setActiveTab('create')
+                  toast.success('Generating from your brief — watch the progress here.')
+                  void handleGenerate({
+                    prompt: brief.description,
+                    style: brief.style,
+                    duration: brief.duration,
+                    addOns: brief.addOns,
+                  })
                 }}
               />
             </TabsContent>
@@ -778,7 +800,7 @@ export default function AIFeaturesPage() {
                     <Button
                       className="w-full"
                       size="lg"
-                      onClick={handleGenerate}
+                      onClick={() => handleGenerate()}
                       disabled={!prompt.trim() || isGenerating}
                     >
                       {isGenerating ? (

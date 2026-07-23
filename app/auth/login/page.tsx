@@ -59,14 +59,14 @@ export default function LoginPage() {
           <span className="font-heading text-xl font-bold">ForgeVid</span>
         </div>
 
-        <Card>
+        <Card className="bg-white border-gray-200 text-gray-900">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-            <CardDescription>Sign in to continue to your account</CardDescription>
+            <CardTitle className="text-2xl font-bold text-gray-900">Welcome back</CardTitle>
+            <CardDescription className="text-gray-600">Sign in to continue to your account</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Google Login */}
-            <Button variant="outline" className="w-full bg-transparent" onClick={handleGoogleLogin}>
+            <Button variant="outline" className="w-full bg-white border-gray-300 text-gray-700 hover:bg-gray-50" onClick={handleGoogleLogin}>
               <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
                 <path
                   fill="currentColor"
@@ -93,7 +93,7 @@ export default function LoginPage() {
                 <Separator className="w-full" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">or continue with</span>
+                <span className="bg-white px-2 text-gray-500">or continue with</span>
               </div>
             </div>
 
@@ -105,32 +105,32 @@ export default function LoginPage() {
                 </div>
               )}
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email" className="text-gray-700">Email</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
                   <Input
                     id="email"
                     type="email"
                     placeholder="Enter your email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                     required
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" className="text-gray-700">Password</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 pr-10"
+                    className="pl-10 pr-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                     required
                   />
                   <Button
@@ -141,9 +141,9 @@ export default function LoginPage() {
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      <EyeOff className="h-4 w-4 text-gray-500" />
                     ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
+                      <Eye className="h-4 w-4 text-gray-500" />
                     )}
                   </Button>
                 </div>
@@ -159,13 +159,13 @@ export default function LoginPage() {
                 </Link>
               </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white" disabled={isLoading}>
                 {isLoading ? "Signing in..." : "Sign in"}
               </Button>
             </form>
 
             <div className="text-center text-sm">
-              <span className="text-muted-foreground">Don't have an account? </span>
+              <span className="text-gray-500">Don't have an account? </span>
               <Link href="/auth/signup" className="text-primary hover:underline font-medium">
                 Sign up
               </Link>

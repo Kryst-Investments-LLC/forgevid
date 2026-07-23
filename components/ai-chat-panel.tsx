@@ -145,22 +145,23 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
         }),
       });
 
-      if (!response.ok) throw new Error('Generation failed');
-
-      const data = await response.json();
-      if (data.success) {
-        toast.success('Video generated! Check the AI Creator tab.');
-
-        const resultMsg: ChatMessage = {
-          id: `result-${Date.now()}`,
-          role: 'assistant',
-          content: `Your video "${brief.title}" has been generated! You can preview and download it in the AI Creator tab. ${data.data?.isGenerated ? '🎬 Real video created!' : '📝 Script created with placeholder video.'}`,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, resultMsg]);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Generation failed');
       }
-    } catch {
-      toast.error('Video generation failed. Please try again.');
+
+      // The API QUEUES the job and returns a videoId — nothing is "generated"
+      // yet. Say what actually happened.
+      toast.success('Generation started!');
+      const resultMsg: ChatMessage = {
+        id: `result-${Date.now()}`,
+        role: 'assistant',
+        content: `"${brief.title}" is rendering now. Watch the progress in My Videos — you'll also get an email when it's ready.`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, resultMsg]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Video generation failed. Please try again.');
     }
   };
 
@@ -192,18 +193,22 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
                 <Video className="h-4 w-4 text-cyan-600" />
                 <span className="font-semibold text-cyan-800">{msg.videoBrief.title}</span>
               </div>
+              {/* This card is hardcoded LIGHT (bg-cyan-50) inside a dark-token
+                  app, so semantic colors (muted-foreground, outline badges)
+                  resolve light-on-light and vanish. Every color in here must
+                  be explicit. */}
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div>
-                  <span className="text-muted-foreground">Style:</span>{' '}
-                  <Badge variant="outline" className="ml-1">{msg.videoBrief.style}</Badge>
+                  <span className="text-cyan-900/70">Style:</span>{' '}
+                  <Badge variant="outline" className="ml-1 border-cyan-300 text-cyan-900">{msg.videoBrief.style}</Badge>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Duration:</span>{' '}
-                  <Badge variant="outline" className="ml-1">{msg.videoBrief.duration}s</Badge>
+                  <span className="text-cyan-900/70">Duration:</span>{' '}
+                  <Badge variant="outline" className="ml-1 border-cyan-300 text-cyan-900">{msg.videoBrief.duration}s</Badge>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Scenes:</span>{' '}
-                  <Badge variant="outline" className="ml-1">{msg.videoBrief.scenes.length}</Badge>
+                  <span className="text-cyan-900/70">Scenes:</span>{' '}
+                  <Badge variant="outline" className="ml-1 border-cyan-300 text-cyan-900">{msg.videoBrief.scenes.length}</Badge>
                 </div>
               </div>
               <div className="space-y-1">
@@ -217,7 +222,7 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
               {msg.videoBrief.addOns.length > 0 && (
                 <div className="flex gap-1 flex-wrap">
                   {msg.videoBrief.addOns.map((addon) => (
-                    <Badge key={addon} variant="secondary" className="text-xs">{addon}</Badge>
+                    <Badge key={addon} className="text-xs bg-cyan-100 text-cyan-900 border border-cyan-200 hover:bg-cyan-100">{addon}</Badge>
                   ))}
                 </div>
               )}

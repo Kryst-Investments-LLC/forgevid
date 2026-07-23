@@ -282,7 +282,7 @@ export default function SignInPage() {
                     </Button>
                   )}
                   {providersLoading && (
-                    <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
                       <Loader2 className="h-3 w-3 animate-spin" />
                       Loading single sign-on providers…
                     </div>
