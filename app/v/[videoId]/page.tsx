@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
+import VideoComments from '@/components/video-comments';
 
 /**
  * Public share page — the free-tier watermark's growth channel.
@@ -77,6 +78,9 @@ export default async function SharedVideoPage({ params }: { params: { videoId: s
         <source src={video.src} type="video/mp4" />
         Your browser cannot play this video.
       </video>
+
+      <VideoComments videoId={params.videoId} />
+
       <a
         href="/"
         className="text-sm text-white/60 hover:text-white underline underline-offset-4"

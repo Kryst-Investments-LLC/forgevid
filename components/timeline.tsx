@@ -50,7 +50,7 @@ function TimelineClip({ clip, isDragging, isResizing, onClick, onSelect, onResiz
 
 export function Timeline() {
   const editor = useEditor();
-  const { state, setCurrentTime, setIsPlaying, setZoom, addTrack, removeTrack, toggleTrackLock, toggleTrackMute, removeClip, updateClip, undo, redo } = editor;
+  const { state, setCurrentTime, setIsPlaying, setZoom, addTrack, removeTrack, toggleTrackLock, toggleTrackMute, removeClip, updateClip, selectClip, undo, redo } = editor;
   const [dragOverlay, setDragOverlay] = useState<{ name: string; color: string } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
@@ -365,8 +365,14 @@ export function Timeline() {
                   clip={clip}
                   isDragging={selectedClip === clip.id}
                   isResizing={isResizing?.clipId === clip.id}
-                  onClick={() => setSelectedClip(clip.id)}
-                  onSelect={() => setSelectedClip(clip.id)}
+                  onClick={() => {
+                    setSelectedClip(clip.id);
+                    selectClip(clip.id);
+                  }}
+                  onSelect={() => {
+                    setSelectedClip(clip.id);
+                    selectClip(clip.id);
+                  }}
                   onResizeStart={(edge) => setIsResizing({ clipId: clip.id, edge })}
                 />
               ))}

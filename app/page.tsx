@@ -233,7 +233,7 @@ export default function RootPage() {
           </div>
 
           <p className="mt-6 text-sm text-gray-500">
-            No credit card required · 16:9, 9:16 and 1:1 · Export in minutes
+            No credit card required · Made for TikTok, Reels &amp; Shorts (9:16) · Export in minutes
           </p>
         </div>
 
@@ -264,6 +264,53 @@ export default function RootPage() {
             {EXAMPLES.map((example) => (
               <ExampleTile key={example.slug} example={example} />
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* -------------------------------------------------------- short-form */}
+      <section id="shortform" className="border-t border-white/5 px-4 py-24">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-12 text-center">
+            <span className="inline-block rounded-full border border-pink-500/30 bg-pink-500/10 px-4 py-1 text-sm font-medium text-pink-300">
+              For creators
+            </span>
+            <h2 className="mt-4 text-3xl font-bold text-white md:text-4xl">Built for TikTok, Reels &amp; Shorts</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-gray-400">
+              Short-form is first-class in ForgeVid — vertical, captioned, and ready to post. Not just repurposed 16:9.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="glass-card rounded-2xl border border-white/10 p-6">
+              <div className="mb-3 text-3xl">📱</div>
+              <h3 className="mb-2 font-semibold text-white">Vertical 9:16</h3>
+              <p className="text-sm text-gray-400">TikTok, Reels &amp; Shorts format out of the box — up to 4K portrait.</p>
+            </div>
+            <div className="glass-card rounded-2xl border border-white/10 p-6">
+              <div className="mb-3 text-3xl">💬</div>
+              <h3 className="mb-2 font-semibold text-white">Karaoke captions</h3>
+              <p className="text-sm text-gray-400">Word-by-word highlighted captions — the style short-form viewers expect.</p>
+            </div>
+            <div className="glass-card rounded-2xl border border-white/10 p-6">
+              <div className="mb-3 text-3xl">🎬</div>
+              <h3 className="mb-2 font-semibold text-white">Your clips + talking head</h3>
+              <p className="text-sm text-gray-400">Upload your own footage and overlay a talking-head of yourself on the b-roll.</p>
+            </div>
+            <div className="glass-card rounded-2xl border border-white/10 p-6">
+              <div className="mb-3 text-3xl">🎤</div>
+              <h3 className="mb-2 font-semibold text-white">Your voice or an AI’s</h3>
+              <p className="text-sm text-gray-400">Record your own narration, or let an AI voice read your script.</p>
+            </div>
+          </div>
+
+          <div className="mt-10 text-center">
+            <a
+              href="/dashboard/ai"
+              className="group relative inline-block rounded-xl bg-gradient-to-r from-pink-500 to-purple-600 px-8 py-4 text-lg font-semibold text-white shadow-xl transition-all hover-lift hover:shadow-pink-500/50"
+            >
+              Make a short — free
+            </a>
           </div>
         </div>
       </section>

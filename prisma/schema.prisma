@@ -802,6 +802,22 @@ model ReferralSignup {
   @@map("referral_signups")
 }
 
+/// Review comments on a video (async collaboration). Left by the owner or by
+/// anyone with the public share link (metadata.shareEnabled); public reviewers
+/// supply a display name, authenticated owners are linked by authorUserId.
+model VideoComment {
+  id           String   @id @default(cuid())
+  videoId      String
+  authorUserId String?
+  authorName   String
+  body         String
+  timestampSec Int?
+  createdAt    DateTime @default(now())
+
+  @@index([videoId])
+  @@map("video_comments")
+}
+
 enum VideoStatus {
   DRAFT // created (e.g. from a template) but never rendered
   QUEUED // generation job enqueued, not yet picked up

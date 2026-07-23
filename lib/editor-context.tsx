@@ -37,6 +37,8 @@ export interface EditorState {
   redoStack: string[];
   isLoadingProject: boolean;
   loadError: string | null;
+  selectedClipId: string | null;
+  selectedTrackId: string | null;
 }
 
 interface EditorContextType {
@@ -54,6 +56,7 @@ interface EditorContextType {
   updateClip: (trackId: string, clipId: string, updates: Partial<TimelineClip>) => void;
   trimClip: (trackId: string, clipId: string, trimStart: number, trimEnd: number) => void;
   splitClip: (trackId: string, clipId: string, splitTime: number) => void;
+  selectClip: (clipId: string | null, trackId?: string | null) => void;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -77,6 +80,8 @@ const initialState: EditorState = {
   redoStack: [],
   isLoadingProject: false,
   loadError: null,
+  selectedClipId: null,
+  selectedTrackId: null,
 };
 
 export function EditorProvider({ children }: { children: React.ReactNode }) {
@@ -162,8 +167,18 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
       tracks: prev.tracks.map(track =>
         track.id === trackId ? { ...track, clips: track.clips.filter(clip => clip.id !== clipId) } : track
       ),
+      selectedClipId: prev.selectedClipId === clipId ? null : prev.selectedClipId,
+      selectedTrackId: prev.selectedClipId === clipId ? null : prev.selectedTrackId,
     }));
   }, [saveStateToUndo]);
+
+  const selectClip = useCallback((clipId: string | null, trackId?: string | null) => {
+    setState(prev => ({
+      ...prev,
+      selectedClipId: clipId,
+      selectedTrackId: clipId === null ? null : (trackId ?? clipId.split('-')[0]),
+    }));
+  }, []);
 
   const updateClip = useCallback((trackId: string, clipId: string, updates: Partial<TimelineClip>) => {
     saveStateToUndo();
@@ -345,6 +360,7 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
     updateClip,
     trimClip,
     splitClip,
+    selectClip,
     undo,
     redo,
     canUndo: state.undoStack.length > 0,

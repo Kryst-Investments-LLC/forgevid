@@ -3,15 +3,37 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Type, Music, Video } from "lucide-react"
+import { Type, Music, Video, Scissors, Trash2, ArrowLeftToLine } from "lucide-react"
 import { useEditor } from "@/lib/editor-context"
 
 export function ToolPanel() {
-  const { state, addTrack } = useEditor()
+  const { state, addTrack, removeClip, trimClip, splitClip } = useEditor()
 
   // Match the numbering convention the timeline itself uses when adding tracks.
   const nextTrackNumber = (type: "video" | "audio" | "text") =>
     state.tracks.filter((track) => track.type === type).length + 1
+
+  const selectedClip =
+    state.tracks
+      .find((track) => track.id === state.selectedTrackId)
+      ?.clips.find((clip) => clip.id === state.selectedClipId) ?? null
+
+  const handleSplitAtPlayhead = () => {
+    if (!state.selectedClipId || !state.selectedTrackId) return
+    splitClip(state.selectedTrackId, state.selectedClipId, state.currentTime)
+  }
+
+  const handleDeleteClip = () => {
+    if (!state.selectedClipId || !state.selectedTrackId) return
+    removeClip(state.selectedTrackId, state.selectedClipId)
+  }
+
+  const handleTrimStartToPlayhead = () => {
+    if (!state.selectedClipId || !state.selectedTrackId || !selectedClip) return
+    const trimStart = Math.max(0, state.currentTime - selectedClip.startTime)
+    const trimEnd = selectedClip.trimEnd ?? selectedClip.duration
+    trimClip(state.selectedTrackId, state.selectedClipId, trimStart, trimEnd)
+  }
 
   const toolCategories = [
     {
@@ -66,6 +88,50 @@ export function ToolPanel() {
             {categoryIndex < toolCategories.length - 1 && <Separator className="mt-4" />}
           </div>
         ))}
+
+        <Separator className="mb-4" />
+
+        <div className="mb-6">
+          <h3 className="text-sm font-medium text-muted-foreground mb-3">Clip</h3>
+          {!selectedClip && (
+            <p className="text-xs text-muted-foreground mb-3">Select a clip on the timeline</p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              className="h-auto p-3 flex flex-col items-center gap-2 hover:bg-accent bg-transparent"
+              onClick={handleSplitAtPlayhead}
+              disabled={!selectedClip}
+            >
+              <Scissors className="h-5 w-5" />
+              <div className="text-center">
+                <div className="text-xs font-medium">Split at playhead</div>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto p-3 flex flex-col items-center gap-2 hover:bg-accent bg-transparent"
+              onClick={handleDeleteClip}
+              disabled={!selectedClip}
+            >
+              <Trash2 className="h-5 w-5" />
+              <div className="text-center">
+                <div className="text-xs font-medium">Delete clip</div>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto p-3 flex flex-col items-center gap-2 hover:bg-accent bg-transparent col-span-2"
+              onClick={handleTrimStartToPlayhead}
+              disabled={!selectedClip}
+            >
+              <ArrowLeftToLine className="h-5 w-5" />
+              <div className="text-center">
+                <div className="text-xs font-medium">Trim start to playhead</div>
+              </div>
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Quick Actions */}
