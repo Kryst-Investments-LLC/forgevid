@@ -758,7 +758,7 @@ Be specific and focus on filmable, real-world visuals. Avoid abstract concepts.$
         },
         { role: 'user', content: `Parse this script into scenes:\n\n${script}` },
       ],
-      max_tokens: 1500,
+      max_tokens: 2048,
       temperature: 0.3,
     });
 
@@ -814,7 +814,7 @@ async function extractKeywordsLegacy(prompt: string, style: string): Promise<str
         },
         { role: 'user', content: prompt },
       ],
-      max_tokens: 50,
+      max_tokens: 2048,
       temperature: 0.3,
     });
 

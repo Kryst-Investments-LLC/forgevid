@@ -63,7 +63,7 @@ export async function POST(req: NextRequest, { params }: { params: { videoId: st
         { role: 'system', content: SCENE_CHAT_SYSTEM_PROMPT },
         { role: 'user', content: `Scenes:\n${describeScenesForModel(scenes)}\n\nRequest: ${parsed.data.message}` },
       ],
-      max_tokens: 700,
+      max_tokens: 2048,
     });
     proposal = JSON.parse(completion.choices[0]?.message?.content || '{}');
   } catch (error) {

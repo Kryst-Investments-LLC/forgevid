@@ -266,7 +266,7 @@ async function processAIGeneration(type: string, prompt: string, settings?: Reco
               content: prompt
             }
           ],
-          max_tokens: 1500,
+          max_tokens: 2048,
           temperature: 0.7
         });
         return {
@@ -288,7 +288,7 @@ async function processAIGeneration(type: string, prompt: string, settings?: Reco
               content: prompt
             }
           ],
-          max_tokens: 2000,
+          max_tokens: 2048,
           temperature: 0.6
         });
         return {
@@ -332,7 +332,7 @@ async function processAIGeneration(type: string, prompt: string, settings?: Reco
               content: prompt
             }
           ],
-          max_tokens: 1000,
+          max_tokens: 2048,
           temperature: 0.7
         });
         return {

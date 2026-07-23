@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const completion = await openai.chat.completions.create({
       model: llmModel(),
       messages: openaiMessages,
-      max_tokens: 1500,
+      max_tokens: 2048,
       temperature: 0.7,
     });
 

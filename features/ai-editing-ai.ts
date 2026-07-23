@@ -146,7 +146,7 @@ export async function analyzeVideo(video: VideoContext): Promise<VideoAnalysis> 
       },
       { role: 'user', content: facts },
     ],
-    max_tokens: 900,
+    max_tokens: 2048,
     temperature: 0.5,
   });
 
@@ -200,7 +200,7 @@ export async function generateAutoEditSuggestions(
       { role: 'user', content: `${facts}\n\nThe user's edit request: "${prompt}"` },
     ],
     temperature: 0.7,
-    max_tokens: 800,
+    max_tokens: 2048,
   });
 
   const raw = completion.choices[0]?.message?.content || '';

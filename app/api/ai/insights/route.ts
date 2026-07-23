@@ -32,7 +32,7 @@ async function generateEmotionInsights(script: string): Promise<EmotionInsights>
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: `Script:\n${script}` },
     ],
-    max_tokens: 900,
+    max_tokens: 2048,
     temperature: 0.6,
   })
 

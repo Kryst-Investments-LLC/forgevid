@@ -14,7 +14,7 @@ export async function generateVideoScript(prompt: string): Promise<string> {
         content: prompt,
       },
     ],
-    max_tokens: 1000,
+    max_tokens: 2048,
   });
 
   return completion.choices[0]?.message?.content || '';
@@ -33,7 +33,7 @@ export async function generateVideoSummary(transcript: string): Promise<string> 
         content: `Summarize this video transcript: ${transcript}`,
       },
     ],
-    max_tokens: 500,
+    max_tokens: 2048,
   });
 
   return completion.choices[0]?.message?.content || '';
@@ -52,7 +52,7 @@ export async function generateVideoTitle(description: string): Promise<string> {
         content: `Create a title for this video: ${description}`,
       },
     ],
-    max_tokens: 100,
+    max_tokens: 2048,
   });
 
   return completion.choices[0]?.message?.content || '';
@@ -87,7 +87,7 @@ export async function generateStoryboardScenes(script: string): Promise<Storyboa
         content: `Script:\n${script}`,
       },
     ],
-    max_tokens: 1200,
+    max_tokens: 2048,
     temperature: 0.7,
   });
 
@@ -170,7 +170,7 @@ export async function generateAdHooks(brief: string, platform: string, count: nu
         content: `Platform: ${platform}\nProduct/offer brief:\n${brief}\n\nGive ${count} distinct hooks.`,
       },
     ],
-    max_tokens: 1400,
+    max_tokens: 2048,
     temperature: 0.8,
   });
   return parseAdHooks(completion.choices[0]?.message?.content || '');
