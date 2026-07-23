@@ -95,6 +95,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/terms') ||
     pathname.startsWith('/legal') ||
     pathname.startsWith('/unauthorized') ||
+    // Public share links (/v/<id>) MUST bypass i18n: the locale middleware was
+    // 307ing them to /en/v/<id>, which has no route -> every shared video 404'd.
+    pathname.startsWith('/v/') ||
+    // /pricing exists only unprefixed; skip the /en/pricing redirect hop.
+    pathname.startsWith('/pricing') ||
     pathname === '/' ||
     pathname === '/en'
   ) {
