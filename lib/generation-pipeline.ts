@@ -14,7 +14,7 @@
  */
 
 import { prisma } from './prisma';
-import { hasOpenAiKey, openAiApiKey } from './openai-key';
+import { hasLlmKey } from './ai/llm';
 import { assembleVideo, generateVideoWithScenes, renderDims, spokenLine } from './video-generator';
 import type { AspectRatio, ResolvedScene } from './video-generator';
 import { selectMusicPath } from './music-library';
@@ -303,13 +303,13 @@ export async function setStage(
 async function generateScript(
   input: GenerationInput,
 ): Promise<{ script: string; tokensUsed: number }> {
-  if (!hasOpenAiKey()) return { script: input.prompt, tokensUsed: 0 };
+  if (!hasLlmKey()) return { script: input.prompt, tokensUsed: 0 };
 
-  const { OpenAI } = await import('openai');
-  const openai = new OpenAI({ apiKey: openAiApiKey() });
+  const { createLlmClient, llmModel } = await import('./ai/llm');
+  const openai = createLlmClient();
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: llmModel(),
     messages: [
       {
         role: 'system',

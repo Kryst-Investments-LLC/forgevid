@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { OpenAI } from 'openai';
 import { prisma } from '@/lib/prisma';
-import { lazyClient } from '@/lib/lazy-client';
-import { hasOpenAiKey, openAiApiKey } from '@/lib/openai-key';
+import { llm, llmModel, hasLlmKey } from '@/lib/ai/llm';
 import { requireVideoOwner } from '@/lib/video-access';
 import { loadScenes, saveScenes } from '@/lib/generation-pipeline';
 import { isStockProviderConfigured, resolveSceneClip } from '@/lib/video-generator';
@@ -26,7 +24,7 @@ import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
  * Mutates the stored scenes only. Call POST /rerender to re-encode.
  */
 
-const openai = lazyClient<OpenAI>(() => new OpenAI({ apiKey: openAiApiKey() }));
+const openai = llm;
 
 const bodySchema = z.object({ message: z.string().min(1).max(1000) });
 
@@ -34,9 +32,9 @@ export async function POST(req: NextRequest, { params }: { params: { videoId: st
   const access = await requireVideoOwner(params.videoId);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
-  if (!hasOpenAiKey()) {
+  if (!hasLlmKey()) {
     return NextResponse.json(
-      { error: 'Chat editing is unavailable (OPENAI_API_KEY is not configured)' },
+      { error: 'Chat editing is unavailable (no LLM key: set OPENAI_API_KEY or GEMINI_API_KEY)' },
       { status: 503 },
     );
   }
@@ -58,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: { videoId: st
   let proposal;
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: llmModel('fast'),
       response_format: { type: 'json_object' },
       temperature: 0,
       messages: [

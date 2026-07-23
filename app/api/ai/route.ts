@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth';
 import { OpenAI } from 'openai';
 import { openAiApiKey } from '@/lib/openai-key';
 import { lazyClient } from '@/lib/lazy-client';
+import { llm, llmModel } from '@/lib/ai/llm';
 import { securityConfigs } from '@/lib/api-security';
 import { enqueueGeneration } from '@/lib/video-queue';
 import { runGeneration } from '@/lib/generation-pipeline';
@@ -23,6 +24,9 @@ const aiGenerationSchema = z.object({
   settings: z.record(z.string(), z.any()).optional(),
 });
 
+// OpenAI-only client: kept for DALL-E image generation, which has no Gemini
+// equivalent on the compat endpoint. Text completions use the provider-agnostic
+// `llm` client below (OpenAI or Gemini, per LLM_PROVIDER / configured keys).
 const openai = lazyClient<OpenAI>(() => new OpenAI({
   apiKey: openAiApiKey(),
 }));
@@ -250,8 +254,8 @@ async function processAIGeneration(type: string, prompt: string, settings?: Reco
   try {
     switch (type) {
       case 'SCRIPT_WRITING':
-        const scriptResponse = await openai.chat.completions.create({
-          model: 'gpt-4',
+        const scriptResponse = await llm.chat.completions.create({
+          model: llmModel(),
           messages: [
             {
               role: 'system',
@@ -272,8 +276,8 @@ async function processAIGeneration(type: string, prompt: string, settings?: Reco
         };
       
       case 'STORYBOARD':
-        const storyboardResponse = await openai.chat.completions.create({
-          model: 'gpt-4',
+        const storyboardResponse = await llm.chat.completions.create({
+          model: llmModel(),
           messages: [
             {
               role: 'system',
@@ -316,8 +320,8 @@ async function processAIGeneration(type: string, prompt: string, settings?: Reco
         };
       
       default:
-        const generalResponse = await openai.chat.completions.create({
-          model: 'gpt-4',
+        const generalResponse = await llm.chat.completions.create({
+          model: llmModel(),
           messages: [
             {
               role: 'system',

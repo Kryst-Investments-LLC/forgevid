@@ -1,11 +1,5 @@
 // Advanced Analytics & Insights - Production Implementation
-import OpenAI from 'openai';
-import { openAiApiKey } from '@/lib/openai-key';
-import { lazyClient } from '@/lib/lazy-client';
-
-const openai = lazyClient<OpenAI>(() => new OpenAI({
-  apiKey: openAiApiKey(),
-}));
+import { llm as openai, llmModel } from '@/lib/ai/llm';
 
 export interface EngagementMetrics {
   views: number;
@@ -248,7 +242,7 @@ export async function generateAIInsights(
     `;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: llmModel(),
       messages: [
         {
           role: 'system',

@@ -2,12 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { OpenAI } from 'openai';
-import { openAiApiKey } from '@/lib/openai-key';
-import { lazyClient } from '@/lib/lazy-client';
+import { llm as openai, llmModel } from '@/lib/ai/llm';
 import { trackAIChatMessage } from '@/lib/posthog';
-
-const openai = lazyClient<OpenAI>(() => new OpenAI({ apiKey: openAiApiKey() }));
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -75,7 +71,7 @@ export async function POST(request: NextRequest) {
     ];
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: llmModel(),
       messages: openaiMessages,
       max_tokens: 1500,
       temperature: 0.7,

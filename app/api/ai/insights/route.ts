@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import OpenAI from 'openai'
-import { openAiApiKey } from '@/lib/openai-key'
-import { lazyClient } from '@/lib/lazy-client'
+import { llm as openai, llmModel } from '@/lib/ai/llm'
 
 // Uses the OpenAI SDK — must run on the Node runtime, not Edge.
 export const runtime = 'nodejs'
-
-const openai = lazyClient<OpenAI>(() => new OpenAI({ apiKey: openAiApiKey() }))
 
 interface EmotionInsights {
   overallTone: string
@@ -31,7 +27,7 @@ const SYSTEM_PROMPT =
 /** Turn a raw video script into a real emotion breakdown via an LLM call (no fabricated numbers). */
 async function generateEmotionInsights(script: string): Promise<EmotionInsights> {
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: llmModel(),
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: `Script:\n${script}` },

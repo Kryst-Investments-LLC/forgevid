@@ -11,7 +11,7 @@ import {
   scriptToGenerationPrompt,
   writeCommercialScript,
 } from '@/lib/commercial-script';
-import { hasOpenAiKey } from '@/lib/openai-key';
+import { hasLlmKey } from '@/lib/ai/llm';
 
 /**
  * POST /api/site-brief — paste a URL, get a commercial script.
@@ -44,9 +44,9 @@ export async function POST(req: NextRequest) {
   }
   const userId = session.user.id;
 
-  if (!hasOpenAiKey()) {
+  if (!hasLlmKey()) {
     return NextResponse.json(
-      { error: 'Script writing is unavailable (OPENAI_API_KEY is not configured)' },
+      { error: 'Script writing is unavailable (no LLM key: set OPENAI_API_KEY or GEMINI_API_KEY)' },
       { status: 503 },
     );
   }

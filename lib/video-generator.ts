@@ -15,7 +15,7 @@ import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import { spawnSync } from 'child_process';
-import { openAiApiKey } from './openai-key';
+import { createLlmClient, llmModel } from './ai/llm';
 import { uploadImage as uploadCloudinaryImage, uploadVideo as uploadCloudinaryVideo } from './cloudinary';
 import { selectMusicPath } from './music-library';
 import { DEFAULT_TTS_MODEL, DEFAULT_VOICE_ID } from './voice-catalog';
@@ -696,10 +696,10 @@ export async function planScenes(
     );
 
   try {
-    const openai = new OpenAI({ apiKey: openAiApiKey() });
+    const openai = createLlmClient();
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: llmModel('fast'),
       messages: [
         {
           role: 'system',
@@ -802,11 +802,10 @@ Be specific and focus on filmable, real-world visuals. Avoid abstract concepts.$
 /** Legacy keyword extraction, used when scene planning degrades. */
 async function extractKeywordsLegacy(prompt: string, style: string): Promise<string[]> {
   try {
-    const { OpenAI: OpenAICtor } = await import('openai');
-    const openai = new OpenAICtor({ apiKey: openAiApiKey() });
+    const openai = createLlmClient();
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: llmModel('fast'),
       messages: [
         {
           role: 'system',

@@ -10,8 +10,7 @@
  */
 
 import { z } from 'zod';
-import { OpenAI } from 'openai';
-import { hasOpenAiKey, openAiApiKey } from './openai-key';
+import { createLlmClient, hasLlmKey, llmModel } from './ai/llm';
 import { briefForModel, type SiteContent } from './site-extract';
 
 export const COMMERCIAL_TONES = ['energetic', 'professional', 'friendly', 'premium'] as const;
@@ -87,13 +86,13 @@ export async function writeCommercialScript(
   content: SiteContent,
   options: { duration: number; tone: CommercialTone },
 ): Promise<CommercialScript> {
-  if (!hasOpenAiKey()) {
-    throw new Error('Script writing is unavailable (OPENAI_API_KEY is not configured)');
+  if (!hasLlmKey()) {
+    throw new Error('Script writing is unavailable (no LLM key: set OPENAI_API_KEY or GEMINI_API_KEY)');
   }
 
-  const openai = new OpenAI({ apiKey: openAiApiKey() });
+  const openai = createLlmClient();
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: llmModel('fast'),
     response_format: { type: 'json_object' },
     temperature: 0.7,
     max_tokens: 900,

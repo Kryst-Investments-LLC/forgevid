@@ -1,14 +1,9 @@
-import OpenAI from 'openai';
-import { openAiApiKey } from '../openai-key';
-import { lazyClient } from '../lazy-client';
-
-const openai = lazyClient<OpenAI>(() => new OpenAI({
-  apiKey: openAiApiKey(),
-}));
+// Provider-agnostic text LLM (OpenAI or Gemini via its OpenAI-compat endpoint).
+import { llm as openai, llmModel } from './llm';
 
 export async function generateVideoScript(prompt: string): Promise<string> {
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: llmModel(),
     messages: [
       {
         role: 'system',
@@ -27,7 +22,7 @@ export async function generateVideoScript(prompt: string): Promise<string> {
 
 export async function generateVideoSummary(transcript: string): Promise<string> {
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: llmModel(),
     messages: [
       {
         role: 'system',
@@ -46,7 +41,7 @@ export async function generateVideoSummary(transcript: string): Promise<string> 
 
 export async function generateVideoTitle(description: string): Promise<string> {
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: llmModel(),
     messages: [
       {
         role: 'system',
@@ -76,7 +71,7 @@ export interface StoryboardSceneDraft {
  */
 export async function generateStoryboardScenes(script: string): Promise<StoryboardSceneDraft[]> {
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: llmModel(),
     messages: [
       {
         role: 'system',
@@ -156,7 +151,7 @@ export interface AdHooksResult {
  */
 export async function generateAdHooks(brief: string, platform: string, count: number): Promise<AdHooksResult> {
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: llmModel(),
     messages: [
       {
         role: 'system',

@@ -9,7 +9,7 @@ import { withRenderSlot } from '@/lib/render-semaphore';
 import { checkGenerationQuota, settleGenerationEntitlement } from '@/lib/quota';
 import { resolveVoiceIdForUser } from '@/lib/cloned-voices';
 import { DEFAULT_TRANSITION, TRANSITIONS } from '@/lib/transitions';
-import { hasOpenAiKey } from '@/lib/openai-key';
+import { hasLlmKey } from '@/lib/ai/llm';
 import { planScenes } from '@/lib/video-generator';
 import {
   MAX_VARIANTS,
@@ -74,9 +74,9 @@ export async function POST(req: NextRequest) {
   }
   const userId = session.user.id;
 
-  if (!hasOpenAiKey()) {
+  if (!hasLlmKey()) {
     return NextResponse.json(
-      { error: 'Variation generation needs OPENAI_API_KEY to plan the concept' },
+      { error: 'Variation generation needs an LLM key (OPENAI_API_KEY or GEMINI_API_KEY) to plan the concept' },
       { status: 503 },
     );
   }

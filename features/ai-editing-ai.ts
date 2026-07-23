@@ -15,15 +15,9 @@
 // each one pointing at a real place to act (the editor or a real re-render),
 // never a fabricated file.
 
-import OpenAI from 'openai';
-import { openAiApiKey } from '@/lib/openai-key';
-import { lazyClient } from '@/lib/lazy-client';
+import { llm as openai, llmModel } from '@/lib/ai/llm';
 import { loadScenes } from '@/lib/generation-pipeline';
 import { describeScenesForModel } from '@/lib/scene-ops';
-
-const openai = lazyClient<OpenAI>(() => new OpenAI({
-  apiKey: openAiApiKey(),
-}));
 
 /** The real, DB-backed facts about a video that we're allowed to reason about. */
 export interface VideoContext {
@@ -136,7 +130,7 @@ export async function analyzeVideo(video: VideoContext): Promise<VideoAnalysis> 
   const { facts, scenes, canRerender, hasTranscript } = await gatherRealFacts(video);
 
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: llmModel(),
     messages: [
       {
         role: 'system',
@@ -190,7 +184,7 @@ export async function generateAutoEditSuggestions(
   const { facts, canRerender } = await gatherRealFacts(video);
 
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4',
+    model: llmModel(),
     messages: [
       {
         role: 'system',

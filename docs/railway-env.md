@@ -26,6 +26,12 @@ DATABASE_URL=
 
 # --- AI providers (.env.local) ---
 OPENAI_API_KEY=
+# Gemini as the text-LLM (Build with Gemini). LLM_PROVIDER=gemini routes all
+# script/hook/chat/storyboard completions to Gemini via its OpenAI-compatible
+# endpoint. Keep OPENAI_API_KEY too: Whisper transcription, DALL-E images and
+# moderation have no Gemini equivalent and stay on OpenAI.
+GEMINI_API_KEY=
+LLM_PROVIDER=gemini
 ELEVENLABS_API_KEY=
 PEXELS_API_KEY=
 # Optional — avatars (Pro feature). Omit for launch if unused.
