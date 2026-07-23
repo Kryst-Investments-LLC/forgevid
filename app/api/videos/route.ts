@@ -26,16 +26,27 @@ export async function GET() {
         fileSize: true,
         url: true,
         fileUrl: true,
+        metadata: true,
         createdAt: true,
         updatedAt: true
       }
     });
-    // fileSize is a BigInt column and JSON cannot serialize BigInt, so coerce it
-    // to a Number (byte counts are well within Number's safe integer range).
-    const videos = rows.map((v) => ({
-      ...v,
-      fileSize: v.fileSize != null ? Number(v.fileSize) : null,
-    }));
+    // fileSize is a BigInt (JSON can't serialize it); shareEnabled lives inside
+    // the metadata JSON blob. Normalise both for the client.
+    const videos = rows.map((v) => {
+      let shareEnabled = false;
+      try {
+        shareEnabled = !!(v.metadata && JSON.parse(v.metadata).shareEnabled);
+      } catch {
+        /* ignore malformed metadata */
+      }
+      const { metadata, ...rest } = v;
+      return {
+        ...rest,
+        fileSize: rest.fileSize != null ? Number(rest.fileSize) : null,
+        shareEnabled,
+      };
+    });
     return NextResponse.json({ videos });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch videos' }, { status: 500 });

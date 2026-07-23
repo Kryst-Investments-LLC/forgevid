@@ -83,17 +83,19 @@ export default function TemplatesPage() {
 
   const handleUseTemplate = async (template: any) => {
     try {
-      // Load template into editor
+      // Create a video project from the template, then open it in the editor.
       const res = await fetch('/api/templates/use', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ templateId: template.id }),
       });
-      
-      if (res.ok) {
-        window.location.href = '/dashboard/editor';
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok && data?.videoId) {
+        window.location.href = `/dashboard/editor?videoId=${data.videoId}`;
       } else {
-        alert('Failed to load template');
+        alert(data?.error || 'Failed to load template');
       }
     } catch (error) {
       console.error('Failed to use template:', error);

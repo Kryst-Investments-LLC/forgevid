@@ -1,56 +1,44 @@
+"use client"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import {
-  Scissors,
-  Crop,
-  RotateCw,
-  Repeat,
-  Eraser,
-  Type,
-  Music,
-  ImageIcon,
-  Video,
-  Mic,
-  Layers,
-  Palette,
-  Zap,
-  Filter,
-} from "lucide-react"
-
-const toolCategories = [
-  {
-    title: "Basic Tools",
-    tools: [
-      { name: "Trim", icon: Scissors, shortcut: "T" },
-      { name: "Crop", icon: Crop, shortcut: "C" },
-      { name: "Rotate", icon: RotateCw, shortcut: "R" },
-      { name: "Loop", icon: Repeat, shortcut: "L" },
-      { name: "Remove BG", icon: Eraser, shortcut: "E" },
-    ],
-  },
-  {
-    title: "Media",
-    tools: [
-      { name: "Text", icon: Type, shortcut: "Shift+T" },
-      { name: "Audio", icon: Music, shortcut: "A" },
-      { name: "Image", icon: ImageIcon, shortcut: "I" },
-      { name: "Video", icon: Video, shortcut: "V" },
-      { name: "Record", icon: Mic, shortcut: "Shift+R" },
-    ],
-  },
-  {
-    title: "Effects",
-    tools: [
-      { name: "Layers", icon: Layers, shortcut: "Shift+L" },
-      { name: "Colors", icon: Palette, shortcut: "Shift+C" },
-      { name: "AI Effects", icon: Zap, shortcut: "Shift+A" },
-      { name: "Filters", icon: Filter, shortcut: "F" },
-    ],
-  },
-]
+import { Type, Music, Video } from "lucide-react"
+import { useEditor } from "@/lib/editor-context"
 
 export function ToolPanel() {
+  const { state, addTrack } = useEditor()
+
+  // Match the numbering convention the timeline itself uses when adding tracks.
+  const nextTrackNumber = (type: "video" | "audio" | "text") =>
+    state.tracks.filter((track) => track.type === type).length + 1
+
+  const toolCategories = [
+    {
+      title: "Tracks",
+      tools: [
+        {
+          name: "Video",
+          icon: Video,
+          shortcut: "V",
+          onClick: () => addTrack("video", `Video Track ${nextTrackNumber("video")}`),
+        },
+        {
+          name: "Audio",
+          icon: Music,
+          shortcut: "A",
+          onClick: () => addTrack("audio", `Audio Track ${nextTrackNumber("audio")}`),
+        },
+        {
+          name: "Text",
+          icon: Type,
+          shortcut: "Shift+T",
+          onClick: () => addTrack("text", `Text Track ${nextTrackNumber("text")}`),
+        },
+      ],
+    },
+  ]
+
   return (
     <div className="p-4 space-y-6">
       <div>
@@ -65,6 +53,7 @@ export function ToolPanel() {
                   key={tool.name}
                   variant="outline"
                   className="h-auto p-3 flex flex-col items-center gap-2 hover:bg-accent bg-transparent"
+                  onClick={tool.onClick}
                 >
                   <tool.icon className="h-5 w-5" />
                   <div className="text-center">
@@ -85,15 +74,21 @@ export function ToolPanel() {
           <CardTitle className="text-sm">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <Button variant="outline" size="sm" className="w-full justify-start bg-transparent">
-            <Zap className="h-4 w-4 mr-2" />
-            Auto-enhance
-          </Button>
-          <Button variant="outline" size="sm" className="w-full justify-start bg-transparent">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start bg-transparent"
+            onClick={() => addTrack("audio", "Music")}
+          >
             <Music className="h-4 w-4 mr-2" />
             Add music
           </Button>
-          <Button variant="outline" size="sm" className="w-full justify-start bg-transparent">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start bg-transparent"
+            onClick={() => addTrack("text", "Subtitles")}
+          >
             <Type className="h-4 w-4 mr-2" />
             Add subtitles
           </Button>

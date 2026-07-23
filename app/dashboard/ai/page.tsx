@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { Sparkles, Wand2, Brain, Heart, Zap, Clock, Play, Download, Eye, TrendingUp, Star, X, MessageCircle } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { toast } from "sonner"
 import AIChatPanel from "@/components/ai-chat-panel"
 import SceneEditorPanel from "@/components/scene-editor-panel"
@@ -18,6 +18,103 @@ import AvatarStudioPanel from "@/components/avatar-studio-panel"
 import SiteBriefPanel from "@/components/site-brief-panel"
 import { VoicePreviewButton } from "@/components/voice-preview-button"
 import { withCsrfHeaders } from "@/lib/csrf-client"
+
+interface AnalyticsSummary {
+  total: number
+  thisMonth: number
+  completed: number
+  inProgress: number
+  failed: number
+  completionRate: number
+  totalMinutes: number
+  avgSeconds: number
+}
+
+interface AnalyticsData {
+  summary: AnalyticsSummary
+  usage: { plan: string; thisMonth: number; videoLimit: number }
+  monthly: { month: string; videos: number }[]
+}
+
+interface EmotionInsights {
+  overallTone: string
+  emotions: { name: string; intensity: number }[]
+  beats: { moment: string; emotion: string; note: string }[]
+  suggestions: string[]
+}
+
+interface Suggestion {
+  title: string
+  detail: string
+}
+
+/** Real, honest suggestions derived only from the user's own generation history. */
+function buildSuggestions(a: AnalyticsData): Suggestion[] {
+  const { summary, usage, monthly } = a
+  const suggestions: Suggestion[] = []
+
+  if (summary.avgSeconds > 0) {
+    const mm = Math.floor(summary.avgSeconds / 60)
+    const ss = (summary.avgSeconds % 60).toString().padStart(2, "0")
+    suggestions.push(
+      summary.avgSeconds > 90
+        ? {
+            title: `Your videos average ${mm}:${ss}`,
+            detail:
+              "That's on the longer side for social feeds — try a punchier 9:16 short (30-60s) for TikTok/Reels/Shorts.",
+          }
+        : {
+            title: `Your videos average ${mm}:${ss}`,
+            detail: "That short length works well for social feeds — keep leaning into it.",
+          },
+    )
+  }
+
+  if (summary.total > 0) {
+    let detail = `${summary.completed} of ${summary.total} video${summary.total === 1 ? "" : "s"} finished successfully.`
+    if (summary.failed > 0) {
+      detail += ` ${summary.failed} failed — worth retrying with a shorter script or different footage.`
+    }
+    if (summary.inProgress > 0) {
+      detail += ` ${summary.inProgress} still processing.`
+    }
+    suggestions.push({ title: `${summary.completionRate}% completion rate`, detail })
+  }
+
+  if (monthly.length >= 2) {
+    const last = monthly[monthly.length - 1]
+    const prev = monthly[monthly.length - 2]
+    if (last.videos > prev.videos) {
+      suggestions.push({
+        title: "Output is climbing",
+        detail: `${last.videos} videos in ${last.month} vs ${prev.videos} in ${prev.month} — keep the momentum going.`,
+      })
+    } else if (last.videos < prev.videos) {
+      suggestions.push({
+        title: "Output slowed down",
+        detail: `${last.videos} videos in ${last.month} vs ${prev.videos} in ${prev.month}. A quick one today keeps the habit alive.`,
+      })
+    } else if (last.videos > 0) {
+      suggestions.push({
+        title: "Steady pace",
+        detail: `${last.videos} videos in both ${last.month} and ${prev.month}.`,
+      })
+    }
+  }
+
+  if (usage.videoLimit > 0) {
+    const remaining = Math.max(0, usage.videoLimit - usage.thisMonth)
+    suggestions.push({
+      title: `${usage.thisMonth} of ${usage.videoLimit} videos used this month`,
+      detail:
+        remaining <= 1
+          ? `You're close to your ${usage.plan} plan limit — consider upgrading if you need more this month.`
+          : `${remaining} left on your ${usage.plan} plan this month.`,
+    })
+  }
+
+  return suggestions
+}
 
 export default function AIFeaturesPage() {
   const [prompt, setPrompt] = useState("")
@@ -48,6 +145,17 @@ export default function AIFeaturesPage() {
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false)
   const [generatedScript, setGeneratedScript] = useState<string | null>(null)
+
+  // Real analytics/suggestions data — shared by the Analytics and Smart Suggestions tabs.
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null)
+
+  // Emotion AI: a real script -> LLM emotion breakdown.
+  const [emotionScript, setEmotionScript] = useState("")
+  const [emotionLoading, setEmotionLoading] = useState(false)
+  const [emotionError, setEmotionError] = useState<string | null>(null)
+  const [emotionResult, setEmotionResult] = useState<EmotionInsights | null>(null)
 
   // Load the narration voice catalog (static — works without an ElevenLabs key).
   useEffect(() => {
@@ -91,6 +199,49 @@ export default function AIFeaturesPage() {
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Load the user's real analytics once — the Analytics tab renders it directly,
+  // the Smart Suggestions tab derives honest suggestions from it.
+  useEffect(() => {
+    fetch('/api/user/analytics')
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('Failed to load analytics'))))
+      .then((data: AnalyticsData) => setAnalytics(data))
+      .catch(() => setAnalyticsError('Could not load your analytics right now.'))
+      .finally(() => setAnalyticsLoading(false))
+  }, [])
+
+  const suggestions = useMemo(() => (analytics ? buildSuggestions(analytics) : []), [analytics])
+
+  const handleAnalyzeEmotion = async () => {
+    const script = emotionScript.trim()
+    if (script.length < 10) {
+      toast.error('Paste at least 10 characters of script to analyze')
+      return
+    }
+
+    setEmotionLoading(true)
+    setEmotionError(null)
+    setEmotionResult(null)
+
+    try {
+      const response = await fetch('/api/ai/insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to analyze script')
+      }
+      setEmotionResult(data.insights)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to analyze script'
+      setEmotionError(message)
+      toast.error(message)
+    } finally {
+      setEmotionLoading(false)
+    }
+  }
 
   // Handle escape key to close video modal
   useEffect(() => {
@@ -217,8 +368,18 @@ export default function AIFeaturesPage() {
               </TabsTrigger>
               <TabsTrigger value="create">AI Creator</TabsTrigger>
               <TabsTrigger value="avatar">AI Presenter</TabsTrigger>
-              {/* Emotion AI / Smart Suggestions / AI Analytics tabs removed —
-                  they showed static/fabricated numbers, not real analysis. */}
+              <TabsTrigger value="emotion" className="flex items-center gap-1">
+                <Heart className="h-3 w-3" />
+                Emotion AI
+              </TabsTrigger>
+              <TabsTrigger value="recommendations" className="flex items-center gap-1">
+                <Brain className="h-3 w-3" />
+                Smart Suggestions
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="flex items-center gap-1">
+                <TrendingUp className="h-3 w-3" />
+                AI Analytics
+              </TabsTrigger>
             </TabsList>
 
             {/* AI Chat Tab */}
@@ -776,212 +937,272 @@ export default function AIFeaturesPage() {
                     Emotion-Aware AI
                   </CardTitle>
                   <CardDescription>
-                    AI analyzes your content sentiment and suggests perfect effects and transitions
+                    Paste a script or narration and the AI reads back its real emotional tone and beats.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <h4 className="font-medium">Content Analysis</h4>
-                      <div className="space-y-3">
-                        {[
-                          { emotion: "Joy", percentage: 85, color: "bg-yellow-500" },
-                          { emotion: "Excitement", percentage: 72, color: "bg-orange-500" },
-                          { emotion: "Trust", percentage: 68, color: "bg-blue-500" },
-                          { emotion: "Anticipation", percentage: 45, color: "bg-purple-500" },
-                        ].map((item) => (
-                          <div key={item.emotion} className="space-y-1">
-                            <div className="flex justify-between text-sm">
-                              <span>{item.emotion}</span>
-                              <span>{item.percentage}%</span>
-                            </div>
-                            <div className="w-full bg-muted rounded-full h-2">
-                              <div
-                                className={`${item.color} h-2 rounded-full transition-all`}
-                                style={{ width: `${item.percentage}%` }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      <h4 className="font-medium">AI Suggestions</h4>
-                      <div className="space-y-2">
-                        {[
-                          { suggestion: "Upbeat background music", confidence: "95%" },
-                          { suggestion: "Fast-paced transitions", confidence: "88%" },
-                          { suggestion: "Bright color palette", confidence: "82%" },
-                          { suggestion: "Energetic text animations", confidence: "76%" },
-                        ].map((item, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                            <span className="text-sm">{item.suggestion}</span>
-                            <Badge variant="secondary">{item.confidence}</Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button>
-                      <Zap className="h-4 w-4 mr-2" />
-                      Apply All Suggestions
-                    </Button>
-                    <Button variant="outline" className="bg-transparent">
-                      Customize
+                <CardContent className="space-y-4">
+                  <Textarea
+                    placeholder="Paste your video script or narration here..."
+                    value={emotionScript}
+                    onChange={(e) => setEmotionScript(e.target.value)}
+                    className="min-h-[160px]"
+                    maxLength={8000}
+                  />
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">{emotionScript.length}/8000 characters</p>
+                    <Button
+                      onClick={handleAnalyzeEmotion}
+                      disabled={emotionLoading || emotionScript.trim().length < 10}
+                    >
+                      {emotionLoading ? (
+                        <>
+                          <Wand2 className="h-4 w-4 mr-2 animate-spin" />
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Heart className="h-4 w-4 mr-2" />
+                          Analyze Script
+                        </>
+                      )}
                     </Button>
                   </div>
+
+                  {emotionError && <p className="text-sm text-red-400">{emotionError}</p>}
+
+                  {!emotionResult && !emotionLoading && !emotionError && (
+                    <p className="text-sm text-muted-foreground">
+                      Paste at least a couple of sentences above and click Analyze Script to get a real
+                      emotional read from the AI — no canned percentages.
+                    </p>
+                  )}
+
+                  {emotionResult && (
+                    <div className="space-y-6 pt-2">
+                      <p className="text-sm text-muted-foreground">{emotionResult.overallTone}</p>
+
+                      <div className="grid md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <h4 className="font-medium">Emotional Breakdown</h4>
+                          <div className="space-y-3">
+                            {emotionResult.emotions.map((item) => (
+                              <div key={item.name} className="space-y-1">
+                                <div className="flex justify-between text-sm">
+                                  <span>{item.name}</span>
+                                  <span>{item.intensity}%</span>
+                                </div>
+                                <div className="w-full bg-muted rounded-full h-2">
+                                  <div
+                                    className="bg-primary h-2 rounded-full transition-all"
+                                    style={{ width: `${item.intensity}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <h4 className="font-medium">Story Beats</h4>
+                          <div className="space-y-2">
+                            {emotionResult.beats.map((beat, index) => (
+                              <div key={index} className="p-3 border rounded-lg">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-sm font-medium">{beat.moment}</span>
+                                  <Badge variant="secondary">{beat.emotion}</Badge>
+                                </div>
+                                {beat.note && (
+                                  <p className="text-xs text-muted-foreground mt-1">{beat.note}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {emotionResult.suggestions.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Suggestions</h4>
+                          <ul className="space-y-1 text-sm text-muted-foreground list-disc list-inside">
+                            {emotionResult.suggestions.map((s, i) => (
+                              <li key={i}>{s}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
 
             {/* Smart Suggestions Tab */}
             <TabsContent value="recommendations" className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-6">
+              {analyticsLoading ? (
+                <Card>
+                  <CardContent className="py-10 text-center text-muted-foreground">
+                    Loading your suggestions...
+                  </CardContent>
+                </Card>
+              ) : analyticsError ? (
+                <Card>
+                  <CardContent className="py-10 text-center text-muted-foreground">
+                    {analyticsError}
+                  </CardContent>
+                </Card>
+              ) : !analytics || analytics.summary.total === 0 ? (
+                <Card>
+                  <CardContent className="py-10 text-center text-muted-foreground">
+                    <Brain className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                    <p>Make your first video and personalized suggestions will show up here.</p>
+                  </CardContent>
+                </Card>
+              ) : (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Brain className="h-5 w-5 text-primary" />
-                      Personalized Recommendations
+                      Suggestions From Your Own Videos
                     </CardTitle>
-                    <CardDescription>Based on your creation history and preferences</CardDescription>
+                    <CardDescription>
+                      Derived from your actual generation history — nothing fabricated or trending
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    {[
-                      {
-                        title: "Modern Product Showcase",
-                        category: "Template",
-                        match: "92%",
-                        reason: "Similar to your recent projects",
-                      },
-                      {
-                        title: "Upbeat Corporate Music",
-                        category: "Audio",
-                        match: "88%",
-                        reason: "Matches your style preferences",
-                      },
-                      {
-                        title: "Slide Transitions Pack",
-                        category: "Effects",
-                        match: "85%",
-                        reason: "Popular in your industry",
-                      },
-                    ].map((item, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{item.title}</div>
-                          <div className="text-xs text-muted-foreground">{item.reason}</div>
-                        </div>
-                        <div className="text-right">
-                          <Badge variant="secondary" className="mb-1">
-                            {item.match}
-                          </Badge>
-                          <div className="text-xs text-muted-foreground">{item.category}</div>
-                        </div>
+                  <CardContent className="space-y-3">
+                    {suggestions.map((s, index) => (
+                      <div key={index} className="p-3 border rounded-lg">
+                        <div className="font-medium text-sm">{s.title}</div>
+                        <div className="text-xs text-muted-foreground mt-1">{s.detail}</div>
                       </div>
                     ))}
                   </CardContent>
                 </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <TrendingUp className="h-5 w-5 text-primary" />
-                      Trending Now
-                    </CardTitle>
-                    <CardDescription>Popular templates and effects this week</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {[
-                      { name: "Minimalist Product Demo", views: "12.5K", trend: "+25%" },
-                      { name: "Neon Glow Effects", views: "8.2K", trend: "+18%" },
-                      { name: "Hand-drawn Animations", views: "6.8K", trend: "+32%" },
-                    ].map((item, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div>
-                          <div className="font-medium text-sm">{item.name}</div>
-                          <div className="text-xs text-muted-foreground">{item.views} views</div>
-                        </div>
-                        <Badge variant="secondary" className="text-green-600">
-                          {item.trend}
-                        </Badge>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
+              )}
             </TabsContent>
 
             {/* AI Analytics Tab */}
             <TabsContent value="analytics" className="space-y-6">
-              <div className="grid md:grid-cols-3 gap-6">
+              {analyticsLoading ? (
                 <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Engagement Prediction</CardTitle>
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">8.7/10</div>
-                    <p className="text-xs text-muted-foreground">Predicted engagement score</p>
+                  <CardContent className="py-10 text-center text-muted-foreground">
+                    Loading your analytics...
                   </CardContent>
                 </Card>
-
+              ) : analyticsError ? (
                 <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Optimal Length</CardTitle>
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">1:45</div>
-                    <p className="text-xs text-muted-foreground">AI recommended duration</p>
+                  <CardContent className="py-10 text-center text-muted-foreground">
+                    {analyticsError}
                   </CardContent>
                 </Card>
-
+              ) : !analytics || analytics.summary.total === 0 ? (
                 <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Virality Score</CardTitle>
-                    <Star className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">7.2/10</div>
-                    <p className="text-xs text-muted-foreground">Shareability potential</p>
+                  <CardContent className="py-10 text-center text-muted-foreground">
+                    <TrendingUp className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                    <p>No analytics yet — generate your first video to see real stats here.</p>
                   </CardContent>
                 </Card>
-              </div>
+              ) : (
+                <>
+                  <div className="grid md:grid-cols-3 gap-6">
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total Videos</CardTitle>
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{analytics.summary.total}</div>
+                        <p className="text-xs text-muted-foreground">
+                          {analytics.summary.thisMonth} made this month
+                        </p>
+                      </CardContent>
+                    </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>AI Performance Insights</CardTitle>
-                  <CardDescription>How your videos perform compared to AI predictions</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {[
-                      { metric: "View Duration", predicted: "85%", actual: "82%", status: "good" },
-                      { metric: "Click-through Rate", predicted: "3.2%", actual: "3.8%", status: "excellent" },
-                      { metric: "Share Rate", predicted: "1.5%", actual: "1.2%", status: "fair" },
-                    ].map((item, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex-1">
-                          <div className="font-medium text-sm">{item.metric}</div>
-                          <div className="text-xs text-muted-foreground">
-                            Predicted: {item.predicted} • Actual: {item.actual}
-                          </div>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
+                        <Star className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{analytics.summary.completionRate}%</div>
+                        <p className="text-xs text-muted-foreground">
+                          {analytics.summary.completed} completed
+                          {analytics.summary.failed > 0 ? `, ${analytics.summary.failed} failed` : ""}
+                          {analytics.summary.inProgress > 0
+                            ? `, ${analytics.summary.inProgress} in progress`
+                            : ""}
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Average Length</CardTitle>
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">
+                          {Math.floor(analytics.summary.avgSeconds / 60)}:
+                          {(analytics.summary.avgSeconds % 60).toString().padStart(2, "0")}
                         </div>
-                        <Badge
-                          variant={
-                            item.status === "excellent" ? "default" : item.status === "good" ? "secondary" : "outline"
-                          }
-                        >
-                          {item.status}
-                        </Badge>
-                      </div>
-                    ))}
+                        <p className="text-xs text-muted-foreground">
+                          {analytics.summary.totalMinutes} min created in total
+                        </p>
+                      </CardContent>
+                    </Card>
                   </div>
-                </CardContent>
-              </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>6-Month Activity</CardTitle>
+                      <CardDescription>Videos created per month, from your account</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {(() => {
+                          const max = Math.max(1, ...analytics.monthly.map((m) => m.videos))
+                          return analytics.monthly.map((m) => (
+                            <div key={m.month} className="space-y-1">
+                              <div className="flex justify-between text-sm">
+                                <span>{m.month}</span>
+                                <span>{m.videos}</span>
+                              </div>
+                              <div className="w-full bg-muted rounded-full h-2">
+                                <div
+                                  className="bg-primary h-2 rounded-full transition-all"
+                                  style={{ width: `${(m.videos / max) * 100}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))
+                        })()}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Plan Usage</CardTitle>
+                      <CardDescription>
+                        Videos used this month on the {analytics.usage.plan} plan
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>{analytics.usage.thisMonth} used</span>
+                        <span>{analytics.usage.videoLimit} limit</span>
+                      </div>
+                      <Progress
+                        value={
+                          analytics.usage.videoLimit > 0
+                            ? Math.min(100, (analytics.usage.thisMonth / analytics.usage.videoLimit) * 100)
+                            : 0
+                        }
+                        className="w-full"
+                      />
+                    </CardContent>
+                  </Card>
+                </>
+              )}
             </TabsContent>
           </Tabs>
 

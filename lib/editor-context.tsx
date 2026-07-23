@@ -35,6 +35,8 @@ export interface EditorState {
   playbackSpeed: number;
   undoStack: string[];
   redoStack: string[];
+  isLoadingProject: boolean;
+  loadError: string | null;
 }
 
 interface EditorContextType {
@@ -73,6 +75,8 @@ const initialState: EditorState = {
   playbackSpeed: 1,
   undoStack: [],
   redoStack: [],
+  isLoadingProject: false,
+  loadError: null,
 };
 
 export function EditorProvider({ children }: { children: React.ReactNode }) {
@@ -271,21 +275,31 @@ export function EditorProvider({ children }: { children: React.ReactNode }) {
   }, [state.videoId, state.tracks]);
 
   const loadProject = useCallback(async (videoId: string) => {
-    try {
-      const response = await fetch(`/api/editor?videoId=${videoId}`);
-      if (!response.ok) throw new Error('Failed to load project');
+    setState(prev => ({ ...prev, isLoadingProject: true, loadError: null }));
 
-      const data = await response.json();
-      if (data.success && data.project) {
-        setState(prev => ({
-          ...prev,
-          videoId,
-          tracks: data.project.tracks || [],
-          duration: data.project.video?.duration || 300,
-        }));
+    try {
+      const response = await fetch(`/api/editor?videoId=${encodeURIComponent(videoId)}`);
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !data?.success || !data.project) {
+        throw new Error(data?.error || 'Failed to load project');
       }
+
+      setState(prev => ({
+        ...prev,
+        videoId,
+        tracks: data.project.tracks || [],
+        duration: data.project.video?.duration || 300,
+        isLoadingProject: false,
+        loadError: null,
+      }));
     } catch (error) {
       console.error('[Editor] Load error:', error);
+      setState(prev => ({
+        ...prev,
+        isLoadingProject: false,
+        loadError: error instanceof Error ? error.message : 'Failed to load project',
+      }));
     }
   }, []);
 

@@ -1,59 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
+import { requireVideoOwner } from '@/lib/video-access';
 import { securityConfigs } from '@/lib/api-security';
 import {
   analyzeVideo,
   generateAutoEditSuggestions,
-  applyVideoEdit,
-  type VideoEditRequest,
+  type VideoContext,
 } from '@/features/ai-editing-ai';
 
-async function handlePost(request: NextRequest) {
-  const session = await getServerSession(authOptions);
+async function loadVideoContext(videoId: string): Promise<VideoContext | null> {
+  return prisma.video.findUnique({
+    where: { id: videoId },
+    select: { id: true, title: true, description: true, duration: true, transcript: true, status: true },
+  });
+}
 
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+/**
+ * Real AI review of one of the caller's own videos. No `videoUrl` — a bare URL
+ * can't be tied to an owner and can't carry the real facts (transcript,
+ * persisted scenes) the analysis is based on, so this takes `videoId` and
+ * looks the video up server-side. There is no `edit` action: this route never
+ * fabricates an edited file. Suggestions instead point at the real editor
+ * (/dashboard/editor?videoId=) or a real re-render (POST
+ * /api/videos/[videoId]/rerender), both driven from the client.
+ */
+async function handlePost(request: NextRequest) {
+  const body = await request.json().catch(() => ({}));
+  const { action, videoId, prompt } = body ?? {};
+
+  if (!action) {
+    return NextResponse.json({ error: 'Action is required' }, { status: 400 });
+  }
+  if (!videoId || typeof videoId !== 'string') {
+    return NextResponse.json({ error: 'videoId is required' }, { status: 400 });
+  }
+
+  const access = await requireVideoOwner(videoId);
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: access.status });
+  }
+
+  const video = await loadVideoContext(videoId);
+  if (!video) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
   try {
-    const body = await request.json();
-    const { action, videoUrl, prompt, editType, parameters, outputFormat, quality } = body;
-
-    if (!action) {
-      return NextResponse.json({ error: 'Action is required' }, { status: 400 });
-    }
-
     switch (action) {
       case 'analyze': {
-        if (!videoUrl) {
-          return NextResponse.json({ error: 'Video URL is required' }, { status: 400 });
-        }
-        const analysis = await analyzeVideo(videoUrl);
+        const analysis = await analyzeVideo(video);
         return NextResponse.json({ success: true, data: analysis });
       }
 
       case 'suggest': {
-        if (!videoUrl || !prompt) {
-          return NextResponse.json({ error: 'Video URL and prompt are required' }, { status: 400 });
+        if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+          return NextResponse.json({ error: 'A prompt is required' }, { status: 400 });
         }
-        const suggestions = await generateAutoEditSuggestions(videoUrl, prompt);
-        return NextResponse.json({ success: true, data: suggestions });
-      }
-
-      case 'edit': {
-        if (!videoUrl || !editType) {
-          return NextResponse.json({ error: 'Video URL and edit type are required' }, { status: 400 });
-        }
-        const editRequest: VideoEditRequest = {
-          videoUrl,
-          editType,
-          parameters: parameters || {},
-          outputFormat: outputFormat || 'mp4',
-          quality: quality || '1080p',
-        };
-        const result = await applyVideoEdit(editRequest);
-        return NextResponse.json({ success: true, data: result });
+        const suggestions = await generateAutoEditSuggestions(video, prompt);
+        return NextResponse.json({ success: true, data: { suggestions } });
       }
 
       default:
@@ -61,7 +65,10 @@ async function handlePost(request: NextRequest) {
     }
   } catch (error) {
     console.error('[AI Editing] Error:', error);
-    return NextResponse.json({ error: 'AI editing operation failed' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'AI editing operation failed' },
+      { status: 500 },
+    );
   }
 }
 

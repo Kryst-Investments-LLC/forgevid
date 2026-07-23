@@ -1,299 +1,220 @@
-// AI-Powered Video Editing - Production Implementation
+// AI-Powered Video Editing — real analysis over a user's actual video.
+//
+// This module used to fabricate everything: `analyzeVideo` returned a hardcoded
+// duration/scene list for ANY url, `generateAutoEditSuggestions` called OpenAI
+// and then threw the response away in favor of a fixed array, and
+// `applyVideoEdit` "processed" edits with `setTimeout` and returned made-up
+// `https://forgevid.com/edited/*.mp4` URLs that were never written to disk.
+//
+// None of that touched a real video. Real video editing in this app happens by
+// mutating the persisted scene list (lib/scene-ops.ts, the Scene Editor at
+// /dashboard/editor) and re-encoding it (lib/generation-pipeline.ts,
+// POST /api/videos/[videoId]/rerender). This module does what an LLM can
+// honestly do on top of that: read a video's REAL persisted facts (title,
+// duration, transcript, scene list) and produce real, actionable suggestions —
+// each one pointing at a real place to act (the editor or a real re-render),
+// never a fabricated file.
+
 import OpenAI from 'openai';
 import { openAiApiKey } from '@/lib/openai-key';
 import { lazyClient } from '@/lib/lazy-client';
-import { createReadStream } from 'fs';
-import { writeFile, unlink } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { loadScenes } from '@/lib/generation-pipeline';
+import { describeScenesForModel } from '@/lib/scene-ops';
 
 const openai = lazyClient<OpenAI>(() => new OpenAI({
   apiKey: openAiApiKey(),
 }));
 
-export interface VideoEditRequest {
-  videoUrl: string;
-  editType: 'trim' | 'crop' | 'filter' | 'transition' | 'text_overlay' | 'audio_enhance' | 'auto_edit';
-  parameters: {
-    startTime?: number;
-    endTime?: number;
-    cropArea?: { x: number; y: number; width: number; height: number };
-    filterType?: 'vintage' | 'black_white' | 'sepia' | 'bright' | 'contrast' | 'saturation';
-    transitionType?: 'fade' | 'slide' | 'zoom' | 'dissolve' | 'wipe';
-    textContent?: string;
-    textPosition?: { x: number; y: number };
-    textStyle?: {
-      font: string;
-      size: number;
-      color: string;
-      backgroundColor?: string;
-    };
-    audioEnhancement?: {
-      noiseReduction: boolean;
-      volumeBoost: boolean;
-      equalizer?: { bass: number; mid: number; treble: number };
-    };
-    autoEditPrompt?: string;
-  };
-  outputFormat?: 'mp4' | 'mov' | 'avi' | 'webm';
-  quality?: '720p' | '1080p' | '4k';
+/** The real, DB-backed facts about a video that we're allowed to reason about. */
+export interface VideoContext {
+  id: string;
+  title: string;
+  description?: string | null;
+  duration?: number | null;
+  transcript?: string | null;
+  status?: string | null;
 }
 
-export interface VideoEditResult {
-  editedVideoUrl: string;
-  originalVideoUrl: string;
-  editType: string;
-  processingTime: number;
-  fileSize: number;
-  duration: number;
-  previewUrl?: string;
-  metadata: {
-    resolution: string;
-    frameRate: number;
-    bitrate: number;
-    codec: string;
-  };
-}
+/**
+ * Where a suggestion sends the user. There is no third option — this app has
+ * no capability to apply an arbitrary edit and hand back a finished file from
+ * this panel, so every suggestion resolves to a real, already-working surface.
+ */
+export type SuggestionAction = 'open_editor' | 'rerender';
 
-export async function analyzeVideo(videoUrl: string): Promise<{
-  duration: number;
-  resolution: { width: number; height: number };
-  frameRate: number;
-  bitrate: number;
-  scenes: Array<{ startTime: number; endTime: number; description: string }>;
-  audioTracks: Array<{ language: string; channels: number }>;
-  quality: 'low' | 'medium' | 'high' | 'ultra';
-}> {
-  try {
-    // In production, this would use FFmpeg or similar to analyze video
-    // For now, return mock data
-    return {
-      duration: 120, // 2 minutes
-      resolution: { width: 1920, height: 1080 },
-      frameRate: 30,
-      bitrate: 5000,
-      scenes: [
-        { startTime: 0, endTime: 30, description: 'Opening scene with introduction' },
-        { startTime: 30, endTime: 90, description: 'Main content and demonstration' },
-        { startTime: 90, endTime: 120, description: 'Closing and call-to-action' }
-      ],
-      audioTracks: [
-        { language: 'en', channels: 2 }
-      ],
-      quality: 'high'
-    };
-  } catch (error) {
-    console.error('Video analysis error:', error);
-    throw new Error('Failed to analyze video');
-  }
-}
-
-export async function generateAutoEditSuggestions(
-  videoUrl: string,
-  prompt: string
-): Promise<Array<{
-  type: string;
+export interface EditSuggestion {
+  title: string;
   description: string;
-  confidence: number;
-  parameters: any;
-}>> {
-  try {
-    const analysis = await analyzeVideo(videoUrl);
-    
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a professional video editor AI. Analyze the video and suggest edits based on the user's prompt.
-          
-          Video Analysis:
-          - Duration: ${analysis.duration} seconds
-          - Resolution: ${analysis.resolution.width}x${analysis.resolution.height}
-          - Frame Rate: ${analysis.frameRate} fps
-          - Quality: ${analysis.quality}
-          - Scenes: ${analysis.scenes.length} scenes detected
-          
-          Provide specific, actionable edit suggestions with parameters.`
-        },
-        {
-          role: 'user',
-          content: `Video editing prompt: "${prompt}"`
-        }
-      ],
-      temperature: 0.7,
-    });
+  rationale: string;
+  priority: 'high' | 'medium' | 'low';
+  action: SuggestionAction;
+}
 
-    const suggestions = response.choices[0]?.message?.content || '';
-    
-    // Parse AI response into structured suggestions
-    return [
+export interface VideoAnalysis {
+  videoId: string;
+  title: string;
+  duration: number | null;
+  status: string | null;
+  hasTranscript: boolean;
+  sceneCount: number;
+  /** Whether this video has persisted scenes to re-render (see lib/generation-pipeline.ts planRerender). */
+  canRerender: boolean;
+  summary: string;
+  strengths: string[];
+  improvementAreas: string[];
+  suggestions: EditSuggestion[];
+}
+
+/** Strip ```json fences / stray prose and parse the model's JSON object reply. */
+function parseJsonObject(raw: string): any {
+  const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const first = cleaned.indexOf('{');
+  const last = cleaned.lastIndexOf('}');
+  const jsonText = first !== -1 && last > first ? cleaned.slice(first, last + 1) : cleaned;
+  try {
+    return JSON.parse(jsonText);
+  } catch {
+    return null;
+  }
+}
+
+function normalizePriority(value: unknown): 'high' | 'medium' | 'low' {
+  const v = String(value ?? '').toLowerCase();
+  return v === 'high' || v === 'low' ? v : 'medium';
+}
+
+/** The model is told the rerender rule, but we still enforce it — never trust it blind. */
+function normalizeAction(value: unknown, canRerender: boolean): SuggestionAction {
+  return String(value ?? '').toLowerCase() === 'rerender' && canRerender ? 'rerender' : 'open_editor';
+}
+
+function parseSuggestions(raw: unknown, canRerender: boolean): EditSuggestion[] {
+  const list = Array.isArray(raw) ? raw : [];
+  return list
+    .map((s: any) => ({
+      title: String(s?.title ?? '').trim(),
+      description: String(s?.description ?? '').trim(),
+      rationale: String(s?.rationale ?? '').trim(),
+      priority: normalizePriority(s?.priority),
+      action: normalizeAction(s?.action, canRerender),
+    }))
+    .filter((s: EditSuggestion) => s.title.length > 0 && s.description.length > 0);
+}
+
+/** Pull the real, persisted facts we're allowed to hand the model. Never invented. */
+async function gatherRealFacts(video: VideoContext) {
+  const scenes = await loadScenes(video.id);
+  const canRerender = scenes.length > 0;
+  const hasTranscript = !!(video.transcript && video.transcript.trim().length > 0);
+
+  const facts = [
+    `Title: ${video.title}`,
+    `Status: ${video.status ?? 'unknown'}`,
+    `Duration: ${video.duration != null ? `${video.duration}s` : 'unknown (not set yet)'}`,
+    video.description ? `Description: ${video.description}` : null,
+    scenes.length > 0
+      ? `Persisted scenes (real, from the render pipeline — id, order, duration, on-screen description):\n${describeScenesForModel(scenes)}`
+      : 'No persisted scene list is available for this video yet.',
+    hasTranscript
+      ? `Transcript:\n${video.transcript}`
+      : 'No transcript is available for this video — do not invent or assume spoken content.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  return { facts, scenes, canRerender, hasTranscript };
+}
+
+const ACTION_RULE =
+  'Set "action" to "rerender" ONLY for a suggestion that means "re-render / finalize the video as it is ' +
+  'already edited" — use that when persisted scenes exist and the fix is just producing a fresh render. ' +
+  'Every other suggestion — trimming, re-ordering, changing narration or on-screen text, swapping footage, ' +
+  'adjusting pacing — requires editing scenes and must use "action":"open_editor". Never claim a suggestion ' +
+  'was already applied.';
+
+export async function analyzeVideo(video: VideoContext): Promise<VideoAnalysis> {
+  const { facts, scenes, canRerender, hasTranscript } = await gatherRealFacts(video);
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4',
+    messages: [
       {
-        type: 'trim',
-        description: 'Remove unnecessary intro/outro sections',
-        confidence: 0.9,
-        parameters: { startTime: 5, endTime: analysis.duration - 5 }
+        role: 'system',
+        content:
+          'You are a video editing assistant reviewing ONE real video for its owner. Base your review strictly on ' +
+          'the facts given below — never invent resolution, frame rate, exact scene timestamps, or transcript ' +
+          'content that was not provided. If a transcript is missing, say so and base the review on the title, ' +
+          'description, and scene list only. Respond with ONLY a JSON object shaped like ' +
+          '{"summary":"...","strengths":["..."],"improvementAreas":["..."],"suggestions":[{"title":"...",' +
+          '"description":"...","rationale":"...","priority":"high|medium|low","action":"open_editor|rerender"}]}. ' +
+          `${ACTION_RULE} This video ${canRerender ? 'DOES have' : 'does NOT have'} persisted scenes, so ` +
+          `${canRerender ? '"rerender" is a valid action here' : 'never use "rerender" for it'}. Provide 2-5 suggestions.`,
       },
+      { role: 'user', content: facts },
+    ],
+    max_tokens: 900,
+    temperature: 0.5,
+  });
+
+  const parsed = parseJsonObject(completion.choices[0]?.message?.content || '');
+  if (!parsed) {
+    throw new Error('The model returned an unparseable analysis. Please try again.');
+  }
+
+  return {
+    videoId: video.id,
+    title: video.title,
+    duration: video.duration ?? null,
+    status: video.status ?? null,
+    hasTranscript,
+    sceneCount: scenes.length,
+    canRerender,
+    summary: String(parsed.summary ?? '').trim() || 'The model did not return a summary.',
+    strengths: Array.isArray(parsed.strengths) ? parsed.strengths.map((s: unknown) => String(s)).filter(Boolean) : [],
+    improvementAreas: Array.isArray(parsed.improvementAreas)
+      ? parsed.improvementAreas.map((s: unknown) => String(s)).filter(Boolean)
+      : [],
+    suggestions: parseSuggestions(parsed.suggestions, canRerender),
+  };
+}
+
+/**
+ * Auto-edit suggestions driven by a free-text user prompt, in the context of a
+ * real video. Actually uses the model's response (the old version threw it away
+ * and returned a fixed array regardless of what the model said).
+ */
+export async function generateAutoEditSuggestions(
+  video: VideoContext,
+  prompt: string,
+): Promise<EditSuggestion[]> {
+  const { facts, canRerender } = await gatherRealFacts(video);
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4',
+    messages: [
       {
-        type: 'text_overlay',
-        description: 'Add engaging title text',
-        confidence: 0.8,
-        parameters: {
-          textContent: 'Key Points',
-          textPosition: { x: 50, y: 20 },
-          textStyle: { font: 'Arial', size: 24, color: '#ffffff' }
-        }
+        role: 'system',
+        content:
+          'You are a professional video editor AI helping with ONE real video. Use only the facts given below — ' +
+          'never invent technical details or spoken content that was not provided. Respond with ONLY a JSON ' +
+          'object shaped like {"suggestions":[{"title":"...","description":"...","rationale":"...",' +
+          `"priority":"high|medium|low","action":"open_editor|rerender"}]}. ${ACTION_RULE} This video ` +
+          `${canRerender ? 'DOES have' : 'does NOT have'} persisted scenes, so ` +
+          `${canRerender ? '"rerender" is a valid action here' : 'never use "rerender" for it'}. Provide 2-5 suggestions ` +
+          "that directly address the user's request.",
       },
-      {
-        type: 'transition',
-        description: 'Add smooth transitions between scenes',
-        confidence: 0.85,
-        parameters: { transitionType: 'fade' }
-      }
-    ];
-  } catch (error) {
-    console.error('Auto edit suggestions error:', error);
-    throw new Error('Failed to generate edit suggestions');
+      { role: 'user', content: `${facts}\n\nThe user's edit request: "${prompt}"` },
+    ],
+    temperature: 0.7,
+    max_tokens: 800,
+  });
+
+  const raw = completion.choices[0]?.message?.content || '';
+  const parsed = parseJsonObject(raw);
+  const suggestions = parseSuggestions(parsed?.suggestions ?? parsed, canRerender);
+
+  if (suggestions.length === 0) {
+    throw new Error('The model returned no usable suggestions. Please try again.');
   }
-}
-
-export async function applyVideoEdit(request: VideoEditRequest): Promise<VideoEditResult> {
-  const startTime = Date.now();
-  
-  try {
-    // Validate request
-    if (!request.videoUrl) {
-      throw new Error('Video URL is required');
-    }
-
-    // Generate unique output filename
-    const outputId = `edit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const outputUrl = `https://forgevid.com/edited/${outputId}.${request.outputFormat || 'mp4'}`;
-
-    // Process the edit based on type
-    let processedVideoUrl: string;
-    
-    switch (request.editType) {
-      case 'trim':
-        processedVideoUrl = await trimVideo(request.videoUrl, request.parameters);
-        break;
-      case 'crop':
-        processedVideoUrl = await cropVideo(request.videoUrl, request.parameters);
-        break;
-      case 'filter':
-        processedVideoUrl = await applyFilter(request.videoUrl, request.parameters);
-        break;
-      case 'transition':
-        processedVideoUrl = await addTransition(request.videoUrl, request.parameters);
-        break;
-      case 'text_overlay':
-        processedVideoUrl = await addTextOverlay(request.videoUrl, request.parameters);
-        break;
-      case 'audio_enhance':
-        processedVideoUrl = await enhanceAudio(request.videoUrl, request.parameters);
-        break;
-      case 'auto_edit':
-        processedVideoUrl = await performAutoEdit(request.videoUrl, request.parameters);
-        break;
-      default:
-        throw new Error(`Unsupported edit type: ${request.editType}`);
-    }
-
-    // Generate metadata
-    const metadata = {
-      resolution: request.quality === '4k' ? '3840x2160' : 
-                 request.quality === '1080p' ? '1920x1080' : '1280x720',
-      frameRate: 30,
-      bitrate: request.quality === '4k' ? 15000 : 
-               request.quality === '1080p' ? 8000 : 5000,
-      codec: 'h264'
-    };
-
-    return {
-      editedVideoUrl: processedVideoUrl,
-      originalVideoUrl: request.videoUrl,
-      editType: request.editType,
-      processingTime: Date.now() - startTime,
-      fileSize: Math.floor(Math.random() * 100000000) + 10000000, // Mock file size
-      duration: request.parameters.endTime ? 
-        request.parameters.endTime - (request.parameters.startTime || 0) : 120,
-      previewUrl: `${processedVideoUrl}?preview=true`,
-      metadata
-    };
-
-  } catch (error) {
-    console.error('Video edit error:', error);
-    throw new Error(`Failed to apply video edit: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
-// Individual edit functions (placeholders for actual implementation)
-async function trimVideo(videoUrl: string, params: any): Promise<string> {
-  // In production, use FFmpeg to trim video
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return `https://forgevid.com/edited/trim_${Date.now()}.mp4`;
-}
-
-async function cropVideo(videoUrl: string, params: any): Promise<string> {
-  // In production, use FFmpeg to crop video
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return `https://forgevid.com/edited/crop_${Date.now()}.mp4`;
-}
-
-async function applyFilter(videoUrl: string, params: any): Promise<string> {
-  // In production, use FFmpeg to apply filters
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return `https://forgevid.com/edited/filter_${Date.now()}.mp4`;
-}
-
-async function addTransition(videoUrl: string, params: any): Promise<string> {
-  // In production, use FFmpeg to add transitions
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return `https://forgevid.com/edited/transition_${Date.now()}.mp4`;
-}
-
-async function addTextOverlay(videoUrl: string, params: any): Promise<string> {
-  // In production, use FFmpeg to add text overlays
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return `https://forgevid.com/edited/text_${Date.now()}.mp4`;
-}
-
-async function enhanceAudio(videoUrl: string, params: any): Promise<string> {
-  // In production, use FFmpeg to enhance audio
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return `https://forgevid.com/edited/audio_${Date.now()}.mp4`;
-}
-
-async function performAutoEdit(videoUrl: string, params: any): Promise<string> {
-  // In production, use AI to automatically edit video
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  return `https://forgevid.com/edited/auto_${Date.now()}.mp4`;
-}
-
-export async function batchEditVideos(
-  requests: VideoEditRequest[]
-): Promise<VideoEditResult[]> {
-  try {
-    const results = await Promise.all(
-      requests.map(request => applyVideoEdit(request))
-    );
-    return results;
-  } catch (error) {
-    console.error('Batch edit error:', error);
-    throw new Error('Failed to process batch video edits');
-  }
-}
-
-export async function createVideoThumbnail(
-  videoUrl: string,
-  timestamp: number = 0
-): Promise<string> {
-  try {
-    // In production, use FFmpeg to extract thumbnail
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return `https://forgevid.com/thumbnails/${Date.now()}.jpg`;
-  } catch (error) {
-    console.error('Thumbnail generation error:', error);
-    throw new Error('Failed to generate video thumbnail');
-  }
+  return suggestions;
 }

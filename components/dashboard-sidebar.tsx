@@ -8,6 +8,7 @@ import {
   Layout,
   ImageIcon,
   Settings,
+  Users,
   Gift,
   BarChart3,
   HelpCircle,
@@ -30,6 +31,7 @@ const navigation = [
   { name: "Media Library", href: "/dashboard/media", icon: ImageIcon },
   { name: "AI Studio", href: "/dashboard/ai", icon: Sparkles, badge: "New" },
   { name: "Feed → Videos", href: "/dashboard/feed", icon: Rss, badge: "New" },
+  { name: "Share & Review", href: "/dashboard/collaborate", icon: Users },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { name: "Referrals", href: "/dashboard/referrals", icon: Gift },
 ]
