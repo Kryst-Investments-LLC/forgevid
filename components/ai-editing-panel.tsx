@@ -66,6 +66,7 @@ function AIEditingPanel() {
   const [autoEditPrompt, setAutoEditPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestions, setSuggestions] = useState<EditSuggestion[] | null>(null);
+  const [generateIntent, setGenerateIntent] = useState<{ url: string | null } | null>(null);
 
   const [isRerendering, setIsRerendering] = useState(false);
 
@@ -120,6 +121,24 @@ function AIEditingPanel() {
   };
 
   const runSuggestions = async () => {
+    // This panel REVIEWS an existing video. A "generate/create a video for X"
+    // ask sent through it produces absurd advice ("rebrand this commercial to
+    // X") — seen with a real user. Route generation intent to the generator
+    // instead of running the review.
+    // "make A video" is generation; "make THIS video better" is review — the
+    // article is what separates them.
+    const wantsNewVideo =
+      /\b(generate|create|make|build|produce)\b\s+(me\s+)?(a|an|another|new)\b[\s\S]{0,50}\b(video|commercial|ad|promo|reel)\b/i.test(
+        autoEditPrompt,
+      );
+    if (wantsNewVideo) {
+      const url = autoEditPrompt.match(/(https?:\/\/)?(www\.)?[a-z0-9-]+(\.[a-z]{2,})+[^\s]*/i)?.[0] ?? null;
+      setGenerateIntent({ url });
+      setSuggestions(null);
+      return;
+    }
+    setGenerateIntent(null);
+
     if (!selectedVideoId) {
       toast.error('Pick a video first');
       return;
@@ -335,6 +354,26 @@ function AIEditingPanel() {
                 Generate AI Suggestions
               </Button>
             </div>
+
+            {generateIntent && (
+              <div className="rounded-lg border border-cyan-700 bg-cyan-950/40 p-4 space-y-2">
+                <h4 className="font-medium text-cyan-200">
+                  Looks like you want a NEW video — this screen reviews existing ones.
+                </h4>
+                <p className="text-sm text-cyan-100/80">
+                  {generateIntent.url
+                    ? `To generate a marketing video for ${generateIntent.url}, use the AI Creator: paste the URL into the "Website → video" box and ForgeVid will write the script from the site's own content and pull in its images.`
+                    : 'To generate a new video, use the AI Creator tab and describe it there.'}
+                </p>
+                <a
+                  href="/dashboard/ai"
+                  className="inline-flex items-center gap-2 rounded-md bg-cyan-600 px-3 py-2 text-sm font-medium text-white hover:bg-cyan-700"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Open the AI Creator
+                </a>
+              </div>
+            )}
 
             {suggestions && (
               <div className="space-y-2">
