@@ -48,10 +48,10 @@ export default function ForgotPasswordPage() {
           <span className="font-heading text-xl font-bold">VidForge AI</span>
         </div>
 
-        <Card>
+        <Card className="bg-white border-gray-200 text-gray-900">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold">Reset your password</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-2xl font-bold text-gray-900">Reset your password</CardTitle>
+            <CardDescription className="text-gray-600">
               {sent
                 ? "Check your inbox"
                 : "Enter your email and we'll send you a link to reset it"}
@@ -63,7 +63,7 @@ export default function ForgotPasswordPage() {
                 <div className="flex justify-center">
                   <CheckCircle2 className="h-12 w-12 text-green-600" />
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-gray-500">
                   If an account exists for <span className="font-medium text-foreground">{email}</span>,
                   a reset link is on its way. The link expires in one hour.
                 </p>
@@ -82,16 +82,16 @@ export default function ForgotPasswordPage() {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email" className="text-gray-700">Email</Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
                     <Input
+                  className="pl-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                       id="email"
                       type="email"
                       placeholder="Enter your email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10"
                       required
                     />
                   </div>
@@ -104,7 +104,7 @@ export default function ForgotPasswordPage() {
                 <div className="text-center">
                   <Link
                     href="/auth/login"
-                    className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center"
+                    className="text-sm text-gray-500 hover:text-foreground inline-flex items-center"
                   >
                     <ArrowLeft className="h-4 w-4 mr-1" />
                     Back to sign in

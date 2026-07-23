@@ -68,10 +68,10 @@ function ResetPasswordForm() {
           <span className="font-heading text-xl font-bold">VidForge AI</span>
         </div>
 
-        <Card>
+        <Card className="bg-white border-gray-200 text-gray-900">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold">Choose a new password</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-2xl font-bold text-gray-900">Choose a new password</CardTitle>
+            <CardDescription className="text-gray-600">
               {done ? "All set" : email ? `for ${email}` : "Reset your account password"}
             </CardDescription>
           </CardHeader>
@@ -81,7 +81,7 @@ function ResetPasswordForm() {
                 <div className="flex justify-center">
                   <CheckCircle2 className="h-12 w-12 text-green-600" />
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-gray-500">
                   Your password has been reset. You can now sign in with it.
                 </p>
                 <Link href="/auth/login">
@@ -107,16 +107,16 @@ function ResetPasswordForm() {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="password">New password</Label>
+                  <Label htmlFor="password" className="text-gray-700">New password</Label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
                     <Input
+                  className="pl-10 pr-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                       id="password"
                       type={showPassword ? "text" : "password"}
                       placeholder="New password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 pr-10"
                       required
                     />
                     <Button
@@ -127,31 +127,31 @@ function ResetPasswordForm() {
                       onClick={() => setShowPassword(!showPassword)}
                     >
                       {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        <EyeOff className="h-4 w-4 text-gray-500" />
                       ) : (
-                        <Eye className="h-4 w-4 text-muted-foreground" />
+                        <Eye className="h-4 w-4 text-gray-500" />
                       )}
                     </Button>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirm">Confirm password</Label>
+                  <Label htmlFor="confirm" className="text-gray-700">Confirm password</Label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
                     <Input
+                  className="pl-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                       id="confirm"
                       type={showPassword ? "text" : "password"}
                       placeholder="Re-enter new password"
                       value={confirm}
                       onChange={(e) => setConfirm(e.target.value)}
-                      className="pl-10"
                       required
                     />
                   </div>
                 </div>
 
-                <p className="text-xs text-muted-foreground">{PASSWORD_HINT}</p>
+                <p className="text-xs text-gray-500">{PASSWORD_HINT}</p>
 
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Resetting..." : "Reset password"}

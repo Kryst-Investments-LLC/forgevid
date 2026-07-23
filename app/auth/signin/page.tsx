@@ -110,10 +110,12 @@ export default function SignInPage() {
           </p>
         </div>
 
-        <Card>
+        {/* Explicit light styling: the global theme is dark, and theme-colored
+            inputs on this light page rendered as near-invisible dark boxes. */}
+        <Card className="bg-white border-gray-200 text-gray-900">
           <CardHeader>
-            <CardTitle>Sign In</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-gray-900">Sign In</CardTitle>
+            <CardDescription className="text-gray-600">
               Enter your credentials to access your account
             </CardDescription>
           </CardHeader>
@@ -126,27 +128,36 @@ export default function SignInPage() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email" className="text-gray-700">Email</Label>
                 <Input
                   id="email"
                   type="email"
+                  placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={isLoading}
+                  className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password" className="text-gray-700">Password</Label>
+                  <Link href="/auth/forgot-password" className="text-sm text-indigo-600 hover:underline">
+                    Forgot password?
+                  </Link>
+                </div>
                 <div className="relative">
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
+                    placeholder="Your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     disabled={isLoading}
+                    className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                   />
                   <Button
                     type="button"
@@ -167,7 +178,7 @@ export default function SignInPage() {
 
               {needsMfa && (
                 <div className="space-y-2">
-                  <Label htmlFor="mfaCode">MFA Code</Label>
+                  <Label htmlFor="mfaCode" className="text-gray-700">MFA Code</Label>
                   <Input
                     id="mfaCode"
                     type="text"
@@ -179,6 +190,7 @@ export default function SignInPage() {
                     maxLength={6}
                     disabled={isLoading}
                     required
+                    className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
               )}
@@ -194,7 +206,7 @@ export default function SignInPage() {
                 <span className="w-full border-t" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">
+                <span className="bg-white px-2 text-gray-500">
                   Or continue with
                 </span>
               </div>
@@ -202,7 +214,7 @@ export default function SignInPage() {
 
             <Button
               variant="outline"
-              className="w-full"
+              className="w-full border-gray-300 text-gray-700 hover:bg-gray-50"
               onClick={handleGoogleSignIn}
               disabled={isLoading}
             >
@@ -279,9 +291,9 @@ export default function SignInPage() {
               </div>
             )}
 
-            <div className="text-center text-sm">
+            <div className="text-center text-sm text-gray-600">
               Don't have an account?{' '}
-              <Link href="/auth/signup" className="text-primary hover:underline">
+              <Link href="/auth/signup" className="text-indigo-600 hover:underline">
                 Sign up
               </Link>
             </div>

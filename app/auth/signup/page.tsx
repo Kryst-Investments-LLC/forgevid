@@ -109,10 +109,10 @@ function SignUpForm() {
           </p>
         </div>
 
-        <Card>
+        <Card className="bg-white border-gray-200 text-gray-900">
           <CardHeader>
-            <CardTitle>Sign Up</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-gray-900">Sign Up</CardTitle>
+            <CardDescription className="text-gray-600">
               Create your account to get started
             </CardDescription>
           </CardHeader>
@@ -125,8 +125,9 @@ function SignUpForm() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
+                <Label htmlFor="name" className="text-gray-700">Full Name</Label>
                 <Input
+                  className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                   id="name"
                   type="text"
                   value={name}
@@ -137,8 +138,9 @@ function SignUpForm() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email" className="text-gray-700">Email</Label>
                 <Input
+                  className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                   id="email"
                   type="email"
                   value={email}
@@ -150,8 +152,9 @@ function SignUpForm() {
 
               {betaMode && (
                 <div className="space-y-2">
-                  <Label htmlFor="inviteCode">Invite Code</Label>
+                  <Label htmlFor="inviteCode" className="text-gray-700">Invite Code</Label>
                   <Input
+                  className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                     id="inviteCode"
                     type="text"
                     value={inviteCode}
@@ -163,9 +166,10 @@ function SignUpForm() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" className="text-gray-700">Password</Label>
                 <div className="relative">
                   <Input
+                  className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                     id="password"
                     type={showPassword ? 'text' : 'password'}
                     value={password}
@@ -192,8 +196,9 @@ function SignUpForm() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Label htmlFor="confirmPassword" className="text-gray-700">Confirm Password</Label>
                 <Input
+                  className="bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                   id="confirmPassword"
                   type="password"
                   value={confirmPassword}
@@ -214,7 +219,7 @@ function SignUpForm() {
                 <span className="w-full border-t" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">
+                <span className="bg-white px-2 text-gray-500">
                   Or continue with
                 </span>
               </div>
@@ -252,14 +257,14 @@ function SignUpForm() {
             </Button>
 
             {betaMode && (
-              <p className="text-xs text-muted-foreground text-center">
+              <p className="text-xs text-gray-500 text-center">
                 Google sign-in is allowed only for pre-approved beta emails.
               </p>
             )}
 
             <div className="text-center text-sm">
               Already have an account?{' '}
-              <Link href="/auth/signin" className="text-primary hover:underline">
+              <Link href="/auth/signin" className="text-indigo-600 hover:underline">
                 Sign in
               </Link>
             </div>
