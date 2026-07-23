@@ -276,7 +276,15 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
                   }`}
                 >
                   {renderMessageContent(msg)}
-                  <div className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-cyan-100' : 'text-gray-500'}`}>
+                  {/* suppressHydrationWarning: the welcome message is in the
+                      INITIAL state, so the server renders its timestamp with
+                      the server's clock and locale (UTC on Railway) and the
+                      browser re-renders with its own — a guaranteed mismatch
+                      that crashed hydration (React #425/#422) in production. */}
+                  <div
+                    suppressHydrationWarning
+                    className={`text-[10px] mt-1 ${msg.role === 'user' ? 'text-cyan-100' : 'text-gray-500'}`}
+                  >
                     {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
