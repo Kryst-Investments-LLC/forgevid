@@ -775,6 +775,33 @@ model CreditLedger {
   @@index([videoId])
 }
 
+/// A user's own referral code (one row per user, created on first visit to the
+/// Referrals page). The share link is /auth/signup?ref=<code>.
+model ReferralAccount {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("referral_accounts")
+}
+
+/// One row per referred sign-up. `converted` flips to true (and rewardCents is
+/// credited) once the referred user takes a paid subscription — reconciled
+/// lazily when the referrer views their Referrals page.
+model ReferralSignup {
+  id             String   @id @default(cuid())
+  referrerId     String
+  referredUserId String   @unique
+  code           String
+  converted      Boolean  @default(false)
+  rewardCents    Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@index([referrerId])
+  @@map("referral_signups")
+}
+
 enum VideoStatus {
   DRAFT // created (e.g. from a template) but never rendered
   QUEUED // generation job enqueued, not yet picked up

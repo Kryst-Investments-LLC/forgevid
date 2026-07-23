@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,8 @@ import {
   AlertCircle,
   Users,
   Mic,
+  CreditCard,
+  Loader2,
 } from "lucide-react";
 
 type TicketStatus = null | "loading" | "success" | "error";
@@ -33,7 +36,10 @@ type TicketForm = {
   email: string;
 };
 
+type HealthChecks = { database?: boolean };
+
 function HelpPage() {
+  const [activeTab, setActiveTab] = useState<string>("faq");
   const [faqCategory, setFaqCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [aiHint, setAiHint] = useState<string>("");
@@ -48,6 +54,44 @@ function HelpPage() {
   const [ticketStatus, setTicketStatus] = useState<TicketStatus>(null);
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
+
+  // Live system status (Status tab)
+  const [statusLoading, setStatusLoading] = useState<boolean>(true);
+  const [statusOk, setStatusOk] = useState<boolean | null>(null);
+  const [healthChecks, setHealthChecks] = useState<HealthChecks | null>(null);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/monitoring/health");
+        let checks: HealthChecks | null = null;
+        try {
+          const data = await res.json();
+          checks = data?.checks ?? null;
+        } catch {
+          // body may be missing/unparseable; the status code alone still tells us enough
+        }
+        if (!cancelled) {
+          setStatusOk(res.ok);
+          setHealthChecks(checks);
+          setLastChecked(new Date());
+        }
+      } catch {
+        if (!cancelled) {
+          setStatusOk(false);
+          setHealthChecks(null);
+          setLastChecked(new Date());
+        }
+      } finally {
+        if (!cancelled) setStatusLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // AI Hint Mockup (simulating intent prediction)
   useEffect(() => {
@@ -151,12 +195,12 @@ function HelpPage() {
         )}
 
         {/* Tabs */}
-        <Tabs defaultValue="faq" className="space-y-10">
-          <TabsList className="grid w-full grid-cols-3 bg-white/10 backdrop-blur-xl rounded-xl border border-white/10">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-10">
+          <TabsList className="grid w-full grid-cols-4 bg-white/10 backdrop-blur-xl rounded-xl border border-white/10">
             <TabsTrigger value="faq">FAQ</TabsTrigger>
             <TabsTrigger value="support">Support</TabsTrigger>
             <TabsTrigger value="status">Status</TabsTrigger>
-            {/* Resources tab removed — it had no content (blank pane). */}
+            <TabsTrigger value="resources">Resources</TabsTrigger>
           </TabsList>
 
           {/* FAQ Section */}
@@ -295,30 +339,137 @@ function HelpPage() {
           <TabsContent value="status">
             <Card className="bg-white/10 backdrop-blur-xl border border-white/10">
               <CardHeader>
-                <CardTitle className="flex items-center text-green-400">
-                  <motion.div
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ repeat: Infinity, duration: 2 }}
-                    className="w-3 h-3 bg-green-400 rounded-full mr-3"
-                  />
-                  All Systems Operational
+                <CardTitle
+                  className={`flex items-center ${
+                    statusLoading ? "text-gray-400" : statusOk ? "text-green-400" : "text-red-400"
+                  }`}
+                >
+                  {statusLoading ? (
+                    <Loader2 className="w-4 h-4 mr-3 animate-spin" />
+                  ) : (
+                    <motion.div
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ repeat: Infinity, duration: 2 }}
+                      className={`w-3 h-3 rounded-full mr-3 ${statusOk ? "bg-green-400" : "bg-red-400"}`}
+                    />
+                  )}
+                  {statusLoading
+                    ? "Checking status..."
+                    : statusOk
+                    ? "All Systems Operational"
+                    : "Degraded Performance"}
                 </CardTitle>
-                <CardDescription>Live ForgeVid infrastructure monitor</CardDescription>
+                <CardDescription>
+                  Live ForgeVid infrastructure monitor
+                  {lastChecked && !statusLoading && (
+                    <> &mdash; last checked {lastChecked.toLocaleTimeString()}</>
+                  )}
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {["AI Engine", "Video Pipeline", "User API", "Media CDN"].map((service) => (
-                    <div
-                      key={service}
-                      className="flex justify-between items-center border-b border-white/10 py-3"
-                    >
-                      <span>{service}</span>
-                      <Badge className="bg-green-500/20 text-green-400">Operational</Badge>
+                {statusLoading ? (
+                  <p className="text-gray-400 text-sm">Checking service health...</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex justify-between items-center border-b border-white/10 py-3">
+                      <span>Application</span>
+                      <Badge className={statusOk ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}>
+                        {statusOk ? "Operational" : "Degraded"}
+                      </Badge>
                     </div>
-                  ))}
-                </div>
+                    <div className="flex justify-between items-center border-b border-white/10 py-3">
+                      <span>Database</span>
+                      <Badge
+                        className={
+                          healthChecks?.database ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                        }
+                      >
+                        {healthChecks?.database ? "Operational" : "Degraded"}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Resources */}
+          <TabsContent value="resources">
+            <motion.div
+              className="grid grid-cols-1 md:grid-cols-2 gap-6"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              {[
+                {
+                  title: "Create a video",
+                  description: "Open AI Studio and generate a new video from a prompt.",
+                  href: "/dashboard/ai",
+                  icon: Video,
+                },
+                {
+                  title: "Your videos",
+                  description: "Browse, play, download, or delete videos you've already generated.",
+                  href: "/dashboard/videos",
+                  icon: FileText,
+                },
+                {
+                  title: "Pricing & plans",
+                  description: "Compare plans and see what's included at each tier.",
+                  href: "/pricing",
+                  icon: Book,
+                },
+                {
+                  title: "Billing",
+                  description: "Manage your subscription, payment method, and invoices.",
+                  href: "/dashboard/billing",
+                  icon: CreditCard,
+                },
+              ].map((item) => (
+                <Link key={item.href} href={item.href} className="block h-full">
+                  <motion.div
+                    whileHover={{ scale: 1.02 }}
+                    transition={{ type: "spring", stiffness: 200 }}
+                    className="h-full"
+                  >
+                    <Card className="bg-white/10 backdrop-blur-xl border border-white/10 text-white h-full cursor-pointer hover:border-blue-400/40 transition-colors">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <item.icon className="w-5 h-5 text-blue-400" />
+                          {item.title}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-gray-300">{item.description}</p>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                </Link>
+              ))}
+              <motion.div
+                whileHover={{ scale: 1.02 }}
+                transition={{ type: "spring", stiffness: 200 }}
+                className="h-full"
+              >
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("support")}
+                  className="block h-full w-full text-left"
+                >
+                  <Card className="bg-white/10 backdrop-blur-xl border border-white/10 text-white h-full cursor-pointer hover:border-blue-400/40 transition-colors">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <MessageCircle className="w-5 h-5 text-blue-400" />
+                        Contact support
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-300">Open a support ticket and we&apos;ll get back to you.</p>
+                    </CardContent>
+                  </Card>
+                </button>
+              </motion.div>
+            </motion.div>
           </TabsContent>
         </Tabs>
       </div>

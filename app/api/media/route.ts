@@ -96,8 +96,13 @@ export async function GET(request: NextRequest) {
       prisma.mediaAsset.count({ where }),
     ]);
 
+    const serializedAssets = assets.map((a) => ({
+      ...a,
+      fileSize: a.fileSize != null ? Number(a.fileSize) : null,
+    }));
+
     return NextResponse.json({
-      assets,
+      assets: serializedAssets,
       pagination: {
         page,
         limit,

@@ -58,6 +58,7 @@ function SignUpForm() {
           email,
           password,
           inviteCode,
+          ref: searchParams.get('ref') || undefined,
         }),
       })
 

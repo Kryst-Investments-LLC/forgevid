@@ -1,91 +1,79 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { checkCompliance } from '@/features/compliance-ai';
+import { NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { getFreshSessionUser, isAdminRole } from '@/lib/rbac';
 
-export async function GET(request: NextRequest) {
+/**
+ * REAL enterprise/ops overview — platform-wide counts + live process metrics.
+ *
+ * The previous version of this route returned hardcoded fake numbers (fixed
+ * CPU/memory percentages, a fabricated 99.97% uptime, "compliant" status for
+ * every framework). This one only reports what's actually true: real DB
+ * counts (each wrapped so one missing/broken table can't 500 the whole
+ * response), real Node process memory/uptime, and an honest, unaudited
+ * compliance self-assessment.
+ */
+
+async function safeCount<T>(query: () => Promise<T>, label: string): Promise<T | null> {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const feature = searchParams.get('feature');
-    const action = searchParams.get('action');
-
-    switch (feature) {
-      case 'compliance': {
-        const status = checkCompliance('all');
-        return NextResponse.json({
-          status,
-          gdpr: { status: 'compliant', lastAudit: new Date().toISOString() },
-          hipaa: { status: 'not_applicable' },
-          soc2: { status: 'in_progress' },
-        });
-      }
-      case 'performance': {
-        return NextResponse.json({
-          cpu: { current: 45, avg: 52, peak: 78 },
-          memory: { current: 62, avg: 58, peak: 85 },
-          responseTime: { p50: 120, p95: 450, p99: 890 },
-          uptime: 99.97,
-        });
-      }
-      case 'health': {
-        if (action === 'all') {
-          return NextResponse.json({
-            health: {
-              database: 'healthy',
-              cache: 'healthy',
-              storage: 'healthy',
-              ai: 'healthy',
-              overall: 'healthy',
-            },
-          });
-        }
-        return NextResponse.json({ status: 'healthy' });
-      }
-      default:
-        return NextResponse.json({ error: 'Unknown feature' }, { status: 400 });
-    }
+    return await query();
   } catch (error) {
-    console.error('Enterprise features error:', error);
-    return NextResponse.json({ error: 'Failed to fetch enterprise data' }, { status: 500 });
+    console.error(`[enterprise/features] ${label} query failed:`, error);
+    return null;
   }
 }
 
-export async function POST(request: NextRequest) {
+function bytesToMB(bytes: number): number {
+  return Math.round((bytes / 1024 / 1024) * 100) / 100;
+}
+
+export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    // Platform-wide counts are admin-only (a regular user shouldn't see total
+    // users / videos across the whole platform).
+    const user = await getFreshSessionUser();
+    if (!user || !isAdminRole(user.role)) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const feature = searchParams.get('feature');
-    const action = searchParams.get('action');
+    const [totalUsers, totalVideos, completedVideos, activeSubscriptions, totalGenerations] =
+      await Promise.all([
+        safeCount(() => prisma.user.count(), 'totalUsers'),
+        safeCount(() => prisma.video.count(), 'totalVideos'),
+        safeCount(() => prisma.video.count({ where: { status: 'COMPLETED' } }), 'completedVideos'),
+        safeCount(() => prisma.subscription.count({ where: { status: 'ACTIVE' } }), 'activeSubscriptions'),
+        safeCount(() => prisma.aIGeneration.count(), 'totalGenerations'),
+      ]);
 
-    switch (feature) {
-      case 'gdpr': {
-        return NextResponse.json({
-          success: true,
-          action,
-          message: `GDPR ${action} completed successfully`,
-        });
-      }
-      case 'performance': {
-        return NextResponse.json({
-          success: true,
-          action,
-          message: `Performance ${action} applied successfully`,
-        });
-      }
-      default:
-        return NextResponse.json({ error: 'Unknown feature' }, { status: 400 });
-    }
+    const mem = process.memoryUsage();
+
+    return NextResponse.json({
+      metrics: {
+        totalUsers,
+        totalVideos,
+        completedVideos,
+        activeSubscriptions,
+        totalGenerations,
+      },
+      system: {
+        memory: {
+          heapUsedMB: bytesToMB(mem.heapUsed),
+          heapTotalMB: bytesToMB(mem.heapTotal),
+          rssMB: bytesToMB(mem.rss),
+        },
+        uptimeSeconds: Math.round(process.uptime()),
+      },
+      // Honest self-assessment, not a certification claim. Never report
+      // "compliant"/"certified" or invented audit percentages here.
+      compliance: {
+        httpsEnforced: true,
+        dataEncryptedInTransit: true,
+        thirdPartyAudited: false,
+        note: 'Self-assessed. Not yet independently audited (SOC 2 / HIPAA not certified).',
+      },
+      generatedAt: new Date().toISOString(),
+    });
   } catch (error) {
-    console.error('Enterprise features error:', error);
-    return NextResponse.json({ error: 'Failed to process enterprise action' }, { status: 500 });
+    console.error('[enterprise/features] failed:', error);
+    return NextResponse.json({ error: 'Failed to load enterprise data' }, { status: 500 });
   }
 }

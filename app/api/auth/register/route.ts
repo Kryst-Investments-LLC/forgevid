@@ -27,6 +27,7 @@ const registerSchema = z.object({
     .regex(/[0-9]/, 'Password must contain at least one number')
     .regex(/[^A-Za-z0-9]/, 'Password must contain at least one special character'),
   inviteCode: z.string().max(128, 'Invite code is too long').trim().optional(),
+  ref: z.string().max(32, 'Referral code is too long').trim().optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { name, email, password, inviteCode } = validation.data
+    const { name, email, password, inviteCode, ref } = validation.data
 
     const betaAccess = await isBetaAccessAllowed({ email, inviteCode })
     if (!betaAccess.allowed) {
@@ -87,6 +88,21 @@ export async function POST(request: NextRequest) {
         createdAt: true,
       }
     })
+
+    // Record the referral, if this sign-up came from a share link (?ref=CODE).
+    // Best-effort: a bad/missing code must never fail the registration.
+    if (ref) {
+      try {
+        const account = await prisma.referralAccount.findUnique({ where: { code: ref } })
+        if (account && account.userId !== user.id) {
+          await prisma.referralSignup.create({
+            data: { referrerId: account.userId, referredUserId: user.id, code: ref },
+          })
+        }
+      } catch (err) {
+        console.error('[Referral] Failed to record signup:', err)
+      }
+    }
 
     // Send welcome email (non-blocking)
     sendWelcomeEmail(user.email, user.name || 'Creator').catch((err) =>
