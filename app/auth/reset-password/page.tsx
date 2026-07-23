@@ -94,7 +94,7 @@ function ResetPasswordForm() {
                   This reset link is incomplete or invalid. Please request a new one.
                 </p>
                 <Link href="/auth/forgot-password">
-                  <Button variant="outline" className="w-full border-gray-300 text-gray-700 hover:bg-gray-50">
+                  <Button variant="outline" className="w-full bg-white border-gray-300 text-gray-700 hover:bg-gray-50">
                     Request a new link
                   </Button>
                 </Link>

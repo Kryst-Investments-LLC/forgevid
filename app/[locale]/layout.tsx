@@ -18,8 +18,15 @@ export async function generateMetadata({ params }: { params: { locale: string } 
   };
 }
 
-export default function LocaleLayout({ children, params }: { children: React.ReactNode; params: { locale: string } }) {
+export default async function LocaleLayout({ children, params }: { children: React.ReactNode; params: { locale: string } }) {
   const { locale } = params;
   if (!locales.includes(locale as any)) notFound();
-  return <>{children}</>;
+  // Without this provider, every client page under [locale] that calls
+  // useTranslations() crashes — the messages must be handed to the client.
+  const messages = await getMessages({ locale });
+  return (
+    <NextIntlClientProvider locale={locale} messages={messages}>
+      {children}
+    </NextIntlClientProvider>
+  );
 }

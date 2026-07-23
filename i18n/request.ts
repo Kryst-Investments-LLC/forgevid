@@ -1,15 +1,17 @@
 import { getRequestConfig } from 'next-intl/server';
-import { notFound } from 'next/navigation';
 
-// Can be imported from a shared config
+// Shared with app/[locale]/layout.tsx and middleware.ts.
 const locales = ['en', 'es', 'hi', 'zh', 'ja', 'fr', 'it', 'ko', 'pt', 'de'];
 
-export default getRequestConfig(async ({ locale }) => {
-  // Validate that the incoming `locale` parameter is valid
-  if (!locales.includes(locale as any)) notFound();
+// next-intl v4: the config receives an awaitable `requestLocale` — the old
+// `{ locale }` destructure got undefined here, which made the notFound()
+// guard fire and 404 EVERY /es, /fr, ... locale route in production.
+export default getRequestConfig(async ({ requestLocale }) => {
+  let locale = await requestLocale;
+  if (!locale || !locales.includes(locale)) locale = 'en';
 
   return {
-    locale: locale as string,
-    messages: (await import(`../messages/${locale}.json`)).default
+    locale,
+    messages: (await import(`../messages/${locale}.json`)).default,
   };
 });

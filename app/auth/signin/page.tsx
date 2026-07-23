@@ -195,7 +195,7 @@ export default function SignInPage() {
                 </div>
               )}
 
-              <Button type="submit" className="w-full" disabled={isLoading || (needsMfa && mfaCode.length !== 6)}>
+              <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white" disabled={isLoading || (needsMfa && mfaCode.length !== 6)}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {needsMfa ? 'Verify & Sign In' : 'Sign In'}
               </Button>
@@ -214,7 +214,7 @@ export default function SignInPage() {
 
             <Button
               variant="outline"
-              className="w-full border-gray-300 text-gray-700 hover:bg-gray-50"
+              className="w-full bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
               onClick={handleGoogleSignIn}
               disabled={isLoading}
             >

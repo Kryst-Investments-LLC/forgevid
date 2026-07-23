@@ -68,7 +68,7 @@ export default function ForgotPasswordPage() {
                   a reset link is on its way. The link expires in one hour.
                 </p>
                 <Link href="/auth/login">
-                  <Button variant="outline" className="w-full border-gray-300 text-gray-700 hover:bg-gray-50">
+                  <Button variant="outline" className="w-full bg-white border-gray-300 text-gray-700 hover:bg-gray-50">
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back to sign in
                   </Button>
