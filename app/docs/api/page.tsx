@@ -86,11 +86,11 @@ export default function APIDocsPage() {
   ]
 
   const codeExamples = {
-    curl: `curl -X POST "https://api.vidforge.ai/v1/videos/generate" \\
+    curl: `curl -X POST "https://api.forgevid.ai/v1/videos/generate" \\
   -H "Authorization: Bearer ${apiKey}" \\
   -H "Content-Type: application/json" \\
   -d '${requestBody}'`,
-    javascript: `const response = await fetch('https://api.vidforge.ai/v1/videos/generate', {
+    javascript: `const response = await fetch('https://api.forgevid.ai/v1/videos/generate', {
   method: 'POST',
   headers: {
     'Authorization': 'Bearer ${apiKey}',
@@ -103,7 +103,7 @@ const video = await response.json();
 console.log(video);`,
     python: `import requests
 
-url = "https://api.vidforge.ai/v1/videos/generate"
+url = "https://api.forgevid.ai/v1/videos/generate"
 headers = {
     "Authorization": f"Bearer ${apiKey}",
     "Content-Type": "application/json"
@@ -113,9 +113,9 @@ data = ${requestBody}
 response = requests.post(url, headers=headers, json=data)
 video = response.json()
 print(video)`,
-    node: `const VidForge = require('@vidforge/api');
+    node: `const ForgeVid = require('@forgevid/api');
 
-const client = new VidForge('${apiKey}');
+const client = new ForgeVid('${apiKey}');
 
 const video = await client.videos.generate(${requestBody});
 console.log(video);`,
@@ -137,7 +137,7 @@ console.log(video);`,
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold mb-4">API Documentation</h1>
           <p className="text-xl text-muted-foreground mb-8">
-            Integrate VidForge AI into your applications with our powerful REST API
+            Integrate ForgeVid into your applications with our powerful REST API
           </p>
 
           <div className="flex flex-wrap justify-center gap-4">
@@ -173,7 +173,7 @@ console.log(video);`,
                   <Zap className="w-6 h-6 mr-2 text-primary" />
                   Quick Start
                 </CardTitle>
-                <CardDescription>Get started with the VidForge AI API in minutes</CardDescription>
+                <CardDescription>Get started with the ForgeVid API in minutes</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid md:grid-cols-3 gap-6">
@@ -311,7 +311,7 @@ console.log(video);`,
                 <div>
                   <h3 className="font-semibold mb-3">Getting Your API Key</h3>
                   <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                    <li>Sign in to your VidForge AI dashboard</li>
+                    <li>Sign in to your ForgeVid dashboard</li>
                     <li>Navigate to Settings → API Keys</li>
                     <li>Click "Generate New API Key"</li>
                     <li>Copy and securely store your API key</li>
@@ -331,7 +331,7 @@ console.log(video);`,
                     <pre className="text-sm overflow-x-auto">
                       <code>{`curl -H "Authorization: Bearer vf_live_1234567890abcdef" \\
      -H "Content-Type: application/json" \\
-     https://api.vidforge.ai/v1/videos`}</code>
+     https://api.forgevid.ai/v1/videos`}</code>
                     </pre>
                   </div>
                 </div>
@@ -418,7 +418,7 @@ console.log(video);`,
                       <h4 className="font-semibold mb-2">Endpoint</h4>
                       <div className="bg-muted p-3 rounded-lg">
                         <code className="text-sm">
-                          {endpoints.find((e) => e.id === selectedEndpoint)?.method} https://api.vidforge.ai
+                          {endpoints.find((e) => e.id === selectedEndpoint)?.method} https://api.forgevid.ai
                           {endpoints.find((e) => e.id === selectedEndpoint)?.path}
                         </code>
                       </div>
@@ -602,7 +602,7 @@ console.log(video);`,
                 <CardContent>
                   <div className="space-y-3">
                     <div className="bg-muted p-3 rounded-lg">
-                      <code className="text-sm">npm install @vidforge/api</code>
+                      <code className="text-sm">npm install @forgevid/api</code>
                     </div>
                     <p className="text-sm text-muted-foreground">Official JavaScript SDK with TypeScript support</p>
                     <div className="flex gap-2">
@@ -627,7 +627,7 @@ console.log(video);`,
                 <CardContent>
                   <div className="space-y-3">
                     <div className="bg-muted p-3 rounded-lg">
-                      <code className="text-sm">pip install vidforge-python</code>
+                      <code className="text-sm">pip install forgevid-python</code>
                     </div>
                     <p className="text-sm text-muted-foreground">Python SDK with async support and type hints</p>
                     <div className="flex gap-2">
@@ -652,7 +652,7 @@ console.log(video);`,
                 <CardContent>
                   <div className="space-y-3">
                     <div className="bg-muted p-3 rounded-lg">
-                      <code className="text-sm">composer require vidforge/php-sdk</code>
+                      <code className="text-sm">composer require forgevid/php-sdk</code>
                     </div>
                     <p className="text-sm text-muted-foreground">PHP SDK compatible with Laravel and Symfony</p>
                     <div className="flex gap-2">
@@ -677,7 +677,7 @@ console.log(video);`,
                 <CardContent>
                   <div className="space-y-3">
                     <div className="bg-muted p-3 rounded-lg">
-                      <code className="text-sm">gem install vidforge</code>
+                      <code className="text-sm">gem install forgevid</code>
                     </div>
                     <p className="text-sm text-muted-foreground">Ruby gem with Rails integration</p>
                     <div className="flex gap-2">
@@ -702,7 +702,7 @@ console.log(video);`,
                 <CardContent>
                   <div className="space-y-3">
                     <div className="bg-muted p-3 rounded-lg">
-                      <code className="text-sm">go get github.com/vidforge/go-sdk</code>
+                      <code className="text-sm">go get github.com/forgevid/go-sdk</code>
                     </div>
                     <p className="text-sm text-muted-foreground">Go SDK with context support and error handling</p>
                     <div className="flex gap-2">
@@ -780,7 +780,7 @@ console.log(video);`,
   "data": {
     "id": "vid_1234567890",
     "status": "completed",
-    "url": "https://cdn.vidforge.ai/...",
+    "url": "https://cdn.forgevid.ai/...",
     "duration": 30,
     "created_at": "2024-01-15T10:30:00Z"
   }

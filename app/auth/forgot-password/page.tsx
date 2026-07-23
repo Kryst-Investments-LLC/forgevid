@@ -45,7 +45,7 @@ export default function ForgotPasswordPage() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Sparkles className="h-5 w-5 text-primary-foreground" />
           </div>
-          <span className="font-heading text-xl font-bold">VidForge AI</span>
+          <span className="font-heading text-xl font-bold">ForgeVid</span>
         </div>
 
         <Card className="bg-white border-gray-200 text-gray-900">
@@ -68,7 +68,7 @@ export default function ForgotPasswordPage() {
                   a reset link is on its way. The link expires in one hour.
                 </p>
                 <Link href="/auth/login">
-                  <Button variant="outline" className="w-full">
+                  <Button variant="outline" className="w-full border-gray-300 text-gray-700 hover:bg-gray-50">
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back to sign in
                   </Button>
@@ -97,14 +97,14 @@ export default function ForgotPasswordPage() {
                   </div>
                 </div>
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white" disabled={isLoading}>
                   {isLoading ? "Sending..." : "Send reset link"}
                 </Button>
 
                 <div className="text-center">
                   <Link
                     href="/auth/login"
-                    className="text-sm text-gray-500 hover:text-foreground inline-flex items-center"
+                    className="text-sm text-gray-500 hover:text-gray-900 inline-flex items-center"
                   >
                     <ArrowLeft className="h-4 w-4 mr-1" />
                     Back to sign in

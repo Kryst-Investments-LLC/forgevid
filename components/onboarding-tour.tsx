@@ -18,7 +18,7 @@ interface TourStep {
 const tourSteps: TourStep[] = [
   {
     id: "welcome",
-    title: "Welcome to VidForge AI!",
+    title: "Welcome to ForgeVid!",
     description: "Let's take a quick tour of your new video creation workspace. This will only take 2 minutes.",
     target: "body",
     position: "top",

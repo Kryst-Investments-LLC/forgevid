@@ -18,7 +18,7 @@ interface WhiteLabelConfig {
     fontFamily?: string
   }
   features: {
-    hideVidForgeBranding: boolean
+    hideForgeVidBranding: boolean
     customEmailDomain: boolean
     customSupportEmail: string
     customTermsUrl?: string
@@ -87,7 +87,7 @@ export class IntegrationManager {
 
       // In production, this would:
       // 1. Fetch contacts from HubSpot API
-      // 2. Transform data to VidForge format
+      // 2. Transform data to ForgeVid format
       // 3. Update local database
       // 4. Handle incremental sync based on lastSync timestamp
 
@@ -308,7 +308,7 @@ export class IntegrationManager {
   private static async validateCustomDomain(domain: string): Promise<void> {
     try {
       // Check DNS configuration
-      const response = await fetch(`https://${domain}/.well-known/vidforge-verification`)
+      const response = await fetch(`https://${domain}/.well-known/forgevid-verification`)
       if (!response.ok) {
         throw new Error("Domain verification failed. Please add the verification file.")
       }

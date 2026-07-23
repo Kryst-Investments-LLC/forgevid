@@ -65,7 +65,7 @@ function ResetPasswordForm() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Sparkles className="h-5 w-5 text-primary-foreground" />
           </div>
-          <span className="font-heading text-xl font-bold">VidForge AI</span>
+          <span className="font-heading text-xl font-bold">ForgeVid</span>
         </div>
 
         <Card className="bg-white border-gray-200 text-gray-900">
@@ -85,7 +85,7 @@ function ResetPasswordForm() {
                   Your password has been reset. You can now sign in with it.
                 </p>
                 <Link href="/auth/login">
-                  <Button className="w-full">Go to sign in</Button>
+                  <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">Go to sign in</Button>
                 </Link>
               </div>
             ) : !linkOk ? (
@@ -94,7 +94,7 @@ function ResetPasswordForm() {
                   This reset link is incomplete or invalid. Please request a new one.
                 </p>
                 <Link href="/auth/forgot-password">
-                  <Button variant="outline" className="w-full">
+                  <Button variant="outline" className="w-full border-gray-300 text-gray-700 hover:bg-gray-50">
                     Request a new link
                   </Button>
                 </Link>
@@ -153,7 +153,7 @@ function ResetPasswordForm() {
 
                 <p className="text-xs text-gray-500">{PASSWORD_HINT}</p>
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white" disabled={isLoading}>
                   {isLoading ? "Resetting..." : "Reset password"}
                 </Button>
               </form>

@@ -149,7 +149,7 @@ function EditorContent({ videoId }: { videoId: string | null }) {
             <div className="flex h-6 w-6 items-center justify-center rounded bg-primary">
               <Sparkles className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="font-heading font-bold">VidForge AI</span>
+            <span className="font-heading font-bold">ForgeVid</span>
           </div>
           <Separator orientation="vertical" className="h-6" />
           <div>

@@ -13,7 +13,7 @@ export default function DocsPage() {
       icon: Book,
       color: "bg-blue-100 text-blue-600",
       articles: [
-        { title: "Welcome to VidForge AI", time: "5 min read", new: true },
+        { title: "Welcome to ForgeVid", time: "5 min read", new: true },
         { title: "Creating Your First Video", time: "10 min read" },
         { title: "Understanding Credits", time: "3 min read" },
         { title: "Account Setup & Verification", time: "5 min read" },
@@ -57,7 +57,7 @@ export default function DocsPage() {
     },
     {
       title: "API Reference",
-      description: "Integrate VidForge AI into your applications",
+      description: "Integrate ForgeVid into your applications",
       icon: Code,
       color: "bg-red-100 text-red-600",
       articles: [
@@ -82,7 +82,7 @@ export default function DocsPage() {
   ]
 
   const quickStart = [
-    { step: 1, title: "Sign Up", description: "Create your VidForge AI account" },
+    { step: 1, title: "Sign Up", description: "Create your ForgeVid account" },
     { step: 2, title: "Choose Plan", description: "Select the plan that fits your needs" },
     { step: 3, title: "Create Video", description: "Use AI to generate your first video" },
     { step: 4, title: "Export & Share", description: "Download or share your creation" },
@@ -94,7 +94,7 @@ export default function DocsPage() {
         {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">Documentation</h1>
-          <p className="text-xl text-gray-600 mb-8">Everything you need to know about VidForge AI</p>
+          <p className="text-xl text-gray-600 mb-8">Everything you need to know about ForgeVid</p>
 
           <div className="flex flex-wrap justify-center gap-4">
             <Button className="bg-blue-600 hover:bg-blue-700">
@@ -221,7 +221,7 @@ export default function DocsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-600 mb-4">Connect with other VidForge AI users</p>
+              <p className="text-gray-600 mb-4">Connect with other ForgeVid users</p>
               <Button variant="outline" className="w-full bg-transparent">
                 Join Community
               </Button>
