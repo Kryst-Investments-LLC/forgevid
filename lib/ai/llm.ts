@@ -56,12 +56,20 @@ export const llm = lazyClient<OpenAI>(createLlmClient);
 /**
  * The model name for the active provider. 'standard' replaces gpt-4-class
  * calls; 'fast' replaces gpt-4o-mini / gpt-3.5-turbo-class calls.
+ *
+ * Gemini default is the `gemini-flash-latest` ALIAS, not a pinned version:
+ * Google retires numbered models for new API keys (gemini-2.5-flash 404s with
+ * "no longer available to new users"), and the alias always resolves to the
+ * current stable Flash. Pin via GEMINI_MODEL / GEMINI_FAST_MODEL if needed.
+ * Names are normalised to the canonical `models/…` resource form.
  */
 export function llmModel(tier: 'standard' | 'fast' = 'standard'): string {
   if (llmProvider() === 'gemini') {
-    return tier === 'fast'
-      ? process.env.GEMINI_FAST_MODEL || 'gemini-2.5-flash'
-      : process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const name =
+      (tier === 'fast'
+        ? process.env.GEMINI_FAST_MODEL || process.env.GEMINI_MODEL
+        : process.env.GEMINI_MODEL) || 'gemini-flash-latest';
+    return name.startsWith('models/') ? name : `models/${name}`;
   }
   return tier === 'fast' ? 'gpt-4o-mini' : 'gpt-4';
 }
