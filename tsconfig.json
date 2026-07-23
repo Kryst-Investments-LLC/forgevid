@@ -26,6 +26,7 @@
   "exclude": [
     "node_modules",
     "api/**/*",
+    "playwright.config.ts",
     "__tests__",
     "tests",
     "e2e",
