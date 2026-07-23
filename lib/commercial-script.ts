@@ -10,7 +10,7 @@
  */
 
 import { z } from 'zod';
-import { createLlmClient, hasLlmKey, llmModel } from './ai/llm';
+import { createLlmClient, extractJson, hasLlmKey, llmModel } from './ai/llm';
 import { briefForModel, type SiteContent } from './site-extract';
 
 export const COMMERCIAL_TONES = ['energetic', 'professional', 'friendly', 'premium'] as const;
@@ -113,7 +113,7 @@ export async function writeCommercialScript(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(extractJson(raw));
   } catch {
     throw new Error('The scriptwriter returned malformed JSON');
   }

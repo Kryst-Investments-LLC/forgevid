@@ -63,6 +63,23 @@ export const llm = lazyClient<OpenAI>(createLlmClient);
  * current stable Flash. Pin via GEMINI_MODEL / GEMINI_FAST_MODEL if needed.
  * Names are normalised to the canonical `models/…` resource form.
  */
+/**
+ * Extract the JSON payload from an LLM reply. Gemini (and occasionally GPT)
+ * wraps JSON in ```json fences or adds prose around it even when asked not to —
+ * strict JSON.parse on the raw content then fails. Strips fences and slices the
+ * outermost {...} or [...] span; returns the input unchanged when no braces are
+ * found so the caller's own parse error still surfaces.
+ */
+export function extractJson(raw: string): string {
+  const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const objStart = cleaned.indexOf('{');
+  const arrStart = cleaned.indexOf('[');
+  const start = objStart === -1 ? arrStart : arrStart === -1 ? objStart : Math.min(objStart, arrStart);
+  if (start === -1) return cleaned;
+  const end = cleaned[start] === '{' ? cleaned.lastIndexOf('}') : cleaned.lastIndexOf(']');
+  return end > start ? cleaned.slice(start, end + 1) : cleaned;
+}
+
 export function llmModel(tier: 'standard' | 'fast' = 'standard'): string {
   if (llmProvider() === 'gemini') {
     const name =

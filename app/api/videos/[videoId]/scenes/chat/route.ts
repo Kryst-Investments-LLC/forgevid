@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { llm, llmModel, hasLlmKey } from '@/lib/ai/llm';
+import { llm, llmModel, hasLlmKey, extractJson } from '@/lib/ai/llm';
 import { requireVideoOwner } from '@/lib/video-access';
 import { loadScenes, saveScenes } from '@/lib/generation-pipeline';
 import { isStockProviderConfigured, resolveSceneClip } from '@/lib/video-generator';
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest, { params }: { params: { videoId: st
       ],
       max_tokens: 2048,
     });
-    proposal = JSON.parse(completion.choices[0]?.message?.content || '{}');
+    proposal = JSON.parse(extractJson(completion.choices[0]?.message?.content || '{}'));
   } catch (error) {
     console.error('[scene-chat] model call failed:', error);
     return NextResponse.json({ error: 'Could not understand that request' }, { status: 502 });
