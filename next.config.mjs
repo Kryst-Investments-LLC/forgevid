@@ -56,9 +56,14 @@ const nextConfig = {
     return config;
   },
   async rewrites() {
-    // Serve public assets even when a locale prefix is present
+    // Serve public assets even when a locale prefix is present — but ONLY real
+    // files. The old rule (`/:locale/:file*`) matched EVERY locale-prefixed
+    // path and, because array rewrites run before dynamic routes, it hijacked
+    // the whole app/[locale] tree: /es, /es/collaborate, ... all 404'd. Assets
+    // always contain a dot (extension); page routes never do, so the regex
+    // constraint keeps assets working without shadowing localized pages.
     return [
-      { source: '/:locale(div|en|es|hi|zh|ja|fr|it|ko|pt|de)/:file*', destination: '/:file*' },
+      { source: '/:locale(en|es|hi|zh|ja|fr|it|ko|pt|de)/:file(.*\\..*)', destination: '/:file' },
       ...buildExternalRewrites(),
     ]
   },
