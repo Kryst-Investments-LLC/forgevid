@@ -40,7 +40,13 @@ export function hasLlmKey(): boolean {
   return Boolean(openAiApiKey() || geminiApiKey());
 }
 
-const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
+/**
+ * Overridable so Gemini can be served from Vertex AI (a Google Cloud product)
+ * instead of the AI Studio endpoint by setting GEMINI_BASE_URL in the
+ * environment — no code change needed. Default stays AI Studio's compat layer.
+ */
+const GEMINI_BASE_URL =
+  process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
 /** Construct a fresh client for the active provider (rarely needed directly). */
 export function createLlmClient(): OpenAI {
