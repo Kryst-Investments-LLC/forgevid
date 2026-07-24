@@ -12,6 +12,13 @@
  *   npx tsx scripts/marketing-batch.ts --topic dealer-inventory
  *   npx tsx scripts/marketing-batch.ts --lang es       # only Spanish topics
  *   npx tsx scripts/marketing-batch.ts --list          # show all topics
+ *   npx tsx scripts/marketing-batch.ts --email you@x.com   # ALSO email each clip
+ *
+ * Email delivery (post from your phone): pass --email or set MARKETING_EMAIL
+ * in .env.local. Each clip arrives as its own email with the MP4 attached and
+ * the post caption + hashtags in the body — save the attachment, open TikTok/
+ * Instagram, paste the caption. Needs SMTP_* in .env.local (Resend works; with
+ * forgevid.com verified there, set SMTP_FROM to noreply@forgevid.com).
  *
  * Output: marketing-out/YYYY-MM-DD/<slug>.mp4 + POST-THESE.md (caption text +
  * hashtags per clip, ready to paste when posting). Re-runs skip clips that
@@ -401,7 +408,53 @@ function parseArgs() {
     count: Number(get('--count')) || 2,
     lang: get('--lang') as 'en' | 'es' | undefined,
     topic: get('--topic'),
+    email: get('--email') || process.env.MARKETING_EMAIL || undefined,
   };
+}
+
+/** Resend caps attachments well above this; 20MB keeps every inbox happy. */
+const MAX_ATTACH_BYTES = 20 * 1024 * 1024;
+
+/**
+ * Email one rendered clip so it can be posted straight from a phone. Failures
+ * never fail the batch — the file is on disk either way.
+ */
+async function emailClip(
+  to: string,
+  topic: MarketingTopic,
+  filePath: string,
+  fileBytes: number,
+): Promise<void> {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS || process.env.SMTP_PASS.includes('PASTE')) {
+    console.log('    email: SMTP not configured in .env.local — skipped (fill SMTP_PASS with your Resend API key)');
+    return;
+  }
+  const nodemailer = (await import('nodemailer')).default;
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.resend.com',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+
+  const attach = fileBytes <= MAX_ATTACH_BYTES;
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || 'ForgeVid <noreply@forgevid.com>',
+      to,
+      subject: `📱 Post this: ${topic.slug} [${topic.lang}]`,
+      text:
+        `Caption (copy-paste):\n\n${topic.postCaption}\n\n${topic.hashtags}\n\n` +
+        (attach
+          ? 'The clip is attached — save it to your camera roll and post.'
+          : `Clip is ${(fileBytes / 1e6).toFixed(1)}MB (too big to attach) — grab it from ${filePath}.`),
+      attachments: attach
+        ? [{ filename: `${topic.slug}.mp4`, path: filePath, contentType: 'video/mp4' }]
+        : [],
+    });
+    console.log(`    email: sent to ${to}${attach ? ' (clip attached)' : ' (caption only — clip too large)'}`);
+  } catch (error) {
+    console.error(`    email FAILED (${error instanceof Error ? error.message : error}) — clip is still at ${filePath}`);
+  }
 }
 
 async function main() {
@@ -448,7 +501,10 @@ async function main() {
   for (const topic of picked) {
     const outPath = path.join(outDir, `${topic.slug}.mp4`);
     if (fs.existsSync(outPath)) {
-      console.log(`- ${topic.slug}: already rendered today, skipping.`);
+      console.log(`- ${topic.slug}: already rendered today, skipping render.`);
+      if (opts.email) {
+        await emailClip(opts.email, topic, outPath, fs.statSync(outPath).size);
+      }
       continue;
     }
     console.log(`- ${topic.slug} [${topic.lang}] (${topic.scenes.length} scenes)`);
@@ -500,6 +556,10 @@ async function main() {
       );
       rendered++;
       console.log(`    done: ${outPath} (${cues.length} caption cues)`);
+
+      if (opts.email) {
+        await emailClip(opts.email, topic, outPath, fs.statSync(outPath).size);
+      }
     } catch (error) {
       console.error(`    FAILED: ${error instanceof Error ? error.message : error}`);
       console.error('    (continuing with the next topic — re-run to retry this one)');
