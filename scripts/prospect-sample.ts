@@ -34,8 +34,14 @@ function parseArgs() {
     return i >= 0 ? args[i + 1] : undefined;
   };
   const langArg = (get('--lang') || 'both') as Lang | 'both';
+  const vertical = (get('--vertical') || 'auto') as Vertical;
   return {
     url,
+    vertical,
+    // Which tracker --dealer updates; defaults per vertical.
+    csv:
+      get('--csv') ||
+      ({ auto: 'dealers.csv', realestate: 'realtors.csv', ecom: 'ecommerce.csv' } as const)[vertical],
     dealer: get('--dealer'),
     langs: (langArg === 'both' ? ['en', 'es'] : [langArg]) as Lang[],
     aspect: (get('--aspect') || '9:16') as '9:16' | '16:9' | '1:1',
@@ -63,11 +69,27 @@ function splitNarration(text: string, n: number): string[] {
   return chunks;
 }
 
-const DM_TEMPLATE: Record<Lang, (brand: string) => string> = {
-  en: (brand) =>
-    `Hi — I took ${brand}'s website and turned it into this video. Took 4 minutes, no camera, available in English and Spanish. I can do this for your whole inventory automatically every morning. Want me to run 5 of your vehicles as a free demo?`,
-  es: (brand) =>
-    `Hola — tomé el sitio de ${brand} y lo convertí en este video. Tomó 4 minutos, sin cámara, disponible en inglés y español. Puedo hacerlo con todo su inventario automáticamente cada mañana. ¿Le corro 5 vehículos como demo gratis?`,
+type Vertical = 'auto' | 'realestate' | 'ecom';
+
+const DM_TEMPLATES: Record<Vertical, Record<Lang, (brand: string) => string>> = {
+  auto: {
+    en: (brand) =>
+      `Hi — I took ${brand}'s website and turned it into this video. Took 4 minutes, no camera, available in English and Spanish. I can do this for your whole inventory automatically every morning. Want me to run 5 of your vehicles as a free demo?`,
+    es: (brand) =>
+      `Hola — tomé el sitio de ${brand} y lo convertí en este video. Tomó 4 minutos, sin cámara, disponible en inglés y español. Puedo hacerlo con todo su inventario automáticamente cada mañana. ¿Le corro 5 vehículos como demo gratis?`,
+  },
+  realestate: {
+    en: (brand) =>
+      `Hi — I turned ${brand}'s website into this video. Took 4 minutes, no filming, English and Spanish. I can do this for every one of your listings automatically — address, price, beds and baths burned in. Want me to run 3 of your active listings as a free demo?`,
+    es: (brand) =>
+      `Hola — convertí el sitio de ${brand} en este video. Tomó 4 minutos, sin filmar, en inglés y español. Puedo hacerlo con cada una de sus propiedades automáticamente — dirección, precio y detalles incluidos. ¿Le corro 3 propiedades activas como demo gratis?`,
+  },
+  ecom: {
+    en: (brand) =>
+      `Hi — I turned ${brand}'s store into this video. Took 4 minutes, no shoot, ready for Reels/TikTok. I can do this for every product in your catalog automatically. Want me to run 5 of your products as a free demo?`,
+    es: (brand) =>
+      `Hola — convertí la tienda de ${brand} en este video. Tomó 4 minutos, sin sesión de fotos, listo para Reels/TikTok. Puedo hacerlo con cada producto de su catálogo automáticamente. ¿Le corro 5 productos como demo gratis?`,
+  },
 };
 
 async function main() {
@@ -75,7 +97,7 @@ async function main() {
   const path = await import('path');
   const opts = parseArgs();
   if (!opts.url) {
-    console.error('Usage: npx tsx scripts/prospect-sample.ts <dealer-url> [--dealer "Name"] [--lang en|es|both] [--aspect 9:16] [--duration 24]');
+    console.error('Usage: npx tsx scripts/prospect-sample.ts <prospect-url> [--vertical auto|realestate|ecom] [--dealer "Name"] [--csv dealers.csv] [--lang en|es|both] [--aspect 9:16] [--duration 24]');
     process.exit(1);
   }
 
@@ -176,7 +198,12 @@ async function main() {
         mediaType: 'image' as const,
       }));
     } else {
-      const FALLBACK_QUERIES = ['car dealership lot', 'car showroom', 'salesman handshake car', 'happy customer car'];
+      const FALLBACKS: Record<Vertical, string[]> = {
+        auto: ['car dealership lot', 'car showroom', 'salesman handshake car', 'happy customer car'],
+        realestate: ['modern house exterior', 'modern house interior', 'real estate agent keys', 'sold sign house'],
+        ecom: ['online shopping phone', 'product photography studio', 'warehouse packages', 'person smiling phone'],
+      };
+      const FALLBACK_QUERIES = FALLBACKS[opts.vertical];
       const planned = chunks.map((narration, i) => ({
         id: `scene-${i + 1}`,
         index: i,
@@ -217,12 +244,12 @@ async function main() {
     console.log(`      done: ${outPath}`);
 
     if (opts.email) {
-      await emailSample(opts.email, host, brand, lang, outPath, usingSiteImages);
+      await emailSample(opts.email, host, brand, lang, outPath, usingSiteImages, opts.vertical);
     }
   }
 
   if (opts.dealer) {
-    markDealerSampleSent(fs, path, opts.dealer);
+    markDealerSampleSent(fs, path, opts.dealer, opts.csv);
   }
 
   console.log(`\nDone — ${results.length} clip(s) in outbound/samples/. DM message text is in the email body; paste it with the clip.`);
@@ -236,6 +263,7 @@ async function emailSample(
   lang: Lang,
   filePath: string,
   usedSiteImages: boolean,
+  vertical: Vertical,
 ) {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS || process.env.SMTP_PASS.includes('PASTE')) {
     console.log('      email: SMTP not configured — clip is on disk');
@@ -256,7 +284,7 @@ async function emailSample(
       to,
       subject: `🎯 [PROSPECT] [${lang.toUpperCase()}] ${host}`,
       text:
-        `DM message (copy-paste, then attach the clip):\n\n${DM_TEMPLATE[lang](brand)}\n\n` +
+        `DM message (copy-paste, then attach the clip):\n\n${DM_TEMPLATES[vertical][lang](brand)}\n\n` +
         (usedSiteImages
           ? 'Footage: THEIR OWN site images — lead with that in the conversation.'
           : 'Footage: stock fallback (their site blocked image downloads) — the words are still grounded in their site.') +
@@ -293,10 +321,10 @@ function toCsvLine(cols: string[]): string {
 }
 
 /** Mark the dealer's row in outbound/dealers.csv: SAMPLE_SENT + today's date. */
-function markDealerSampleSent(fs: any, path: any, dealerName: string) {
-  const csvPath = path.join(process.cwd(), 'outbound', 'dealers.csv');
+function markDealerSampleSent(fs: any, path: any, dealerName: string, csvFile: string) {
+  const csvPath = path.join(process.cwd(), 'outbound', csvFile);
   if (!fs.existsSync(csvPath)) {
-    console.warn('      tracker: outbound/dealers.csv not found — skipped');
+    console.warn(`      tracker: outbound/${csvFile} not found — skipped`);
     return;
   }
   const lines: string[] = fs.readFileSync(csvPath, 'utf8').split(/\r?\n/);
