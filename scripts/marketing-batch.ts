@@ -47,7 +47,7 @@ interface MarketingTopic {
   scenes: MarketingScene[];
 }
 
-const TOPICS: MarketingTopic[] = [
+const FORGEVID_TOPICS: MarketingTopic[] = [
   {
     slug: 'dealer-inventory',
     post: {
@@ -538,6 +538,420 @@ const TOPICS: MarketingTopic[] = [
   },
 ];
 
+// ────────────────────────────────────────────────────────────────────────────
+// RingYield (Atiende) — the AI receptionist for HVAC & home-service shops.
+// Value props mirror scripts/render-atiende-promo.ts: answers 24/7, triages
+// name/address/urgency, escalates gas/smoke/flood, delivers booking-ready leads.
+// ────────────────────────────────────────────────────────────────────────────
+const RINGYIELD_TOPICS: MarketingTopic[] = [
+  {
+    slug: 'missed-calls',
+    post: {
+      en: {
+        caption:
+          'Every missed call is a job going to the shop down the street. RingYield answers every single one — 24/7.',
+        hashtags: '#hvac #hvaclife #homeservices #smallbusiness #AIreceptionist',
+      },
+      es: {
+        caption:
+          'Cada llamada perdida es un trabajo que se va a la competencia. RingYield contesta todas — 24/7.',
+        hashtags: '#airesacondicionados #serviciotecnico #negocios #recepcionistaAI #plomeria',
+      },
+    },
+    scenes: [
+      {
+        query: 'hvac technician',
+        keywords: ['air conditioner repair', 'technician working'],
+        narration: {
+          en: "Every call you miss is a job going to the shop down the street. And when you're on a roof or under a house, you miss a lot of them.",
+          es: 'Cada llamada que pierdes es un trabajo que se va al taller de enfrente. Y cuando estás en un techo o debajo de una casa, pierdes muchas.',
+        },
+      },
+      {
+        query: 'call center headset',
+        keywords: ['customer service', 'headset phone'],
+        narration: {
+          en: 'RingYield is the AI receptionist built for service shops. It answers every call, day or night, and never puts a customer on hold.',
+          es: 'RingYield es la recepcionista de inteligencia artificial para talleres de servicio. Contesta cada llamada, de día o de noche, sin dejar a nadie en espera.',
+        },
+      },
+      {
+        query: 'email laptop',
+        keywords: ['laptop inbox', 'office desk'],
+        narration: {
+          en: 'Every call becomes a booking-ready lead — name, number, and the problem — waiting in your inbox.',
+          es: 'Cada llamada se convierte en un cliente listo para agendar — nombre, número y el problema — esperando en tu correo.',
+        },
+      },
+      {
+        query: 'technician smiling',
+        keywords: ['handshake', 'happy worker'],
+        narration: {
+          en: 'Stop trading missed calls for lost revenue. RingYield dot com.',
+          es: 'Deja de perder dinero por llamadas perdidas. RingYield punto com.',
+        },
+      },
+    ],
+  },
+  {
+    slug: 'after-hours',
+    post: {
+      en: {
+        caption:
+          'Your competitors close at 5. Your phone does not have to. RingYield books jobs while you sleep.',
+        hashtags: '#hvacbusiness #plumbing #247service #homeservices #AIphone',
+      },
+      es: {
+        caption:
+          'Tu competencia cierra a las 5. Tu teléfono no tiene por qué. RingYield agenda trabajos mientras duermes.',
+        hashtags: '#serviciotecnico #plomeria #negocio247 #emprendedores #AItelefono',
+      },
+    },
+    scenes: [
+      {
+        query: 'city skyline night',
+        keywords: ['night city', 'clock'],
+        narration: {
+          en: 'An AC dies at nine PM in July. Whoever answers that call gets the job. Will it be you?',
+          es: 'Un aire acondicionado muere a las nueve de la noche en pleno julio. El que contesta esa llamada se queda con el trabajo. ¿Serás tú?',
+        },
+      },
+      {
+        query: 'phone ringing desk',
+        keywords: ['smartphone ringing', 'telephone call'],
+        narration: {
+          en: 'RingYield answers your line around the clock — nights, weekends, and the middle of a two-hour install.',
+          es: 'RingYield atiende tu línea a toda hora — noches, fines de semana y en plena instalación de dos horas.',
+        },
+      },
+      {
+        query: 'writing checklist',
+        keywords: ['writing notes', 'clipboard'],
+        narration: {
+          en: 'It talks like a real front desk: gets the name, the address, and how urgent the problem is.',
+          es: 'Habla como una recepcionista real: toma el nombre, la dirección y qué tan urgente es el problema.',
+        },
+      },
+      {
+        query: 'sunrise city',
+        keywords: ['morning sunrise', 'coffee morning'],
+        narration: {
+          en: 'Wake up to booked jobs, not voicemails. RingYield dot com.',
+          es: 'Despierta con trabajos agendados, no con mensajes de voz. RingYield punto com.',
+        },
+      },
+    ],
+  },
+  {
+    slug: 'emergency-safety',
+    post: {
+      en: {
+        caption:
+          'Gas leak? Smoke? Flooding? RingYield stops booking and escalates to you immediately — every time, no exceptions.',
+        hashtags: '#hvac #safety #homeservices #plumbing #AIreceptionist',
+      },
+      es: {
+        caption:
+          '¿Fuga de gas? ¿Humo? ¿Inundación? RingYield deja de agendar y te escala la llamada de inmediato — siempre.',
+        hashtags: '#seguridad #serviciotecnico #plomeria #emergencias #recepcionistaAI',
+      },
+    },
+    scenes: [
+      {
+        query: 'warning sign',
+        keywords: ['gas flame', 'caution tape'],
+        narration: {
+          en: 'Most phone bots treat every call the same. That is dangerous in this business.',
+          es: 'La mayoría de los bots tratan todas las llamadas igual. En este negocio, eso es peligroso.',
+        },
+      },
+      {
+        query: 'call center headset',
+        keywords: ['emergency call', 'operator phone'],
+        narration: {
+          en: 'RingYield knows its limits. Gas, smoke, or flooding — it stops booking and escalates to you immediately. Every time. No exceptions.',
+          es: 'RingYield conoce sus límites. Gas, humo o inundación — deja de agendar y te escala la llamada de inmediato. Siempre. Sin excepciones.',
+        },
+      },
+      {
+        query: 'technician tools',
+        keywords: ['repair tools', 'work gloves'],
+        narration: {
+          en: 'Routine calls get booked. Real emergencies get YOU. That is how a front desk should work.',
+          es: 'Las llamadas de rutina se agendan. Las emergencias reales te llegan a TI. Así debe funcionar una recepción.',
+        },
+      },
+      {
+        query: 'handshake business',
+        keywords: ['trust handshake', 'deal agreement'],
+        narration: {
+          en: 'Try to break it yourself — tell it you smell gas. RingYield dot com.',
+          es: 'Ponlo a prueba tú mismo — dile que hueles gas. RingYield punto com.',
+        },
+      },
+    ],
+  },
+  {
+    slug: 'price-vs-receptionist',
+    post: {
+      en: {
+        caption:
+          'A full-time receptionist: $3,000+/month, one shift. RingYield: every call, every hour, a fraction of that.',
+        hashtags: '#smallbusiness #hvacbusiness #savings #homeservices #automation',
+      },
+      es: {
+        caption:
+          'Una recepcionista de tiempo completo: más de $3,000 al mes, un turno. RingYield: cada llamada, a toda hora, por una fracción.',
+        hashtags: '#negocios #ahorro #serviciotecnico #automatizacion #pymes',
+      },
+    },
+    scenes: [
+      {
+        query: 'money counting cash',
+        keywords: ['dollar bills', 'payroll money'],
+        narration: {
+          en: 'A front-desk hire costs three thousand a month — and only covers one shift, five days a week.',
+          es: 'Una recepcionista cuesta tres mil al mes — y solo cubre un turno, cinco días a la semana.',
+        },
+      },
+      {
+        query: 'call center headset',
+        keywords: ['phone operator', 'customer service desk'],
+        narration: {
+          en: 'RingYield covers every call, every hour, every day — including the two AM emergency that pays double.',
+          es: 'RingYield cubre cada llamada, cada hora, todos los días — incluida la emergencia de las dos de la mañana que paga doble.',
+        },
+      },
+      {
+        query: 'calculator desk',
+        keywords: ['calculating finances', 'budget planning'],
+        narration: {
+          en: 'No sick days. No hold music. No missed jobs. Do that math.',
+          es: 'Sin días de enfermedad. Sin música de espera. Sin trabajos perdidos. Haz esa cuenta.',
+        },
+      },
+      {
+        query: 'technician smiling',
+        keywords: ['happy worker', 'service van'],
+        narration: {
+          en: 'Your phones, handled. RingYield dot com.',
+          es: 'Tus llamadas, resueltas. RingYield punto com.',
+        },
+      },
+    ],
+  },
+];
+
+// ────────────────────────────────────────────────────────────────────────────
+// NeuroHires — AI-powered recruitment (www.neurohires.com). Claims kept broad
+// and safe: faster shortlists, skills-based matching, no resume overload.
+// ────────────────────────────────────────────────────────────────────────────
+const NEUROHIRES_TOPICS: MarketingTopic[] = [
+  {
+    slug: 'resume-overload',
+    post: {
+      en: {
+        caption:
+          '400 resumes. One role. A weekend gone — or one AI shortlist in minutes. NeuroHires reads them all so you do not have to.',
+        hashtags: '#recruiting #hiring #HRtech #talentacquisition #AIrecruiting',
+      },
+      es: {
+        caption:
+          '400 currículums. Un puesto. Un fin de semana perdido — o una lista corta con IA en minutos. NeuroHires los lee todos por ti.',
+        hashtags: '#reclutamiento #contratacion #recursoshumanos #talento #AIreclutamiento',
+      },
+    },
+    scenes: [
+      {
+        query: 'paperwork pile desk',
+        keywords: ['stack of papers', 'busy office desk'],
+        narration: {
+          en: 'Four hundred resumes for one role. Your best candidate is in there — buried on page nine.',
+          es: 'Cuatrocientos currículums para un solo puesto. Tu mejor candidato está ahí — enterrado en la página nueve.',
+        },
+      },
+      {
+        query: 'laptop dashboard office',
+        keywords: ['computer screen data', 'software dashboard'],
+        narration: {
+          en: 'NeuroHires reads every application and shortlists the people who can actually do the job.',
+          es: 'NeuroHires lee cada solicitud y preselecciona a las personas que realmente pueden hacer el trabajo.',
+        },
+      },
+      {
+        query: 'job interview handshake',
+        keywords: ['interview meeting', 'office handshake'],
+        narration: {
+          en: 'You spend your time interviewing finalists, not skimming PDFs.',
+          es: 'Tú dedicas tu tiempo a entrevistar finalistas, no a hojear archivos.',
+        },
+      },
+      {
+        query: 'happy team office',
+        keywords: ['team celebration', 'office high five'],
+        narration: {
+          en: 'Hire smarter, not later. NeuroHires dot com.',
+          es: 'Contrata mejor, no más tarde. NeuroHires punto com.',
+        },
+      },
+    ],
+  },
+  {
+    slug: 'speed-to-hire',
+    post: {
+      en: {
+        caption:
+          'The best candidates are off the market in days. If your hiring process takes weeks, you are hiring the leftovers.',
+        hashtags: '#hiring #recruitment #talentwar #HRtech #startups',
+      },
+      es: {
+        caption:
+          'Los mejores candidatos desaparecen del mercado en días. Si tu proceso tarda semanas, contratas lo que queda.',
+        hashtags: '#contratacion #reclutamiento #talento #recursoshumanos #startups',
+      },
+    },
+    scenes: [
+      {
+        query: 'person walking fast city',
+        keywords: ['business person walking', 'busy street suit'],
+        narration: {
+          en: 'The best candidates are off the market in ten days. Your hiring process takes six weeks.',
+          es: 'Los mejores candidatos salen del mercado en diez días. Tu proceso de contratación tarda seis semanas.',
+        },
+      },
+      {
+        query: 'laptop dashboard office',
+        keywords: ['fast typing computer', 'software screen'],
+        narration: {
+          en: 'NeuroHires screens and ranks applicants the moment they apply — your shortlist is ready the same day.',
+          es: 'NeuroHires filtra y clasifica a los candidatos en cuanto aplican — tu lista corta está lista el mismo día.',
+        },
+      },
+      {
+        query: 'stopwatch timer',
+        keywords: ['clock ticking', 'hourglass'],
+        narration: {
+          en: 'Move first, and the talent says yes to YOU.',
+          es: 'Muévete primero, y el talento te dice que sí a TI.',
+        },
+      },
+      {
+        query: 'job interview handshake',
+        keywords: ['welcome aboard', 'new employee'],
+        narration: {
+          en: 'Speed wins hires. NeuroHires dot com.',
+          es: 'La velocidad gana contrataciones. NeuroHires punto com.',
+        },
+      },
+    ],
+  },
+  {
+    slug: 'skills-matching',
+    post: {
+      en: {
+        caption:
+          'Keyword filters reject great people for formatting. NeuroHires matches on what candidates can actually DO.',
+        hashtags: '#recruiting #skillsbasedhiring #HRtech #hiringbias #talent',
+      },
+      es: {
+        caption:
+          'Los filtros de palabras clave rechazan gente valiosa por el formato. NeuroHires evalúa lo que los candidatos saben HACER.',
+        hashtags: '#reclutamiento #talento #recursoshumanos #contratacionjusta #habilidades',
+      },
+    },
+    scenes: [
+      {
+        query: 'frustrated office worker',
+        keywords: ['stressed person computer', 'head in hands desk'],
+        narration: {
+          en: 'Keyword filters reject brilliant people because their resume used the wrong word.',
+          es: 'Los filtros de palabras clave rechazan a gente brillante porque su currículum usó la palabra equivocada.',
+        },
+      },
+      {
+        query: 'laptop dashboard office',
+        keywords: ['data analytics screen', 'profile matching'],
+        narration: {
+          en: 'NeuroHires matches on skills and real experience — what people can do, not what they typed.',
+          es: 'NeuroHires evalúa habilidades y experiencia real — lo que la gente sabe hacer, no lo que escribió.',
+        },
+      },
+      {
+        query: 'diverse people talking',
+        keywords: ['diverse team office', 'candidates waiting'],
+        narration: {
+          en: 'Better matches. Fairer process. Stronger teams.',
+          es: 'Mejores coincidencias. Un proceso más justo. Equipos más fuertes.',
+        },
+      },
+      {
+        query: 'happy team office',
+        keywords: ['team success', 'office celebration'],
+        narration: {
+          en: 'Find the ones the filters miss. NeuroHires dot com.',
+          es: 'Encuentra a los que los filtros ignoran. NeuroHires punto com.',
+        },
+      },
+    ],
+  },
+  {
+    slug: 'cost-of-vacancy',
+    post: {
+      en: {
+        caption:
+          'An empty seat is not free — it costs you output, deadlines and team morale every single day. Fill it faster.',
+        hashtags: '#hiring #business #productivity #HRtech #recruiting',
+      },
+      es: {
+        caption:
+          'Un puesto vacío no es gratis — te cuesta producción, plazos y moral del equipo cada día. Llénalo más rápido.',
+        hashtags: '#contratacion #negocios #productividad #recursoshumanos #equipos',
+      },
+    },
+    scenes: [
+      {
+        query: 'empty office desk',
+        keywords: ['empty chair office', 'vacant desk'],
+        narration: {
+          en: 'That empty seat on your team costs you every single day — missed deadlines, burned-out teammates, stalled projects.',
+          es: 'Ese puesto vacío en tu equipo te cuesta todos los días — plazos incumplidos, compañeros agotados, proyectos detenidos.',
+        },
+      },
+      {
+        query: 'stressed team meeting',
+        keywords: ['overworked office', 'tired employees'],
+        narration: {
+          en: 'Every week the role stays open, the rest of your team pays for it.',
+          es: 'Cada semana que el puesto sigue abierto, el resto de tu equipo lo paga.',
+        },
+      },
+      {
+        query: 'laptop dashboard office',
+        keywords: ['hiring software', 'candidate list screen'],
+        narration: {
+          en: 'NeuroHires cuts the time from opening a role to signing the right person.',
+          es: 'NeuroHires acorta el tiempo entre abrir la vacante y firmar a la persona correcta.',
+        },
+      },
+      {
+        query: 'new employee welcome',
+        keywords: ['first day work', 'welcome handshake'],
+        narration: {
+          en: 'Stop paying for empty chairs. NeuroHires dot com.',
+          es: 'Deja de pagar por sillas vacías. NeuroHires punto com.',
+        },
+      },
+    ],
+  },
+];
+
+/** All brands the engine advertises. Rotation runs per brand, every day. */
+const BRANDS: Record<string, MarketingTopic[]> = {
+  forgevid: FORGEVID_TOPICS,
+  ringyield: RINGYIELD_TOPICS,
+  neurohires: NEUROHIRES_TOPICS,
+};
+
 function parseArgs() {
   const args = process.argv.slice(2);
   const get = (flag: string) => {
@@ -545,9 +959,13 @@ function parseArgs() {
     return i >= 0 ? args[i + 1] : undefined;
   };
   const langArg = (get('--lang') || 'both') as Lang | 'both';
+  const brand = (get('--brand') || 'all').toLowerCase();
   return {
     list: args.includes('--list'),
-    count: Number(get('--count')) || 2,
+    brand,
+    // All-brands mode defaults to 1 topic per brand (3 brands x 2 langs = 6
+    // clips/day); a single brand defaults to 2 topics.
+    count: Number(get('--count')) || (brand === 'all' ? 1 : 2),
     langs: (langArg === 'both' ? ['en', 'es'] : [langArg]) as Lang[],
     topic: get('--topic'),
     email: get('--email') || process.env.MARKETING_EMAIL || undefined,
@@ -563,6 +981,7 @@ const MAX_ATTACH_BYTES = 20 * 1024 * 1024;
  */
 async function emailClip(
   to: string,
+  brand: string,
   topic: MarketingTopic,
   lang: Lang,
   filePath: string,
@@ -585,14 +1004,14 @@ async function emailClip(
     await transporter.sendMail({
       from: process.env.SMTP_FROM || 'ForgeVid <noreply@forgevid.com>',
       to,
-      subject: `📱 Post this [${lang.toUpperCase()}]: ${topic.slug}`,
+      subject: `📱 [${brand.toUpperCase()}] [${lang.toUpperCase()}] Post this: ${topic.slug}`,
       text:
         `Caption (copy-paste):\n\n${post.caption}\n\n${post.hashtags}\n\n` +
         (attach
           ? 'The clip is attached — save it to your camera roll and post.'
           : `Clip is ${(fileBytes / 1e6).toFixed(1)}MB (too big to attach) — grab it from ${filePath}.`),
       attachments: attach
-        ? [{ filename: `${topic.slug}-${lang}.mp4`, path: filePath, contentType: 'video/mp4' }]
+        ? [{ filename: `${brand}-${topic.slug}-${lang}.mp4`, path: filePath, contentType: 'video/mp4' }]
         : [],
     });
     console.log(`    email: sent to ${to}${attach ? ' (clip attached)' : ' (caption only — clip too large)'}`);
@@ -607,27 +1026,39 @@ async function main() {
   const opts = parseArgs();
 
   if (opts.list) {
-    for (const t of TOPICS) console.log(`  ${t.slug}`);
+    for (const [brand, topics] of Object.entries(BRANDS)) {
+      console.log(`${brand}:`);
+      for (const t of topics) console.log(`  ${t.slug}`);
+    }
     return;
   }
 
-  let pool = TOPICS;
-  if (opts.topic) {
-    pool = TOPICS.filter((t) => t.slug === opts.topic);
-    if (pool.length === 0) {
-      console.error(`Unknown topic "${opts.topic}". Use --list to see all.`);
-      process.exit(1);
-    }
+  const brandKeys =
+    opts.brand === 'all' ? Object.keys(BRANDS) : Object.keys(BRANDS).filter((b) => b === opts.brand);
+  if (brandKeys.length === 0) {
+    console.error(`Unknown brand "${opts.brand}". Use one of: all, ${Object.keys(BRANDS).join(', ')}`);
+    process.exit(1);
   }
 
   // Rotate by day-of-year so consecutive days post different topics without
-  // any state to remember.
+  // any state to remember. Each brand rotates through its own topic list.
   const now = new Date();
   const dayOfYear = Math.floor((now.getTime() - Date.UTC(now.getUTCFullYear(), 0, 0)) / 86400000);
-  const start = opts.topic ? 0 : (dayOfYear * opts.count) % pool.length;
-  const picked = opts.topic
-    ? pool
-    : Array.from({ length: Math.min(opts.count, pool.length) }, (_, i) => pool[(start + i) % pool.length]);
+  const picked: Array<{ brand: string; topic: MarketingTopic }> = [];
+  for (const brand of brandKeys) {
+    let pool = BRANDS[brand];
+    if (opts.topic) {
+      pool = pool.filter((t) => t.slug === opts.topic);
+      if (pool.length === 0) continue; // topic may belong to another brand
+    }
+    const start = opts.topic ? 0 : (dayOfYear * opts.count) % pool.length;
+    const take = opts.topic ? pool.length : Math.min(opts.count, pool.length);
+    for (let i = 0; i < take; i++) picked.push({ brand, topic: pool[(start + i) % pool.length] });
+  }
+  if (picked.length === 0) {
+    console.error(`Unknown topic "${opts.topic}". Use --list to see all.`);
+    process.exit(1);
+  }
 
   const date = now.toISOString().slice(0, 10);
   const outDir = path.join(process.cwd(), 'marketing-out', date);
@@ -642,17 +1073,17 @@ async function main() {
   console.log(`Rendering ${jobs} clip(s) (${picked.length} topic(s) x ${opts.langs.join('+')}) -> ${outDir}\n`);
   let rendered = 0;
 
-  for (const topic of picked) {
+  for (const { brand, topic } of picked) {
     for (const lang of opts.langs) {
-      const outPath = path.join(outDir, `${topic.slug}-${lang}.mp4`);
+      const outPath = path.join(outDir, `${brand}-${topic.slug}-${lang}.mp4`);
       if (fs.existsSync(outPath)) {
-        console.log(`- ${topic.slug} [${lang}]: already rendered today, skipping render.`);
+        console.log(`- ${brand}/${topic.slug} [${lang}]: already rendered today, skipping render.`);
         if (opts.email) {
-          await emailClip(opts.email, topic, lang, outPath, fs.statSync(outPath).size);
+          await emailClip(opts.email, brand, topic, lang, outPath, fs.statSync(outPath).size);
         }
         continue;
       }
-      console.log(`- ${topic.slug} [${lang}] (${topic.scenes.length} scenes)`);
+      console.log(`- ${brand}/${topic.slug} [${lang}] (${topic.scenes.length} scenes)`);
 
       try {
         const planned = topic.scenes.map((s, i) => ({
@@ -698,13 +1129,13 @@ async function main() {
         const post = topic.post[lang];
         fs.appendFileSync(
           postsFile,
-          `## ${topic.slug}-${lang}.mp4\n\n${post.caption}\n\n${post.hashtags}\n\n---\n\n`,
+          `## ${brand}-${topic.slug}-${lang}.mp4\n\n${post.caption}\n\n${post.hashtags}\n\n---\n\n`,
         );
         rendered++;
         console.log(`    done: ${outPath} (${cues.length} caption cues)`);
 
         if (opts.email) {
-          await emailClip(opts.email, topic, lang, outPath, fs.statSync(outPath).size);
+          await emailClip(opts.email, brand, topic, lang, outPath, fs.statSync(outPath).size);
         }
       } catch (error) {
         console.error(`    FAILED: ${error instanceof Error ? error.message : error}`);

@@ -89,17 +89,28 @@ export function normalizeSpokenUrls(cues: CaptionCue[]): void {
   const isCom = (w: string) => /^com[.,!?]*$/i.test(w);
   const stripPunct = (w: string) => w.replace(/[.,!?]+$/, '');
   const applyBrandFixes = (s: string) => BRAND_FIXES.reduce((v, b) => v.replace(b.re, b.to), s);
+  const BRAND_NAMES = new Set(BRAND_FIXES.map((b) => b.to.toLowerCase()));
+  /** Anchored (whole-string) versions of the brand patterns, for pair merging. */
+  const BRAND_PAIR_RES = BRAND_FIXES.map(
+    (b) => new RegExp(`^${b.re.source.replace(/\\b/g, '')}$`, 'i'),
+  );
+  // Whisper sometimes drops the spoken "dot"/"punto" ENTIRELY ("RingYield com")
+  // — for our known brands, brand + "com" is unambiguous.
+  const BRAND_COM_RE = new RegExp(`\\b(${BRAND_FIXES.map((b) => b.to).join('|')})[,.]?\\s+com\\b`, 'gi');
 
   for (const cue of cues) {
-    cue.text = applyBrandFixes(cue.text.replace(TEXT_RE, '$1.com'));
+    cue.text = applyBrandFixes(cue.text.replace(TEXT_RE, '$1.com')).replace(BRAND_COM_RE, '$1.com');
 
     if (cue.words) {
       // Two-word brand splits: merge ("ring","yield") into one timed word so
       // the karaoke highlight covers the whole name, then brand-fix spelling.
+      // Anchored full-pair match — a substring test would swallow the NEXT
+      // word too ("Ring yield" + "com" -> "Ring yield com").
       for (let i = 0; i < cue.words.length - 1; i++) {
-        const pair = `${stripPunct(cue.words[i].word)} ${cue.words[i + 1].word}`;
-        if (BRAND_FIXES.some((b) => { b.re.lastIndex = 0; return b.re.test(pair); })) {
-          cue.words[i].word = pair;
+        const pair = `${stripPunct(cue.words[i].word)} ${stripPunct(cue.words[i + 1].word)}`;
+        if (BRAND_PAIR_RES.some((re) => re.test(pair))) {
+          const trailing = cue.words[i + 1].word.match(/[.,!?]+$/)?.[0] ?? '';
+          cue.words[i].word = pair + trailing;
           cue.words[i].end = cue.words[i + 1].end;
           cue.words.splice(i + 1, 1);
           i -= 1;
@@ -126,9 +137,15 @@ export function normalizeSpokenUrls(cues: CaptionCue[]): void {
           continue;
         }
 
-        // Whisper dropped the "dot"/"punto" WORD but kept it in the text:
-        // "X" + "com" where the normalized text contains "X.com" -> merge.
-        if (isCom(b.word) && cue.text.toLowerCase().includes(`${stripPunct(a.word).toLowerCase()}.com`)) {
+        // Whisper dropped the "dot"/"punto" WORD but kept it in the text
+        // ("X" + "com" where the normalized text contains "X.com"), or dropped
+        // it EVERYWHERE but X is one of our brands (brand + "com" is
+        // unambiguous) -> merge.
+        if (
+          isCom(b.word) &&
+          (cue.text.toLowerCase().includes(`${stripPunct(a.word).toLowerCase()}.com`) ||
+            BRAND_NAMES.has(stripPunct(a.word).toLowerCase()))
+        ) {
           const trailing = b.word.match(/[.,!?]+$/)?.[0] ?? '';
           a.word = `${stripPunct(a.word)}.com${trailing}`;
           a.end = b.end;
