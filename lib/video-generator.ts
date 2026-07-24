@@ -27,6 +27,7 @@ import {
   CAPTION_PRESETS,
   cuesFromScenes,
   escapeFontPath,
+  normalizeSpokenUrls,
   resolveCaptionFontForLanguage,
   shiftCues,
   transcribeToCues,
@@ -1318,13 +1319,26 @@ export async function assembleVideo(
     // (or without an OpenAI key) fall back to one cue per scene.
     let cues: CaptionCue[] = [];
     if (wantSubtitles) {
-      // Per-scene narration cues are already speech-aligned AND free — prefer
-      // them over a paid Whisper pass; Whisper covers whole-narration fallback.
+      // Per-scene narration cues are speech-aligned AND free — but they carry
+      // no WORD timestamps, so karaoke rendered them as static lines. When the
+      // karaoke style is on, spend the Whisper pass to get word timing; static
+      // captions keep preferring the free per-scene cues.
+      const wantKaraoke = options.captionAnimation === 'karaoke';
+      let transcribed: CaptionCue[] | null = null;
+      if (!options.cues && voiceoverPath && (wantKaraoke || !sceneCues)) {
+        transcribed = await transcribeToCues(voiceoverPath);
+      }
       cues =
         options.cues ??
+        transcribed ??
         sceneCues ??
-        (voiceoverPath ? await transcribeToCues(voiceoverPath) : null) ??
         cuesFromScenes(scenes.map((s) => ({ description: spokenLine(s), duration: s.duration })));
+
+      // Authored narration writes urls as "dot com"/"punto com" for the TTS;
+      // captions must still read "ForgeVid.com". Transcribed cues are already
+      // normalized inside transcribeToCues (this is idempotent); this covers
+      // the scene-text sources too.
+      normalizeSpokenUrls(cues);
 
       // A brand intro delays the narration; shift the cues to match.
       cues = shiftCues(cues, introDuration);

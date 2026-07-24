@@ -191,15 +191,21 @@ export async function transcribeToCues(audioPath: string): Promise<CaptionCue[] 
       }))
       .filter((w: CaptionWord) => w.word.length > 0);
 
+    // Partition words over segments SEQUENTIALLY (two pointers). The previous
+    // midpoint filter dropped words straddling a segment boundary (a real
+    // Spanish render lost "punto" this way, breaking the url merge); here every
+    // word lands in exactly one cue — the last segment sweeps up any remainder.
+    let wi = 0;
     const cues: CaptionCue[] = segments
-      .map((s: any) => {
+      .map((s: any, si: number) => {
         const start = Number(s.start) || 0;
         const end = Number(s.end) || 0;
-        // Assign each word to the segment its midpoint falls in.
-        const words = allWords.filter((w) => {
-          const mid = (w.start + w.end) / 2;
-          return mid >= start && mid < end;
-        });
+        const isLast = si === segments.length - 1;
+        const words: CaptionWord[] = [];
+        while (wi < allWords.length && (isLast || allWords[wi].start < end)) {
+          words.push(allWords[wi]);
+          wi++;
+        }
         return {
           start,
           end,
