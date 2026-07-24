@@ -348,7 +348,7 @@ export class CDNOptimizer {
 
   private getFallbackURL(publicId: string): string {
     // Return a fallback URL or placeholder
-    return `https://via.placeholder.com/400x300?text=${encodeURIComponent(publicId)}`;
+    return '/placeholder.svg';
   }
 }
 

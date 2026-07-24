@@ -168,7 +168,7 @@ export default function TemplatesPage() {
                 </CardHeader>
                 <CardContent className="pt-2">
                   <img
-                    src={template.thumbnail || 'https://via.placeholder.com/400x225?text=Template'}
+                    src={template.thumbnail || '/placeholder.svg'}
                     alt={template.name}
                     width={320}
                     height={160}

@@ -14,7 +14,7 @@ export async function generateVideoScript(prompt: string): Promise<string> {
         content: prompt,
       },
     ],
-    max_tokens: 2048,
+    max_tokens: 4096,
   });
 
   return completion.choices[0]?.message?.content || '';
@@ -87,7 +87,7 @@ export async function generateStoryboardScenes(script: string): Promise<Storyboa
         content: `Script:\n${script}`,
       },
     ],
-    max_tokens: 2048,
+    max_tokens: 8192,
     temperature: 0.7,
   });
 
@@ -150,8 +150,28 @@ export interface AdHooksResult {
  * (label <= 40, narration <= 300, searchQuery <= 120).
  */
 export async function generateAdHooks(brief: string, platform: string, count: number): Promise<AdHooksResult> {
+  // Retried with a large token ceiling: 12 hooks + CTAs + angles overflowed the
+  // old 2048 budget and came back truncated, surfacing as a 502 on
+  // /api/ad-studio/hooks. json_object mode keeps Gemini from wrapping the reply.
+  let lastRaw = '';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      lastRaw = await adHooksRaw(brief, platform, count);
+      return parseAdHooks(lastRaw);
+    } catch (error) {
+      if (attempt === 3) {
+        console.error('[generateAdHooks] unparseable after 3 attempts. Raw head:', lastRaw.slice(0, 300));
+        throw error;
+      }
+    }
+  }
+  throw new Error('The model returned unparseable hooks. Please try again.');
+}
+
+async function adHooksRaw(brief: string, platform: string, count: number): Promise<string> {
   const completion = await openai.chat.completions.create({
     model: llmModel(),
+    response_format: { type: 'json_object' },
     messages: [
       {
         role: 'system',
@@ -170,10 +190,10 @@ export async function generateAdHooks(brief: string, platform: string, count: nu
         content: `Platform: ${platform}\nProduct/offer brief:\n${brief}\n\nGive ${count} distinct hooks.`,
       },
     ],
-    max_tokens: 2048,
+    max_tokens: 8192,
     temperature: 0.8,
   });
-  return parseAdHooks(completion.choices[0]?.message?.content || '');
+  return completion.choices[0]?.message?.content || '';
 }
 
 function clampStr(v: unknown, max: number): string {

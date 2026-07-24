@@ -889,7 +889,6 @@ export default function AIFeaturesPage() {
                             controls 
                             autoPlay
                             className="w-full h-full object-cover rounded-lg"
-                            poster="https://via.placeholder.com/640x360/1f2937/ffffff?text=AI+Generated+Video"
                             preload="auto"
                             onClick={() => setIsVideoFullscreen(true)}
                           >
@@ -1288,7 +1287,6 @@ export default function AIFeaturesPage() {
                 controls 
                 autoPlay
                 className="w-full h-auto max-w-6xl rounded-lg shadow-2xl"
-                poster="https://via.placeholder.com/640x360/1f2937/ffffff?text=AI+Generated+Video"
                 onClick={(e) => e.stopPropagation()}
               >
                 <source src={generatedVideo} type="video/mp4" />

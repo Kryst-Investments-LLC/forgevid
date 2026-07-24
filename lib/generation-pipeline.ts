@@ -321,7 +321,7 @@ async function generateScript(
       },
       { role: 'user', content: input.prompt },
     ],
-    max_tokens: 2048,
+    max_tokens: 8192,
     temperature: 0.7,
   });
 

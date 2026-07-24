@@ -50,7 +50,7 @@ async function handlePost(request: NextRequest) {
         aspectRatio: '16:9',
         resolution: video.resolution || '1080p',
         tags: projectData.tags || 'custom,user-generated',
-        thumbnail: video.thumbnail || 'https://via.placeholder.com/400x225?text=Template',
+        thumbnail: video.thumbnail || '/placeholder.svg',
         templateData: JSON.stringify({
           tracks: projectData.tracks,
           style: projectData.style || 'custom',
