@@ -75,7 +75,15 @@ export async function GET(request: NextRequest) {
     const search = url.searchParams.get('search');
     const type = url.searchParams.get('type');
 
-    const where: any = { uploadedById: session.user.id };
+    // Users see their own uploads plus ForgeVid's curated, platform-owned
+    // starter library. Public assets cannot be deleted by users (DELETE still
+    // requires ownership below).
+    const where: any = {
+      OR: [
+        { uploadedById: session.user.id },
+        { uploadedById: null, isPublic: true },
+      ],
+    };
     if (search) {
       where.name = { contains: search, mode: 'insensitive' };
     }

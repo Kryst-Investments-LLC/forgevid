@@ -36,7 +36,25 @@ async function handlePost(request: NextRequest) {
     // Parse template data
     const templateData = template.templateData ? JSON.parse(template.templateData) : {};
 
-    // Create a new video project from template
+    const sceneList = Array.isArray(templateData.scenes) ? templateData.scenes : [];
+    const sceneDuration = Math.max(3, Math.round(template.duration / Math.max(1, sceneList.length)));
+    const tracks = [
+      {
+        id: 'template-video',
+        type: 'video',
+        name: 'Template scenes',
+        clips: sceneList.map((scene: any, index: number) => ({
+          id: `template-scene-${index + 1}`,
+          assetId: String(scene?.assetId || template.thumbnail || `scene-${index + 1}`),
+          startTime: index * sceneDuration,
+          duration: Number(scene?.duration) || sceneDuration,
+        })),
+      },
+      { id: 'template-audio', type: 'audio', name: 'Audio', clips: [] },
+      { id: 'template-text', type: 'text', name: 'Titles and captions', clips: [] },
+    ];
+
+    // Create a useful project rather than the previous empty timeline.
     const video = await prisma.video.create({
       data: {
         title: `${template.name} - ${new Date().toLocaleDateString()}`,
@@ -50,21 +68,30 @@ async function handlePost(request: NextRequest) {
           isFromTemplate: true,
           templateId: template.id,
           templateName: template.name,
-          tracks: [], // Initialize with empty tracks, user can add clips
+          tracks,
+          templateData,
+          generationPrompt: templateData.prompt || `${template.name}: ${template.description || ''}`,
+          aspectRatio: template.aspectRatio,
           createdAt: new Date().toISOString(),
         }),
       },
     });
 
-    // Increment template usage count
-    await prisma.template.update({
-      where: { id: templateId },
-      data: {
-        usageCount: {
-          increment: 1,
-        },
-      },
-    });
+    // These first-party signals improve ranking without ingesting private
+    // project content. The catalog API already orders by aggregate usage.
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    await prisma.$transaction([
+      prisma.template.update({
+        where: { id: templateId },
+        data: { usageCount: { increment: 1 } },
+      }),
+      prisma.templateAnalytics.upsert({
+        where: { templateId_date: { templateId, date: today } },
+        update: { uses: { increment: 1 }, clicks: { increment: 1 } },
+        create: { templateId, date: today, uses: 1, clicks: 1 },
+      }),
+    ]);
 
     return NextResponse.json({
       success: true,
@@ -81,4 +108,3 @@ async function handlePost(request: NextRequest) {
 }
 
 export const POST = securityConfigs.authenticated(handlePost);
-

@@ -109,7 +109,6 @@ EXPOSE 3000
 ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
-# Apply pending DB migrations, THEN start the server. On a fresh database this
-# creates every table; on subsequent boots it's a no-op. Fails loud (&&) so a
-# broken migration surfaces instead of silently serving a half-migrated schema.
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
+# Apply migrations and idempotently maintain ForgeVid's built-in template/media
+# catalog before accepting traffic. User-created rows are never deleted.
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node prisma/seed-production.cjs && node server.js"]
