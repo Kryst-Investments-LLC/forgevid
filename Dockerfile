@@ -79,9 +79,14 @@ COPY --from=builder /app/prisma ./prisma
 
 # Install FFmpeg for video processing (+ openssl: Prisma's engine needs libssl on
 # Alpine). ffmpeg's drawtext needs a real font file; Alpine renamed ttf-dejavu ->
-# font-dejavu across releases, so accept either.
+# font-dejavu across releases, so accept either. This is the RUNTIME image (it
+# renders the videos), so the Noto caption fonts MUST be here — CJK (font-noto-cjk)
+# and Devanagari/Hindi (font-noto); fc-cache indexes them for fontconfig/fc-match.
 RUN apk add --no-cache ffmpeg fontconfig openssl \
-    && (apk add --no-cache font-dejavu || apk add --no-cache ttf-dejavu)
+    && (apk add --no-cache font-dejavu || apk add --no-cache ttf-dejavu) \
+    && (apk add --no-cache font-noto-cjk || true) \
+    && (apk add --no-cache font-noto || true) \
+    && fc-cache -f
 
 # Writable dirs the render pipeline needs at runtime: uploads, plus the ffmpeg
 # scratch (public/temp) and the local render output staged before the Cloudinary
