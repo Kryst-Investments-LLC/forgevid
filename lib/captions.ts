@@ -62,39 +62,61 @@ export interface CaptionWord {
 }
 
 /**
- * Narrations write urls as "ForgeVid dot com" (or "punto com" in Spanish) so
- * the TTS pronounces them naturally — but Whisper transcribes the words as
- * spoken, so captions displayed "ForgeVid dot com". Rewrite them back to
- * "ForgeVid.com": in cue TEXT via regex, and in the word-timing arrays by
- * MERGING the brand/dot/com words into one word spanning their time range
- * (so karaoke highlight still lands exactly on the spoken phrase). Mutates in
- * place; also covers SRT/VTT export, which reads the same cues.
+ * Caption text repair for transcribed narration. Mutates cues in place; also
+ * covers SRT/VTT export, which reads the same cues.
+ *
+ * 1. URLS — narrations write "ForgeVid dot com" ("punto com" in Spanish) so
+ *    the TTS pronounces them naturally; captions must read "ForgeVid.com".
+ *    Fixed in cue TEXT by regex and in the word-timing arrays by merging the
+ *    spoken words into one timed word. Whisper sometimes omits "dot"/"punto"
+ *    from its WORD list while keeping it in the text, so the word merge is
+ *    text-driven: any (W, com) word pair whose normalized text contains
+ *    "W.com" merges too.
+ * 2. BRAND — Whisper mishears "ForgeVid" (a made-up word), e.g. "forgebeat"
+ *    in Spanish. Known mishearings are rewritten to the real brand in both
+ *    text and words.
  */
 export function normalizeSpokenUrls(cues: CaptionCue[]): void {
   const TEXT_RE = /(\S+?)[,.]?\s+(?:dot|punto)[,.]?\s+com\b/gi;
-  const DOT_WORDS = new Set(['dot', 'punto', 'dot.', 'punto.', 'dot,', 'punto,']);
+  const BRAND_RE = /\bforge[\s-]?(?:vid|vids|bid|bit|beat|bead|bed|beed|feed|fit|vit)\b/gi;
+  const isDot = (w: string) => /^(dot|punto)[.,]?$/i.test(w);
   const isCom = (w: string) => /^com[.,!?]*$/i.test(w);
+  const stripPunct = (w: string) => w.replace(/[.,!?]+$/, '');
 
   for (const cue of cues) {
-    cue.text = cue.text.replace(TEXT_RE, '$1.com');
-    if (!cue.words) continue;
-    for (let i = 0; i + 2 < cue.words.length + 1; i++) {
-      const dot = cue.words[i];
-      const com = cue.words[i + 1];
-      if (!dot || !com || !DOT_WORDS.has(dot.word.toLowerCase()) || !isCom(com.word)) continue;
-      const prev = cue.words[i - 1];
-      if (prev) {
-        // "ForgeVid" + "dot" + "com" -> one word "ForgeVid.com"
-        const trailing = com.word.match(/[.,!?]+$/)?.[0] ?? '';
-        prev.word = `${prev.word.replace(/[.,]+$/, '')}.com${trailing}`;
-        prev.end = com.end;
-        cue.words.splice(i, 2);
-        i -= 1;
-      } else {
-        // Cue starts at "dot com" (split across cues): render as ".com"
-        dot.word = '.com';
-        dot.end = com.end;
-        cue.words.splice(i + 1, 1);
+    cue.text = cue.text.replace(TEXT_RE, '$1.com').replace(BRAND_RE, 'ForgeVid');
+
+    if (cue.words) {
+      // Brand-fix the words FIRST so the text-driven merge below compares
+      // like-for-like (the text has already been brand-fixed).
+      for (const w of cue.words) {
+        w.word = w.word.replace(BRAND_RE, 'ForgeVid');
+      }
+
+      for (let i = 0; i < cue.words.length - 1; i++) {
+        const a = cue.words[i];
+        const b = cue.words[i + 1];
+        const c = cue.words[i + 2];
+
+        // "X" + "dot|punto" + "com" -> one timed word "X.com"
+        if (c && isDot(b.word) && isCom(c.word)) {
+          const trailing = c.word.match(/[.,!?]+$/)?.[0] ?? '';
+          a.word = `${stripPunct(a.word)}.com${trailing}`;
+          a.end = c.end;
+          cue.words.splice(i + 1, 2);
+          i -= 1;
+          continue;
+        }
+
+        // Whisper dropped the "dot"/"punto" WORD but kept it in the text:
+        // "X" + "com" where the normalized text contains "X.com" -> merge.
+        if (isCom(b.word) && cue.text.toLowerCase().includes(`${stripPunct(a.word).toLowerCase()}.com`)) {
+          const trailing = b.word.match(/[.,!?]+$/)?.[0] ?? '';
+          a.word = `${stripPunct(a.word)}.com${trailing}`;
+          a.end = b.end;
+          cue.words.splice(i + 1, 1);
+          i -= 1;
+        }
       }
     }
   }
