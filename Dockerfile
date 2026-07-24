@@ -7,8 +7,11 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 # Install dependencies
-COPY package.json package-lock.json* ./
-RUN npm ci --only=production
+# .npmrc carries legacy-peer-deps=true — REQUIRED since the security patch, or
+# npm ci fails ERESOLVE on the next-auth <-> nodemailer peerOptional conflict.
+# The flag is also passed explicitly so the build never depends on the file.
+COPY package.json package-lock.json* .npmrc* ./
+RUN npm ci --only=production --legacy-peer-deps
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -19,8 +22,8 @@ WORKDIR /app
 # FULL dependency set here instead of copying that pruned tree. The final `runner`
 # stage still ships only the pruned `.next/standalone` output, so image size is
 # unaffected.
-COPY package.json package-lock.json* ./
-RUN npm ci --no-audit --no-fund --loglevel=error
+COPY package.json package-lock.json* .npmrc* ./
+RUN npm ci --no-audit --no-fund --loglevel=error --legacy-peer-deps
 COPY . .
 
 # Install FFmpeg for video processing

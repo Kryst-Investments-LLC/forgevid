@@ -16,8 +16,10 @@ RUN apk add --no-cache ffmpeg fontconfig ttf-dejavu \
     && fc-cache -f
 
 # Full install: the worker needs devDeps-turned-runtime like tsx.
-COPY package.json package-lock.json* ./
-RUN npm ci
+# --legacy-peer-deps + .npmrc: same next-auth/nodemailer peer conflict as the web
+# Dockerfile — npm ci fails ERESOLVE without it since the security patch.
+COPY package.json package-lock.json* .npmrc* ./
+RUN npm ci --legacy-peer-deps
 
 COPY . .
 
