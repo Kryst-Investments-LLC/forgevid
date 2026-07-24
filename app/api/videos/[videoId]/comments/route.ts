@@ -22,7 +22,8 @@ async function loadAccess(videoId: string) {
   return { video, shareEnabled }
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { videoId: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ videoId: string }> }) {
+  const params = await props.params;
   const access = await loadAccess(params.videoId)
   if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -51,7 +52,8 @@ export async function GET(_req: NextRequest, { params }: { params: { videoId: st
   })
 }
 
-export async function POST(req: NextRequest, { params }: { params: { videoId: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ videoId: string }> }) {
+  const params = await props.params;
   const access = await loadAccess(params.videoId)
   if (!access) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 

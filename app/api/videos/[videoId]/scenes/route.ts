@@ -14,7 +14,8 @@ import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
  * MP4 from the edited scenes.
  */
 
-export async function GET(_req: NextRequest, { params }: { params: { videoId: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ videoId: string }> }) {
+  const params = await props.params;
   const access = await requireVideoOwner(params.videoId);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
@@ -34,7 +35,8 @@ const patchSchema = z.object({
   duration: z.number().positive().max(120).optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: { videoId: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ videoId: string }> }) {
+  const params = await props.params;
   const access = await requireVideoOwner(params.videoId);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 

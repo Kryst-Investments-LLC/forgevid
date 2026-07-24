@@ -7,7 +7,8 @@ function hasTraversal(p: string): boolean {
   return false
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { path: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ path: string }> }) {
+  const params = await props.params;
   const relPath = params.path || ''
   if (hasTraversal(relPath)) {
     return NextResponse.json({ error: 'Path traversal blocked' }, { status: 403 })

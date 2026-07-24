@@ -151,6 +151,12 @@ export default function RootPage() {
             <a href="/pricing" className="transition-colors hover:text-white">Pricing</a>
           </div>
           <div className="flex items-center gap-3">
+            <a
+              href="/pricing"
+              className="text-sm text-gray-300 transition-colors hover:text-white md:hidden"
+            >
+              Pricing
+            </a>
             <a href="/auth/signin" className="text-sm text-gray-300 transition-colors hover:text-white">
               Sign in
             </a>

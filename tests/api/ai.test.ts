@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals'
 import { NextRequest } from 'next/server'
-import { POST, GET } from '@/app/api/ai/route'
-import { prisma } from '@/lib/prisma'
 
 // Mock dependencies
 jest.mock('@/lib/prisma', () => ({
@@ -11,6 +9,9 @@ jest.mock('@/lib/prisma', () => ({
       update: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn(),
+    },
+    video: {
+      create: jest.fn(),
     },
   },
 }))
@@ -35,6 +36,17 @@ jest.mock('next-auth', () => ({
 }))
 
 jest.mock('openai', () => ({
+  __esModule: true,
+  default: jest.fn().mockImplementation(() => ({
+    chat: {
+      completions: {
+        create: jest.fn().mockResolvedValue({
+          choices: [{ message: { content: 'Generated script content' } }],
+          usage: { total_tokens: 100 },
+        }),
+      },
+    },
+  })),
   OpenAI: jest.fn().mockImplementation(() => ({
     chat: {
       completions: {
@@ -57,6 +69,39 @@ jest.mock('@/lib/video-generator', () => ({
   cleanupOldVideos: jest.fn(),
 }))
 
+jest.mock('@/lib/ai/llm', () => ({
+  llm: {
+    chat: {
+      completions: {
+        create: jest.fn().mockResolvedValue({
+          choices: [{ message: { content: 'Generated script content' } }],
+          usage: { total_tokens: 100 },
+        }),
+      },
+    },
+  },
+  llmModel: jest.fn(() => 'test-model'),
+}))
+
+jest.mock('@/lib/quota', () => ({
+  checkAiGenerationQuota: jest.fn().mockResolvedValue({
+    allowed: true,
+    remaining: 10,
+    plan: 'pro',
+  }),
+  checkGenerationQuota: jest.fn().mockResolvedValue({
+    allowed: true,
+    remaining: 10,
+    plan: 'pro',
+  }),
+  settleGenerationEntitlement: jest.fn().mockResolvedValue(undefined),
+}))
+
+jest.mock('@/lib/video-queue', () => ({
+  enqueueGeneration: jest.fn().mockResolvedValue('job-1'),
+  getGenerationJobStatus: jest.fn(),
+}))
+
 // Mock fetch for ElevenLabs
 global.fetch = jest.fn().mockResolvedValue({
   ok: true,
@@ -64,7 +109,8 @@ global.fetch = jest.fn().mockResolvedValue({
 })
 
 const { getServerSession } = require('next-auth')
-const mockPrisma = prisma as jest.Mocked<typeof prisma>
+const { prisma: mockPrisma } = require('@/lib/prisma')
+const { POST, GET } = require('@/app/api/ai/route')
 
 describe('/api/ai', () => {
   beforeEach(() => {
@@ -278,6 +324,7 @@ describe('/api/ai', () => {
     getServerSession.mockResolvedValue({
       user: { id: 'user-1' }
     })
+    mockPrisma.video.create.mockResolvedValue({ id: 'video-1' })
 
     const request = new NextRequest('http://localhost:3000/api/ai', {
       method: 'POST',
@@ -293,7 +340,12 @@ describe('/api/ai', () => {
     const response = await POST(request)
 
     expect(response.status).toBe(200)
-    // Should include emotion data in response
+    const data = await response.json()
+    expect(data.data).toEqual(expect.objectContaining({
+      videoId: 'video-1',
+      jobId: 'job-1',
+      status: 'queued',
+    }))
   })
 
   it('should generate DALL-E images', async () => {
@@ -437,7 +489,7 @@ describe('/api/ai', () => {
 
     expect(response.status).toBe(200)
     expect(data.status).toBe('completed')
-    expect(data.result).toBe('Storyboard content')
-    expect(data.tokensUsed).toBe(200)
+    expect(data.result).toBe('Generated script content')
+    expect(data.tokensUsed).toBe(100)
   })
 })

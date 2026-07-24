@@ -11,10 +11,8 @@ import { prisma } from '@/lib/prisma';
  * BullMQ-worker and inline execution paths). The client polls this to drive a
  * real progress bar instead of a fake timer.
  */
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { videoId: string } },
-) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ videoId: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });

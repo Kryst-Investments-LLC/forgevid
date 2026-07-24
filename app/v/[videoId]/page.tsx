@@ -42,11 +42,12 @@ async function loadSharedVideo(videoId: string) {
   return { ...video, src };
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { videoId: string };
-}): Promise<Metadata> {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ videoId: string }>;
+  }
+): Promise<Metadata> {
+  const params = await props.params;
   const video = await loadSharedVideo(params.videoId);
   if (!video) return { title: 'Video not found — ForgeVid' };
   return {
@@ -62,7 +63,8 @@ export async function generateMetadata({
   };
 }
 
-export default async function SharedVideoPage({ params }: { params: { videoId: string } }) {
+export default async function SharedVideoPage(props: { params: Promise<{ videoId: string }> }) {
+  const params = await props.params;
   const video = await loadSharedVideo(params.videoId);
   if (!video) notFound();
 

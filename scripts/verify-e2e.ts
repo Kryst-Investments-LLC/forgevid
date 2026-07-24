@@ -20,7 +20,7 @@ import { prisma } from '../lib/prisma';
 import { resolveFfmpegPath } from '../lib/ffmpeg-env';
 import { runGeneration, rerenderVideo, loadScenes, saveScenes } from '../lib/generation-pipeline';
 import { resolveBranding } from '../lib/brand-kit';
-import { checkGenerationQuota, recordGenerationUsage } from '../lib/quota';
+import { checkGenerationQuota, PLAN_QUOTAS, recordGenerationUsage } from '../lib/quota';
 import {
   PRODUCT_ACTIONS,
   computeUserDefaults,
@@ -200,19 +200,30 @@ async function main() {
     assert(!!overLong.upgradeRequired, 'the rejection carries upgrade pressure');
 
     const fresh = await checkGenerationQuota(userId, 30);
-    assert(fresh.allowed && fresh.limit === 3, 'a 30s video is allowed (0/3 used this month)');
+    const freeQuota = PLAN_QUOTAS.free;
+    assert(
+      fresh.allowed && fresh.used === 0 && fresh.limit === freeQuota.videosPerMonth,
+      `a 30s video is allowed (0/${freeQuota.videosPerMonth} used this month)`,
+    );
 
-    await recordGenerationUsage(userId, video.id, 30);
-    await recordGenerationUsage(userId, video.id, 30);
-    await recordGenerationUsage(userId, video.id, 30);
+    for (let index = 0; index < freeQuota.videosPerMonth; index += 1) {
+      await recordGenerationUsage(userId, `${video.id}-quota-${index}`, 30);
+    }
     const exhausted = await checkGenerationQuota(userId, 30);
-    assert(!exhausted.allowed && exhausted.used === 3, 'the 4th generation this month is rejected');
+    assert(
+      !exhausted.allowed && exhausted.used === freeQuota.videosPerMonth,
+      `generation ${freeQuota.videosPerMonth + 1} this month is rejected`,
+    );
     assert(/Monthly limit/.test(exhausted.reason ?? ''), 'the rejection names the limit');
 
     // An ACTIVE pro plan lifts both the count and the duration cap.
     await prisma.subscription.updateMany({ where: { userId }, data: { status: 'ACTIVE' } });
-    const proVerdict = await checkGenerationQuota(userId, 300);
-    assert(proVerdict.allowed && proVerdict.limit === 100, 'pro allows 300s and 100/month');
+    const proQuota = PLAN_QUOTAS.pro;
+    const proVerdict = await checkGenerationQuota(userId, proQuota.maxDurationSeconds);
+    assert(
+      proVerdict.allowed && proVerdict.limit === proQuota.videosPerMonth,
+      `pro allows ${proQuota.maxDurationSeconds}s and ${proQuota.videosPerMonth}/month`,
+    );
     await prisma.subscription.updateMany({ where: { userId }, data: { status: 'PAST_DUE' } });
 
     // ---- 4c. Cost ledger -------------------------------------------------------
@@ -242,7 +253,10 @@ async function main() {
 
     // REFLECT: the numbers that say what to fix next.
     const insights = await getProductInsights(30);
-    assert(insights.generations >= 3, `insights count generations (${insights.generations})`);
+    assert(
+      insights.generations === ledger.length,
+      `insights count every generation ledger row (${insights.generations})`,
+    );
     assert(insights.rerenders >= 1, 'insights count re-renders');
     assert(insights.sceneEdits >= 1, 'insights count manual edits');
     assert(insights.avgCostPerGenerationUsd > 0, `insights expose unit cost ($${insights.avgCostPerGenerationUsd}/gen)`);

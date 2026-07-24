@@ -18,8 +18,9 @@ import { recordRejectedClip, rejectedClipUrls } from '@/lib/clip-memory';
  */
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { videoId: string; sceneId: string } },
+  props: { params: Promise<{ videoId: string; sceneId: string }> }
 ) {
+  const params = await props.params;
   const access = await requireVideoOwner(params.videoId);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 

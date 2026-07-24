@@ -10,7 +10,8 @@ import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
  * Serves the caption cues burned into the video (transcribed from the narration
  * when a voiceover exists, otherwise one cue per scene).
  */
-export async function GET(req: NextRequest, { params }: { params: { videoId: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ videoId: string }> }) {
+  const params = await props.params;
   const access = await requireVideoOwner(params.videoId);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 

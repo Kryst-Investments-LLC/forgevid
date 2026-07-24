@@ -80,6 +80,11 @@ export async function middleware(request: NextRequest) {
   const nonce = generateNonce();
   const csp = buildCsp(process.env.NODE_ENV !== 'production');
   const requestHeaders = new Headers(request.headers);
+  const requestedLocale = pathname.split('/')[1];
+  requestHeaders.set(
+    'x-forgevid-locale',
+    locales.includes(requestedLocale) ? requestedLocale : 'en',
+  );
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);
 

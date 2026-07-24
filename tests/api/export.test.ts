@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { NextRequest } from 'next/server';
-import { POST } from '@/app/api/editor/export/route';
-import { prisma } from '@/lib/prisma';
 
 // Mock dependencies
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     video: {
       findUnique: jest.fn(),
+    },
+    mediaAsset: {
+      findMany: jest.fn().mockResolvedValue([
+        { id: 'asset-1', url: 'https://example.com/source.mp4' },
+      ]),
     },
     videoExport: {
       create: jest.fn(),
@@ -39,6 +42,10 @@ jest.mock('@/lib/cloudinary', () => ({
   }),
 }));
 
+jest.mock('@/lib/brand-kit', () => ({
+  resolveBranding: jest.fn().mockResolvedValue({ watermarkText: 'ForgeVid' }),
+}));
+
 jest.mock('fs', () => ({
   existsSync: jest.fn().mockReturnValue(true),
   mkdirSync: jest.fn(),
@@ -46,7 +53,8 @@ jest.mock('fs', () => ({
 }));
 
 const { getServerSession } = require('next-auth');
-const mockPrisma = prisma as jest.Mocked<typeof prisma>;
+const { prisma: mockPrisma } = require('@/lib/prisma');
+const { POST } = require('@/app/api/editor/export/route');
 
 describe('Export API', () => {
   beforeEach(() => {
@@ -62,7 +70,7 @@ describe('Export API', () => {
       mockPrisma.video.findUnique.mockResolvedValue({
         id: 'video-123',
         userId: 'user-123',
-        metadata: '{"tracks":[]}',
+        metadata: '{"tracks":[{"id":"track-1","type":"video","clips":[{"id":"clip-1","assetId":"asset-1","startTime":0,"duration":3}]}]}',
       } as any);
 
       mockPrisma.videoExport.create.mockResolvedValue({
@@ -101,7 +109,7 @@ describe('Export API', () => {
       mockPrisma.video.findUnique.mockResolvedValue({
         id: 'video-123',
         userId: 'user-123',
-        metadata: '{"tracks":[]}',
+        metadata: '{"tracks":[{"id":"track-1","type":"video","clips":[{"id":"clip-1","assetId":"asset-1","startTime":0,"duration":3}]}]}',
       } as any);
 
       mockPrisma.videoExport.create.mockResolvedValue({
@@ -133,7 +141,7 @@ describe('Export API', () => {
       mockPrisma.video.findUnique.mockResolvedValue({
         id: 'video-123',
         userId: 'user-123',
-        metadata: '{"tracks":[]}',
+        metadata: '{"tracks":[{"id":"track-1","type":"video","clips":[{"id":"clip-1","assetId":"asset-1","startTime":0,"duration":3}]}]}',
       } as any);
 
       mockPrisma.videoExport.create.mockResolvedValue({
@@ -202,7 +210,7 @@ describe('Export API', () => {
       mockPrisma.video.findUnique.mockResolvedValue({
         id: 'video-123',
         userId: 'user-123',
-        metadata: '{"tracks":[]}',
+        metadata: '{"tracks":[{"id":"track-1","type":"video","clips":[{"id":"clip-1","assetId":"asset-1","startTime":0,"duration":3}]}]}',
       } as any);
 
       mockPrisma.videoExport.create.mockResolvedValue({
@@ -232,7 +240,7 @@ describe('Export API', () => {
       mockPrisma.video.findUnique.mockResolvedValue({
         id: 'video-123',
         userId: 'user-123',
-        metadata: '{"tracks":[]}',
+        metadata: '{"tracks":[{"id":"track-1","type":"video","clips":[{"id":"clip-1","assetId":"asset-1","startTime":0,"duration":3}]}]}',
       } as any);
 
       mockPrisma.videoExport.create.mockResolvedValue({

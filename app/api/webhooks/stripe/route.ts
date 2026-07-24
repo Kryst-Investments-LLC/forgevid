@@ -15,7 +15,7 @@ const CREDIT_PURCHASE_REASON: Record<string, 'purchase_single' | 'purchase_topup
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
-  const signature = headers().get('stripe-signature');
+  const signature = (await headers()).get('stripe-signature');
 
   if (!signature) {
     return NextResponse.json({ error: 'No signature' }, { status: 400 });

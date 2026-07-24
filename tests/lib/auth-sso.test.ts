@@ -168,10 +168,11 @@ describe('lib/auth SSO integration', () => {
   it('handles NextAuth sign-in callback success and failure', async () => {
     const callback = authOptions.callbacks?.signIn!
 
-    prisma.user.findUnique.mockResolvedValueOnce({
+    prisma.user.findUnique.mockResolvedValue({
       id: 'okta-user',
       email: 'okta@example.com',
       role: 'USER',
+      organizationId: null,
     })
 
     const success = await callback({
@@ -182,7 +183,7 @@ describe('lib/auth SSO integration', () => {
 
     expect(success).toBe(true)
 
-    prisma.user.findUnique.mockResolvedValueOnce(null)
+    prisma.user.findUnique.mockResolvedValue(null)
     getGlobalSsoConfiguration.mockResolvedValueOnce(null)
 
     const failure = await callback({

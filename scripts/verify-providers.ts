@@ -60,6 +60,11 @@ async function checkElevenLabs() {
 
 async function renderWithRealVoice() {
   console.log('\nRendering a real video with the live narration...');
+  // Railway also injects Cloudinary. This render verifies ElevenLabs + ffmpeg,
+  // so keep the audit artifact local and avoid leaving production test media.
+  delete process.env.CLOUDINARY_CLOUD_NAME;
+  delete process.env.CLOUDINARY_API_KEY;
+  delete process.env.CLOUDINARY_API_SECRET;
   const { execFileSync } = await import('child_process');
   const fs = await import('fs');
   const path = await import('path');
@@ -154,6 +159,32 @@ async function checkOpenAI() {
   return true;
 }
 
+async function checkGemini() {
+  const { geminiApiKey, createLlmClient, llmModel } = await import('../lib/ai/llm');
+  if (!geminiApiKey()) {
+    console.log('\nGemini: no key — skipped');
+    return false;
+  }
+  console.log('\nChecking Gemini (live)...');
+
+  const previousProvider = process.env.LLM_PROVIDER;
+  process.env.LLM_PROVIDER = 'gemini';
+  try {
+    const gemini = createLlmClient();
+    const completion = await gemini.chat.completions.create({
+      model: llmModel('fast'),
+      messages: [{ role: 'user', content: 'Reply with exactly: ok' }],
+      max_tokens: 5,
+    });
+    const reply = completion.choices[0]?.message?.content?.trim().toLowerCase() ?? '';
+    assert(reply.includes('ok'), `Gemini completion works (reply: "${reply}")`);
+    return true;
+  } finally {
+    if (previousProvider === undefined) delete process.env.LLM_PROVIDER;
+    else process.env.LLM_PROVIDER = previousProvider;
+  }
+}
+
 async function checkPexels() {
   if (!process.env.PEXELS_API_KEY) {
     console.log('\nPexels: no key — skipped');
@@ -236,8 +267,10 @@ async function main() {
   const el = await checkElevenLabs();
   if (el) await renderWithRealVoice();
   const oa = await checkOpenAI();
+  const gemini = await checkGemini();
   const px = await checkPexels();
-  await checkHeyGen();
+  const heygen = await checkHeyGen();
+  assert(el && oa && gemini && px && heygen, 'all five production providers are configured and live');
   // The full loop needs all three creative providers.
   if (el && oa && px) await generateFromPrompt();
   console.log('\nPASS — live provider checks complete.');

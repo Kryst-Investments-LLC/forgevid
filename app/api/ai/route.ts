@@ -372,7 +372,14 @@ async function handlePost(request: NextRequest) {
     return await handleGenerateVideo(body, userId);
   }
   
-  const { prompt, type, settings } = aiGenerationSchema.parse(body);
+  const parsed = aiGenerationSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'Invalid AI generation request', details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+  const { prompt, type, settings } = parsed.data;
 
   // Create initial generation record
   const aiGeneration = await prisma.aIGeneration.create({

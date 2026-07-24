@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { NextRequest } from 'next/server';
-import { POST as POSTCheckout } from '@/app/api/payments/create-checkout-session/route';
-import { POST as POSTPortal } from '@/app/api/payments/customer-portal/route';
-import { prisma } from '@/lib/prisma';
 
 // Mock dependencies
 jest.mock('@/lib/prisma', () => ({
@@ -54,7 +51,9 @@ jest.mock('next-auth', () => ({
 
 const { getServerSession } = require('next-auth');
 const { stripe, PRICING_PLANS } = require('@/lib/stripe');
-const mockPrisma = prisma as jest.Mocked<typeof prisma>;
+const { prisma: mockPrisma } = require('@/lib/prisma');
+const { POST: POSTCheckout } = require('@/app/api/payments/create-checkout-session/route');
+const { POST: POSTPortal } = require('@/app/api/payments/customer-portal/route');
 
 describe('Payments API', () => {
   beforeEach(() => {

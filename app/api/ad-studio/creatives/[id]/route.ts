@@ -7,7 +7,8 @@ export const runtime = 'nodejs'
 
 // PATCH { isWinner?, roas?, notes? } — update a creative's performance (winners
 // library + ROAS loop). Owner only.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })

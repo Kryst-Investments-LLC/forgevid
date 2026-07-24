@@ -28,7 +28,8 @@ const openai = llm;
 
 const bodySchema = z.object({ message: z.string().min(1).max(1000) });
 
-export async function POST(req: NextRequest, { params }: { params: { videoId: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ videoId: string }> }) {
+  const params = await props.params;
   const access = await requireVideoOwner(params.videoId);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 

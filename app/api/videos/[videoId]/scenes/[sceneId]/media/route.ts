@@ -22,8 +22,9 @@ const bodySchema = z.object({ assetId: z.string().min(1) });
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { videoId: string; sceneId: string } },
+  props: { params: Promise<{ videoId: string; sceneId: string }> }
 ) {
+  const params = await props.params;
   const access = await requireVideoOwner(params.videoId);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 

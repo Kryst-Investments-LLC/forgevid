@@ -72,11 +72,11 @@ export const POST = securityConfigs.payment(async function POST(request: NextReq
 
     const { planId } = body;
 
-    if (!planId || !PRICING_PLANS[planId as keyof typeof PRICING_PLANS]) {
+    const plan = Object.values(PRICING_PLANS).find((candidate) => candidate.id === planId);
+
+    if (!plan) {
       return NextResponse.json({ error: 'Invalid plan ID' }, { status: 400 });
     }
-
-    const plan = PRICING_PLANS[planId as keyof typeof PRICING_PLANS];
 
     if (plan.id === 'free') {
       return NextResponse.json({ error: 'Free plan does not require payment' }, { status: 400 });

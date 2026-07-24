@@ -61,6 +61,45 @@ export interface CaptionWord {
   end: number;
 }
 
+/**
+ * Narrations write urls as "ForgeVid dot com" (or "punto com" in Spanish) so
+ * the TTS pronounces them naturally — but Whisper transcribes the words as
+ * spoken, so captions displayed "ForgeVid dot com". Rewrite them back to
+ * "ForgeVid.com": in cue TEXT via regex, and in the word-timing arrays by
+ * MERGING the brand/dot/com words into one word spanning their time range
+ * (so karaoke highlight still lands exactly on the spoken phrase). Mutates in
+ * place; also covers SRT/VTT export, which reads the same cues.
+ */
+export function normalizeSpokenUrls(cues: CaptionCue[]): void {
+  const TEXT_RE = /(\S+?)[,.]?\s+(?:dot|punto)[,.]?\s+com\b/gi;
+  const DOT_WORDS = new Set(['dot', 'punto', 'dot.', 'punto.', 'dot,', 'punto,']);
+  const isCom = (w: string) => /^com[.,!?]*$/i.test(w);
+
+  for (const cue of cues) {
+    cue.text = cue.text.replace(TEXT_RE, '$1.com');
+    if (!cue.words) continue;
+    for (let i = 0; i + 2 < cue.words.length + 1; i++) {
+      const dot = cue.words[i];
+      const com = cue.words[i + 1];
+      if (!dot || !com || !DOT_WORDS.has(dot.word.toLowerCase()) || !isCom(com.word)) continue;
+      const prev = cue.words[i - 1];
+      if (prev) {
+        // "ForgeVid" + "dot" + "com" -> one word "ForgeVid.com"
+        const trailing = com.word.match(/[.,!?]+$/)?.[0] ?? '';
+        prev.word = `${prev.word.replace(/[.,]+$/, '')}.com${trailing}`;
+        prev.end = com.end;
+        cue.words.splice(i, 2);
+        i -= 1;
+      } else {
+        // Cue starts at "dot com" (split across cues): render as ".com"
+        dot.word = '.com';
+        dot.end = com.end;
+        cue.words.splice(i + 1, 1);
+      }
+    }
+  }
+}
+
 export interface CaptionCue {
   /** Seconds from the start of the video. */
   start: number;
@@ -169,6 +208,8 @@ export async function transcribeToCues(audioPath: string): Promise<CaptionCue[] 
         };
       })
       .filter((c: CaptionCue) => c.text.length > 0 && c.end > c.start);
+
+    normalizeSpokenUrls(cues);
 
     if (cues.length === 0) return null;
     console.log(`[Captions] Transcribed ${cues.length} cues from the voiceover`);

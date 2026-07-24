@@ -64,6 +64,11 @@ jest.mock('@/lib/auth', () => ({
   refreshAuthProviders: jest.fn(),
 }))
 
+jest.mock('@/lib/rbac', () => ({
+  getFreshSessionUser: jest.fn(),
+  isAdminRole: jest.fn((role: string) => role === 'ADMIN' || role === 'SUPER_ADMIN'),
+}))
+
 jest.mock('@/lib/sso', () => ({
   getOrganizationSsoConfigurations: jest.fn(),
   upsertSsoConfiguration: jest.fn(),
@@ -84,6 +89,7 @@ import {
   getStoredSsoConfiguration,
 } from '@/lib/sso'
 import { fetchSamlMetadata } from '@/lib/sso/metadata'
+import { getFreshSessionUser } from '@/lib/rbac'
 
 const mockedGetServerSession = getServerSession as jest.MockedFunction<typeof getServerSession>
 const mockedRefreshProviders = refreshAuthProviders as jest.MockedFunction<typeof refreshAuthProviders>
@@ -94,6 +100,7 @@ const mockedUpsert = upsertSsoConfiguration as jest.MockedFunction<typeof upsert
 const mockedDisable = disableSsoConfiguration as jest.MockedFunction<typeof disableSsoConfiguration>
 const mockedGetStored = getStoredSsoConfiguration as jest.MockedFunction<typeof getStoredSsoConfiguration>
 const mockedFetchMetadata = fetchSamlMetadata as jest.MockedFunction<typeof fetchSamlMetadata>
+const mockedFreshSessionUser = getFreshSessionUser as jest.MockedFunction<typeof getFreshSessionUser>
 
 const adminSession = {
   user: {
@@ -110,6 +117,7 @@ describe('Admin SSO API', () => {
 
   it('rejects unauthenticated requests', async () => {
     mockedGetServerSession.mockResolvedValue(null)
+    mockedFreshSessionUser.mockResolvedValue(null)
 
     const response = await GET(new NextRequest('http://localhost/api/admin/sso'))
     expect(response.status).toBe(403)
@@ -117,6 +125,7 @@ describe('Admin SSO API', () => {
 
   it('returns serialized SSO configurations', async () => {
     mockedGetServerSession.mockResolvedValue(adminSession)
+    mockedFreshSessionUser.mockResolvedValue(adminSession.user as any)
     mockedGetConfigs.mockResolvedValue([
       {
         id: 'cfg',
@@ -142,6 +151,7 @@ describe('Admin SSO API', () => {
 
   it('persists SAML configuration with metadata resolution', async () => {
     mockedGetServerSession.mockResolvedValue(adminSession)
+    mockedFreshSessionUser.mockResolvedValue(adminSession.user as any)
     mockedGetStored.mockResolvedValue(null)
     mockedFetchMetadata.mockResolvedValue({
       entryPoint: 'https://idp.example.com/sso',
@@ -188,6 +198,7 @@ describe('Admin SSO API', () => {
 
   it('validates Okta configuration requirements', async () => {
     mockedGetServerSession.mockResolvedValue(adminSession)
+    mockedFreshSessionUser.mockResolvedValue(adminSession.user as any)
     mockedGetStored.mockResolvedValue(null)
 
     const request = new NextRequest('http://localhost/api/admin/sso', {
@@ -209,6 +220,7 @@ describe('Admin SSO API', () => {
 
   it('disables a configuration', async () => {
     mockedGetServerSession.mockResolvedValue(adminSession)
+    mockedFreshSessionUser.mockResolvedValue(adminSession.user as any)
     mockedDisable.mockResolvedValue({
       id: 'okta',
       provider: 'OKTA',

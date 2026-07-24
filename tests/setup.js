@@ -3,6 +3,19 @@
 import "@testing-library/jest-dom"
 import { jest, afterEach } from "@jest/globals"
 
+// Route handlers import both NextAuth entry points. Mock them before test
+// modules load so Jest never has to parse NextAuth's browser-only ESM graph.
+const mockGetServerSession = jest.fn()
+jest.mock("next-auth", () => ({
+  __esModule: true,
+  default: jest.fn(),
+  getServerSession: mockGetServerSession,
+}))
+jest.mock("next-auth/next", () => ({ getServerSession: mockGetServerSession }))
+jest.mock("@auth/prisma-adapter", () => ({
+  PrismaAdapter: jest.fn(() => ({})),
+}))
+
 // Mock Next.js router
 jest.mock("next/router", () => ({
   useRouter() {
@@ -90,13 +103,32 @@ try {
   global.Response = Response
   global.Headers = Headers
 } catch (error) {
-  // Fall back to global implementations if undici is unavailable
-  if (typeof global.Request === 'undefined' && typeof globalThis.Request !== 'undefined') {
-    global.Request = globalThis.Request
+  // Next ships the same Fetch API primitives used by route handlers. JSDOM
+  // replaces Node's globals, so use the bundled implementation when undici is
+  // not a direct dependency.
+  const { setImmediate, clearImmediate } = require('timers')
+  const {
+    TextEncoderStream,
+    TextDecoderStream,
+    TransformStream,
+    ReadableStream,
+    WritableStream,
+  } = require('stream/web')
+  global.setImmediate = setImmediate
+  global.clearImmediate = clearImmediate
+  global.TextEncoderStream = TextEncoderStream
+  global.TextDecoderStream = TextDecoderStream
+  global.TransformStream = TransformStream
+  global.ReadableStream = ReadableStream
+  global.WritableStream = WritableStream
+  if (typeof global.structuredClone === 'undefined') {
+    const { serialize, deserialize } = require('v8')
+    global.structuredClone = (value) => deserialize(serialize(value))
   }
-  if (typeof global.Response === 'undefined' && typeof globalThis.Response !== 'undefined') {
-    global.Response = globalThis.Response
-  }
+  const { Request, Response, Headers } = require('next/dist/compiled/@edge-runtime/primitives')
+  global.Request = Request
+  global.Response = Response
+  global.Headers = Headers
 }
 
 // Mock fetch with proper implementation

@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals'
 import { NextRequest } from 'next/server'
-import { GET } from '@/app/api/admin/revenue/route'
 
 // Mock dependencies
-jest.mock('@/lib/database', () => ({
+jest.mock('@/lib/prisma', () => ({
   prisma: {
     user: {
       count: jest.fn(),
@@ -16,14 +15,19 @@ jest.mock('@/lib/database', () => ({
     payment: {
       findMany: jest.fn(),
     },
+    aIGeneration: {
+      aggregate: jest.fn(),
+    },
   },
 }))
 
-jest.mock('next-auth', () => ({
-  getServerSession: jest.fn(),
+jest.mock('@/lib/rbac', () => ({
+  getFreshSessionUser: jest.fn(),
+  isAdminRole: jest.fn((role: string) => role === 'ADMIN'),
 }))
 
-const { getServerSession } = require('next-auth')
+const { getFreshSessionUser } = require('@/lib/rbac')
+const { GET } = require('@/app/api/admin/revenue/route')
 
 describe('/api/admin/revenue', () => {
   beforeEach(() => {
@@ -32,11 +36,9 @@ describe('/api/admin/revenue', () => {
 
   describe('GET', () => {
     it('should return revenue analytics for admin users', async () => {
-      getServerSession.mockResolvedValue({
-        user: { id: 'admin-1', role: 'ADMIN' }
-      })
+      getFreshSessionUser.mockResolvedValue({ id: 'admin-1', role: 'ADMIN' })
 
-      const { prisma } = require('@/lib/database')
+      const { prisma } = require('@/lib/prisma')
       
       // Mock database responses
       prisma.user.count.mockResolvedValue(100)
@@ -79,6 +81,10 @@ describe('/api/admin/revenue', () => {
           subscription: { plan: 'pro' }
         }
       ])
+      prisma.aIGeneration.aggregate.mockResolvedValue({
+        _sum: { cost: 12.5 },
+        _count: { id: 25 },
+      })
 
       const request = new NextRequest('http://localhost:3000/api/admin/revenue?period=30')
 
@@ -96,9 +102,7 @@ describe('/api/admin/revenue', () => {
     })
 
     it('should return 403 for non-admin users', async () => {
-      getServerSession.mockResolvedValue({
-        user: { id: 'user-1', role: 'USER' }
-      })
+      getFreshSessionUser.mockResolvedValue({ id: 'user-1', role: 'USER' })
 
       const request = new NextRequest('http://localhost:3000/api/admin/revenue')
 
@@ -108,7 +112,7 @@ describe('/api/admin/revenue', () => {
     })
 
     it('should return 403 for unauthenticated users', async () => {
-      getServerSession.mockResolvedValue(null)
+      getFreshSessionUser.mockResolvedValue(null)
 
       const request = new NextRequest('http://localhost:3000/api/admin/revenue')
 
@@ -118,11 +122,9 @@ describe('/api/admin/revenue', () => {
     })
 
     it('should calculate conversion rate correctly', async () => {
-      getServerSession.mockResolvedValue({
-        user: { id: 'admin-1', role: 'ADMIN' }
-      })
+      getFreshSessionUser.mockResolvedValue({ id: 'admin-1', role: 'ADMIN' })
 
-      const { prisma } = require('@/lib/database')
+      const { prisma } = require('@/lib/prisma')
       
       // Mock specific conversion rate scenario
       prisma.user.count.mockResolvedValue(50)
@@ -133,6 +135,10 @@ describe('/api/admin/revenue', () => {
         .mockResolvedValueOnce(20) // trial users
         .mockResolvedValueOnce(5) // converted users (25% conversion)
       prisma.payment.findMany.mockResolvedValue([])
+      prisma.aIGeneration.aggregate.mockResolvedValue({
+        _sum: { cost: 0 },
+        _count: { id: 0 },
+      })
 
       const request = new NextRequest('http://localhost:3000/api/admin/revenue')
 

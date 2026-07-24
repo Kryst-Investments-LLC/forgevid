@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test"
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  testIgnore: process.env.AUTH_E2E === "true" ? [] : ["**/authenticated-platform.spec.ts"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -40,7 +41,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev",
+    command: process.env.PLAYWRIGHT_NEXT_SERVER === "true" ? "npx next dev" : "npm run dev",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

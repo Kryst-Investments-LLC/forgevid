@@ -29,16 +29,15 @@ const nextConfig = {
   // stage can `COPY .next/standalone` and run `node server.js` without node_modules.
   // Required by the Dockerfile; do NOT remove.
   output: 'standalone',
+  outputFileTracingRoot: process.cwd(),
   eslint: {
     ignoreDuringBuilds: false,
   },
   typescript: {
     ignoreBuildErrors: false,
   },
-  swcMinify: true,
   experimental: {
     optimizeCss: true,
-    instrumentationHook: true,
   },
   webpack: (config, { isServer }) => {
     if (isServer) {

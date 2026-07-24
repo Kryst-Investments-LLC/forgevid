@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals'
 import { NextRequest } from 'next/server'
-import { POST, GET } from '@/app/api/media/route'
 
 // Mock dependencies
-jest.mock('@/lib/database', () => ({
+jest.mock('@/lib/prisma', () => ({
   prisma: {
     mediaAsset: {
       create: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -20,6 +20,7 @@ jest.mock('next-auth', () => ({
 }))
 
 const { getServerSession } = require('next-auth')
+const { POST, GET } = require('@/app/api/media/route')
 
 describe('/api/media', () => {
   beforeEach(() => {
@@ -36,7 +37,7 @@ describe('/api/media', () => {
         id: 'media-1',
         name: 'test-video.mp4',
         fileName: 'test-video.mp4',
-        type: 'VIDEO',
+        type: 'video',
         url: 'https://example.com/video.mp4',
         uploadedById: 'user-1',
         createdAt: new Date(),
@@ -50,7 +51,7 @@ describe('/api/media', () => {
         isPublic: false,
       }
 
-      const { prisma } = require('@/lib/database')
+      const { prisma } = require('@/lib/prisma')
       prisma.mediaAsset.create.mockResolvedValue(mockMediaAsset)
 
       const request = new NextRequest('http://localhost:3000/api/media', {
@@ -58,7 +59,7 @@ describe('/api/media', () => {
         body: JSON.stringify({
           name: 'test-video.mp4',
           fileName: 'test-video.mp4',
-          type: 'VIDEO',
+          type: 'video',
           url: 'https://example.com/video.mp4'
         }),
       })
@@ -69,7 +70,7 @@ describe('/api/media', () => {
       expect(response.status).toBe(200)
       expect(data.id).toBe('media-1')
       expect(data.name).toBe('test-video.mp4')
-      expect(data.type).toBe('VIDEO')
+      expect(data.type).toBe('video')
     })
 
     it('should return 401 for unauthorized users', async () => {
@@ -115,8 +116,9 @@ describe('/api/media', () => {
         }
       ]
 
-      const { prisma } = require('@/lib/database')
+      const { prisma } = require('@/lib/prisma')
       prisma.mediaAsset.findMany.mockResolvedValue(mockAssets)
+      prisma.mediaAsset.count.mockResolvedValue(2)
 
       const request = new NextRequest('http://localhost:3000/api/media')
 
@@ -126,7 +128,7 @@ describe('/api/media', () => {
       expect(response.status).toBe(200)
       expect(Array.isArray(data.assets)).toBe(true)
       expect(data.assets).toHaveLength(2)
-      expect(data.total).toBe(2)
+      expect(data.pagination.total).toBe(2)
     })
   })
 })

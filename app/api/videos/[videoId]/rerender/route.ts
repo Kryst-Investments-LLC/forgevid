@@ -13,7 +13,8 @@ import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
  * Returns immediately; poll GET /api/ai/jobs/[videoId] for progress, same as a
  * fresh generation. Runs on the worker when REDIS_URL is set, else inline.
  */
-export async function POST(_req: NextRequest, { params }: { params: { videoId: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ videoId: string }> }) {
+  const params = await props.params;
   const access = await requireVideoOwner(params.videoId);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 

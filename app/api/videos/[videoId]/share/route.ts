@@ -10,7 +10,8 @@ import { PRODUCT_ACTIONS, recordProductEvent } from '@/lib/product-loop';
  * Sharing is an explicit opt-in per video, not id-guessability: the public
  * page /v/[id] returns 404 unless metadata.shareEnabled is true.
  */
-export async function POST(req: NextRequest, { params }: { params: { videoId: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ videoId: string }> }) {
+  const params = await props.params;
   const access = await requireVideoOwner(params.videoId);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
