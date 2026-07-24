@@ -612,6 +612,7 @@ export async function rerenderVideo(videoId: string): Promise<string> {
       branding,
       // Re-render must reuse the same transition, or the output changes shape.
       transition: transitionFromMetadata(meta.request?.transition),
+      language: meta.request?.language,
       renderQuality,
       // Same presenter overlay the video was generated with (re-ownership-checked).
       pip: await (async () => {

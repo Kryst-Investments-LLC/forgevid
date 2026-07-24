@@ -23,9 +23,11 @@ import {
   buildCaptionFilter,
   buildKaraokeAss,
   buildWatermarkFilter,
+  captionFontFamilyForLanguage,
   CAPTION_PRESETS,
   cuesFromScenes,
   escapeFontPath,
+  resolveCaptionFontForLanguage,
   shiftCues,
   transcribeToCues,
   type CaptionCue,
@@ -231,11 +233,10 @@ function fitFilterFor(width: number, height: number): string {
  * search always stays English (libraries index English); only what is heard and
  * shown changes. Defaults to English.
  */
-// Latin-script languages only: the multilingual voices speak far more, but
-// burned-in captions use the DejaVu font, which lacks CJK/Devanagari glyphs —
-// so zh/ja/ko/hi would render captions as boxes. Those need a font pack (Noto)
-// before they can be offered end-to-end.
-export type NarrationLanguage = 'en' | 'es' | 'fr' | 'de' | 'it' | 'pt';
+// Latin languages use the bundled DejaVu caption font; CJK (zh/ja/ko) and
+// Devanagari (hi) render through Noto fonts installed in the Docker image and
+// selected per-language in lib/captions.ts.
+export type NarrationLanguage = 'en' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'zh' | 'ja' | 'ko' | 'hi';
 
 /** Language names the scriptwriter is told to write narration in. */
 export const NARRATION_LANGUAGE_NAMES: Record<NarrationLanguage, string> = {
@@ -245,6 +246,10 @@ export const NARRATION_LANGUAGE_NAMES: Record<NarrationLanguage, string> = {
   de: 'German',
   it: 'Italian',
   pt: 'Brazilian Portuguese',
+  zh: 'Simplified Chinese (Mandarin)',
+  ja: 'Japanese',
+  ko: 'Korean',
+  hi: 'Hindi',
 };
 
 export interface GenerationOptions {
@@ -977,6 +982,8 @@ export interface AssembleOptions {
    * timing fall back to static captions in the same look.
    */
   captionAnimation?: 'karaoke' | null;
+  /** Narration language — selects a CJK/Devanagari caption font when needed. */
+  language?: NarrationLanguage;
   /** Plan-gated branding: watermark, logo, intro/outro, caption colour/font. */
   branding?: Branding | null;
   /** Cross-fade between scenes. Pass null for hard cuts. */
@@ -1337,10 +1344,18 @@ export async function assembleVideo(
       }
     }
 
+    // CJK/Devanagari need a Noto font; a Latin brand font can't render them, so
+    // the language font wins for those scripts. Latin languages keep the brand
+    // font (or the default, resolved inside buildCaptionFilter).
+    const nonLatin = ['zh', 'ja', 'ko', 'hi'].includes(options.language ?? '');
+    const captionFontFile = nonLatin
+      ? resolveCaptionFontForLanguage(options.language)
+      : brandFontFile;
+
     const captionStyle: CaptionStyle = {
       ...options.captionStyle,
       ...(branding?.captionColor ? { fontColor: branding.captionColor } : {}),
-      ...(brandFontFile ? { fontFile: brandFontFile } : {}),
+      ...(captionFontFile ? { fontFile: captionFontFile } : {}),
     };
 
     let textFilter = '';
@@ -1356,6 +1371,8 @@ export async function assembleVideo(
           height: outH,
           highlightColor: branding?.captionColor ?? undefined,
           marginBottom: captionStyle.marginBottom,
+          // libass resolves this family via fontconfig — Noto for CJK/Devanagari.
+          fontName: captionFontFamilyForLanguage(options.language),
         }),
       );
       tempFiles.push(assPath);
@@ -1648,6 +1665,7 @@ export async function generateVideoWithScenes(
     voiceId,
     branding,
     transition,
+    language: options.language,
     renderQuality: options.renderQuality,
     voiceoverPath: options.voiceoverPath ?? null,
     lowerThird: options.lowerThird ?? null,

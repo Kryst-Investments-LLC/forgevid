@@ -368,6 +368,50 @@ export function __resetFontCache() {
 }
 
 /**
+ * libass/font family per non-Latin script. The bundled DejaVu font has no
+ * CJK/Devanagari glyphs, so these languages need Noto (installed in the Docker
+ * image). Latin languages fall through to the default font.
+ */
+const LANG_FONT_FAMILY: Record<string, string> = {
+  zh: 'Noto Sans CJK SC',
+  ja: 'Noto Sans CJK JP',
+  ko: 'Noto Sans CJK KR',
+  hi: 'Noto Sans Devanagari',
+};
+
+const langFontCache = new Map<string, string | null>();
+
+/** Font-FAMILY name to put in an ASS style (karaoke) for `language`. libass
+ *  resolves it through fontconfig, so only the installed name matters. */
+export function captionFontFamilyForLanguage(language?: string): string {
+  return (language && LANG_FONT_FAMILY[language]) || 'DejaVu Sans';
+}
+
+/**
+ * Font FILE for a language's script, for drawtext (which needs a path, not a
+ * family). CJK/Devanagari resolve via fontconfig (fc-match) because Noto ships
+ * as .ttc/.otf that resolveCaptionFontFile's .ttf scan misses; Latin languages
+ * use the default caption font. Cached per language.
+ */
+export function resolveCaptionFontForLanguage(language?: string): string | null {
+  const family = language ? LANG_FONT_FAMILY[language] : undefined;
+  if (!family) return resolveCaptionFontFile();
+  if (langFontCache.has(language!)) return langFontCache.get(language!)!;
+
+  let file: string | null = null;
+  try {
+    const r = spawnSync('fc-match', ['-f', '%{file}', family], { encoding: 'utf8' });
+    const out = (r.stdout ?? '').trim();
+    if (out && fs.existsSync(out)) file = out;
+  } catch {
+    // fontconfig unavailable — fall back to the default font below.
+  }
+  const resolved = file ?? resolveCaptionFontFile();
+  langFontCache.set(language!, resolved);
+  return resolved;
+}
+
+/**
  * A path inside a filtergraph: `:` separates filter options, and a Windows
  * path is full of them (`C:\...`). Forward slashes + escaped colons, quoted.
  */
@@ -433,6 +477,8 @@ export interface KaraokeOptions {
   /** Distance from the bottom of the frame, in pixels. */
   marginBottom?: number;
   fontSize?: number;
+  /** libass font family (e.g. "Noto Sans CJK JP" for Japanese). Default DejaVu. */
+  fontName?: string;
 }
 
 /**
@@ -452,6 +498,8 @@ export function buildKaraokeAss(cues: CaptionCue[], opts: KaraokeOptions): strin
   const marginV = opts.marginBottom ?? Math.round(opts.height * 0.08);
   const marginH = Math.round(opts.width * 0.06);
   const highlight = hexToAss(opts.highlightColor, '&H0000D7FF'); // gold FFD700 in BGR
+  // ASS font-family names must not contain commas (they'd split the style row).
+  const fontName = (opts.fontName || 'DejaVu Sans').replace(/,/g, ' ');
 
   // \k measures from the END of the previous tag, so each word's duration runs
   // to the NEXT word's start — gaps between words stay highlighted rather than
@@ -491,7 +539,7 @@ export function buildKaraokeAss(cues: CaptionCue[], opts: KaraokeOptions): strin
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     // Primary = the ACTIVE (already-sung) colour, Secondary = upcoming words.
-    `Style: Karaoke,DejaVu Sans,${fontSize},${highlight},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,${marginH},${marginH},${marginV},1`,
+    `Style: Karaoke,${fontName},${fontSize},${highlight},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,${marginH},${marginH},${marginV},1`,
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',

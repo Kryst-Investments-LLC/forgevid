@@ -141,7 +141,7 @@ export default function AIFeaturesPage() {
   const [pipName, setPipName] = useState<string>("")
   const [uploadingPip, setUploadingPip] = useState(false)
   const [pipPosition, setPipPosition] = useState<string>("bottom-right")
-  const [language, setLanguage] = useState<"en" | "es" | "fr" | "de" | "it" | "pt">("en")
+  const [language, setLanguage] = useState<"en" | "es" | "fr" | "de" | "it" | "pt" | "zh" | "ja" | "ko" | "hi">("en")
   // Voiceover + subtitles on by default: a marketing video is expected to talk
   // and caption, and this makes the narration voice picker visible immediately
   // (it lives under the AI Voiceover add-on) instead of hidden until ticked.
@@ -271,7 +271,7 @@ export default function AIFeaturesPage() {
     duration?: number
     addOns?: string[]
     mediaAssetIds?: string[]
-    language?: "en" | "es" | "fr" | "de" | "it" | "pt"
+    language?: "en" | "es" | "fr" | "de" | "it" | "pt" | "zh" | "ja" | "ko" | "hi"
   }) => {
     const effPrompt = overrides?.prompt ?? prompt
     const effStyle = overrides?.style ?? selectedStyle
@@ -560,6 +560,10 @@ export default function AIFeaturesPage() {
                         <option value="de">🇩🇪 Deutsch (German)</option>
                         <option value="it">🇮🇹 Italiano (Italian)</option>
                         <option value="pt">🇧🇷 Português (Portuguese)</option>
+                        <option value="zh">🇨🇳 中文 (Chinese)</option>
+                        <option value="ja">🇯🇵 日本語 (Japanese)</option>
+                        <option value="ko">🇰🇷 한국어 (Korean)</option>
+                        <option value="hi">🇮🇳 हिन्दी (Hindi)</option>
                       </select>
                     </div>
 

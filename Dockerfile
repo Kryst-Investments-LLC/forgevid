@@ -29,8 +29,14 @@ COPY . .
 # Install FFmpeg for video processing
 # ffmpeg's drawtext needs a real font file. Alpine ships none, and it renamed
 # ttf-dejavu -> font-dejavu across releases, so accept either.
+# Noto covers non-Latin caption scripts: font-noto-cjk = Chinese/Japanese/Korean,
+# font-noto = Devanagari (Hindi) + many others. fc-cache indexes them so
+# fontconfig/fc-match (used by lib/captions.ts) can resolve them at render time.
 RUN apk add --no-cache ffmpeg fontconfig \
-    && (apk add --no-cache font-dejavu || apk add --no-cache ttf-dejavu)
+    && (apk add --no-cache font-dejavu || apk add --no-cache ttf-dejavu) \
+    && (apk add --no-cache font-noto-cjk || true) \
+    && (apk add --no-cache font-noto || true) \
+    && fc-cache -f
 
 # Generate the Prisma client BEFORE the build. App code (e.g. app/admin/page.tsx)
 # consumes Prisma's generated query result types; without a generated client those

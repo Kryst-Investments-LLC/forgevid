@@ -76,7 +76,7 @@ const generateVideoSchema = z.object({
   // Narration + caption language (Latin-script set the caption font renders).
   // Writes the spoken text in that language; stock search stays English. The
   // multilingual voices speak all of these natively.
-  language: z.enum(['en', 'es', 'fr', 'de', 'it', 'pt']).optional(),
+  language: z.enum(['en', 'es', 'fr', 'de', 'it', 'pt', 'zh', 'ja', 'ko', 'hi']).optional(),
   voiceId: z.string().optional(),
   // The user's own MediaAsset ids, in scene order. Ownership is checked
   // server-side; urls are never accepted from the client.
