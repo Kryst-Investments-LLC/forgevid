@@ -15,6 +15,9 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   videoBrief?: VideoBrief | null;
+  /** Set when the user asked to generate a video FOR A WEBSITE — renders the
+      one-click "generate from this site" card instead of a chat round-trip. */
+  siteUrl?: string;
 }
 
 interface VideoBrief {
@@ -29,9 +32,26 @@ interface VideoBrief {
 
 interface AIChatPanelProps {
   onGenerateVideo?: (brief: VideoBrief) => void;
+  /** Handoff for "make a video for <website>": the panel resolves the site into
+      a grounded script + imported images, then the parent generates from it. */
+  onGenerateFromSite?: (opts: { prompt: string; mediaAssetIds: string[]; duration: number }) => void;
 }
 
-export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
+/** Pull the first URL/bare-domain out of free text (neurohires.com, https://…). */
+function extractUrl(text: string): string | null {
+  const m = text.match(/(https?:\/\/[^\s]+)|(\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b(?:\/[^\s]*)?)/i);
+  return m ? m[0].replace(/[.,)]+$/, '') : null;
+}
+
+/** "make a video for <site>" — generation intent that names a website. */
+function siteVideoIntent(text: string): string | null {
+  if (!/\b(generate|create|make|build|produce|do)\b[\s\S]{0,60}\b(video|commercial|ad|advert|promo|reel|clip)\b/i.test(text)) {
+    return null;
+  }
+  return extractUrl(text);
+}
+
+export default function AIChatPanel({ onGenerateVideo, onGenerateFromSite }: AIChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
@@ -43,6 +63,7 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [busySite, setBusySite] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -66,6 +87,26 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
     setInput('');
+
+    // "make a video for neurohires.com" — skip the chat round-trip and offer to
+    // build straight from the site (reads the page, writes the script from its
+    // own content, uses its images). Exactly what a user expects when they paste
+    // a URL and ask for a video.
+    const siteUrl = siteVideoIntent(text);
+    if (siteUrl) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: `I can build a video straight from ${siteUrl} — I'll read the site, write the script from its own content, and use its images.`,
+          timestamp: new Date(),
+          siteUrl,
+        },
+      ]);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -165,6 +206,60 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
     }
   };
 
+  const handleGenerateFromSite = async (url: string) => {
+    setBusySite(true);
+    toast.info(`Reading ${url}…`);
+    try {
+      // Turn the site into a grounded script + its own images (SSRF-guarded,
+      // auth'd, rate-limited server-side).
+      const res = await fetch('/api/site-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, duration: 30, tone: 'energetic' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Could not read that site');
+
+      const sitePrompt: string = data.prompt || `A 30-second marketing video for ${url}`;
+      const mediaAssetIds: string[] = Array.isArray(data.mediaAssetIds) ? data.mediaAssetIds : [];
+
+      if (onGenerateFromSite) {
+        // Hand off to the Creator tab, where the real progress bar lives.
+        onGenerateFromSite({ prompt: sitePrompt, mediaAssetIds, duration: 30 });
+      } else {
+        // Self-contained fallback: queue the job directly.
+        const gen = await fetch('/api/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'generate_video',
+            prompt: sitePrompt,
+            style: 'energetic',
+            duration: 30,
+            addOns: ['subtitles', 'music', 'voiceover'],
+            ...(mediaAssetIds.length ? { mediaAssetIds } : {}),
+          }),
+        });
+        const gd = await gen.json().catch(() => ({}));
+        if (!gen.ok || !gd.success) throw new Error(gd.error || 'Generation failed');
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `result-${Date.now()}`,
+          role: 'assistant',
+          content: `Building your video from ${url}${mediaAssetIds.length ? ` using ${mediaAssetIds.length} image(s) from the site` : ''}. Watch the progress in the AI Creator tab.`,
+          timestamp: new Date(),
+        },
+      ]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not build from that site.');
+    } finally {
+      setBusySite(false);
+    }
+  };
+
   const resetConversation = () => {
     setMessages([
       {
@@ -185,6 +280,32 @@ export default function AIChatPanel({ onGenerateVideo }: AIChatPanelProps) {
       <div className="space-y-3">
         {displayContent && (
           <div className="text-sm whitespace-pre-wrap leading-relaxed">{displayContent}</div>
+        )}
+        {msg.siteUrl && (
+          <Card className="border-cyan-200 bg-cyan-50">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Video className="h-4 w-4 text-cyan-600" />
+                <span className="font-semibold text-cyan-900">Build from {msg.siteUrl}</span>
+              </div>
+              <p className="text-xs text-cyan-900/70">
+                Reads the page, writes the script from its own words, and pulls in its images as scenes.
+              </p>
+              <Button
+                size="sm"
+                className="w-full bg-cyan-600 hover:bg-cyan-700"
+                disabled={busySite}
+                onClick={() => handleGenerateFromSite(msg.siteUrl!)}
+              >
+                {busySite ? (
+                  <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3 mr-2" />
+                )}
+                {busySite ? 'Reading the site…' : 'Generate from this site'}
+              </Button>
+            </CardContent>
+          </Card>
         )}
         {msg.videoBrief && (
           <Card className="border-cyan-200 bg-cyan-50">

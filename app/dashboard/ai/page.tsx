@@ -266,11 +266,13 @@ export default function AIFeaturesPage() {
     style?: string
     duration?: number
     addOns?: string[]
+    mediaAssetIds?: string[]
   }) => {
     const effPrompt = overrides?.prompt ?? prompt
     const effStyle = overrides?.style ?? selectedStyle
     const effDuration = overrides?.duration ?? videoLength[0]
     const effAddOns = overrides?.addOns ?? selectedAddOns
+    const effMediaIds = overrides?.mediaAssetIds ?? selectedMediaIds
     if (!effPrompt.trim()) {
       toast.error('Please enter a video description')
       return
@@ -295,7 +297,7 @@ export default function AIFeaturesPage() {
           ...(voiceMode === "ai" && selectedVoiceId ? { voiceId: selectedVoiceId } : {}),
           ...(voiceMode === "own" && narrationAssetId ? { narrationAssetId } : {}),
           ...(effAddOns.includes("music") && musicAssetId ? { musicAssetId } : {}),
-          ...(selectedMediaIds.length ? { mediaAssetIds: selectedMediaIds } : {}),
+          ...(effMediaIds.length ? { mediaAssetIds: effMediaIds } : {}),
           ...(effAddOns.includes("subtitles") && captionPreset !== "default"
             ? { captionPreset }
             : {}),
@@ -415,6 +417,17 @@ export default function AIFeaturesPage() {
                     duration: brief.duration,
                     addOns: brief.addOns,
                   })
+                }}
+                onGenerateFromSite={({ prompt: sitePrompt, mediaAssetIds, duration }) => {
+                  // The chat already turned "make a video for <site>" into a
+                  // grounded script + the site's own images. Load them and
+                  // generate directly from the Creator tab.
+                  setPrompt(sitePrompt)
+                  if (mediaAssetIds.length > 0) setSelectedMediaIds(mediaAssetIds)
+                  if (duration) setVideoLength([duration])
+                  setActiveTab('create')
+                  toast.success('Generating from the website — watch the progress here.')
+                  void handleGenerate({ prompt: sitePrompt, duration, mediaAssetIds })
                 }}
               />
             </TabsContent>
