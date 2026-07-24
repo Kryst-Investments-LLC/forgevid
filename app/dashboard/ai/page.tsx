@@ -137,6 +137,7 @@ export default function AIFeaturesPage() {
   const [transitionType, setTransitionType] = useState<string>("fade")
   const [activeTab, setActiveTab] = useState<string>("chat")
   const [captionPreset, setCaptionPreset] = useState<string>("default")
+  const [forgeVidEndCard, setForgeVidEndCard] = useState(false)
   const [pipAssetId, setPipAssetId] = useState<string | null>(null)
   const [pipName, setPipName] = useState<string>("")
   const [uploadingPip, setUploadingPip] = useState(false)
@@ -310,6 +311,7 @@ export default function AIFeaturesPage() {
             : {}),
           ...(pipAssetId ? { pip: { assetId: pipAssetId, position: pipPosition } } : {}),
           renderQuality: quality,
+          forgeVidEndCard,
           transition:
             transitionType === "none" ? null : { type: transitionType, duration: 0.5 },
         }),
@@ -617,6 +619,14 @@ export default function AIFeaturesPage() {
                         </select>
                       </div>
                     )}
+
+                    <div className="flex items-center space-x-3 rounded-md border border-gray-700 p-3">
+                      <Checkbox id="forgevid-end-card" checked={forgeVidEndCard} onCheckedChange={(checked) => setForgeVidEndCard(Boolean(checked))} />
+                      <div>
+                        <label htmlFor="forgevid-end-card" className="text-sm font-medium cursor-pointer">Add “Created with ForgeVid” end card</label>
+                        <p className="text-xs text-muted-foreground">Optional two-second bookend. Free-plan watermark rules remain unchanged.</p>
+                      </div>
+                    </div>
 
                     {/* Bring-your-own music — the bundled library ships empty
                         (tracks need a licence), so this is how a soundtrack

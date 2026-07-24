@@ -53,6 +53,7 @@ export default function FeedToVideosPage() {
   const [langEs, setLangEs] = useState(false)
   const [voiceId, setVoiceId] = useState(DEFAULT_VOICE_ID)
   const [captionPreset, setCaptionPreset] = useState<string>("default")
+  const [approvedByUser, setApprovedByUser] = useState(false)
 
   const [previewing, setPreviewing] = useState(false)
   const [preview, setPreview] = useState<{ count: number; items: PreviewItem[] } | null>(null)
@@ -71,7 +72,7 @@ export default function FeedToVideosPage() {
   function loadSample() { setMode("paste"); setPasteText(JSON.stringify(SAMPLES[vertical], null, 2)); setPreview(null) }
 
   function collectBody(extra: Record<string, unknown>): Record<string, unknown> {
-    const body: Record<string, unknown> = { duration, aspectRatio: aspect, voiceId, ...extra }
+    const body: Record<string, unknown> = { duration, aspectRatio: aspect, voiceId, approvedByUser, ...extra }
     if (captionPreset !== "default") body.captionPreset = captionPreset
     if (mode === "url") {
       if (!feedUrl.trim()) throw new Error("Enter a feed URL, or switch to Paste data.")
@@ -237,12 +238,16 @@ export default function FeedToVideosPage() {
             <Button variant="outline" onClick={runPreview} disabled={previewing || generating} className="border-white/15 text-gray-200">
               {previewing ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Checking…</> : <><Eye className="h-4 w-4 mr-2" /> Preview</>}
             </Button>
-            <Button onClick={runGenerate} disabled={generating || previewing || !preview} className="bg-orange-500 hover:bg-orange-600 text-white disabled:opacity-40">
+            <Button onClick={runGenerate} disabled={generating || previewing || !preview || !approvedByUser} className="bg-orange-500 hover:bg-orange-600 text-white disabled:opacity-40">
               {generating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Generating…</> : <>{previewLabel} <ArrowRight className="h-4 w-4 ml-2" /></>}
             </Button>
             {!preview && <span className="text-xs text-gray-500">Preview first to see how many videos you'll create.</span>}
             {langBoth && preview && <span className="text-xs text-gray-400">Each item ×2 (EN + ES) — uses 2× quota.</span>}
           </div>
+          <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-gray-300">
+            <input type="checkbox" className="mt-1" checked={approvedByUser} onChange={(e) => setApprovedByUser(e.target.checked)} />
+            <span>I reviewed the preview and authorize ForgeVid to generate these drafts. ForgeVid will not publish them or message prospects; sharing remains a separate manual action.</span>
+          </label>
         </CardContent>
       </Card>
 

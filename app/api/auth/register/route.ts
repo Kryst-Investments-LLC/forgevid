@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { sendWelcomeEmail } from '@/lib/email'
 import { trackSignUp, identifyUser } from '@/lib/posthog'
 import { isBetaAccessAllowed } from '@/lib/beta-access'
+import { getOrCreateReferralCode } from '@/lib/referral'
 
 // Enterprise-grade registration schema
 const registerSchema = z.object({
@@ -88,6 +89,8 @@ export async function POST(request: NextRequest) {
         createdAt: true,
       }
     })
+
+    await getOrCreateReferralCode(user.id)
 
     // Record the referral, if this sign-up came from a share link (?ref=CODE).
     // Best-effort: a bad/missing code must never fail the registration.

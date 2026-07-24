@@ -111,4 +111,4 @@ ENV HOSTNAME "0.0.0.0"
 
 # Apply migrations and idempotently maintain ForgeVid's built-in template/media
 # catalog before accepting traffic. User-created rows are never deleted.
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node prisma/seed-production.cjs && node server.js"]
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node prisma/seed-production.cjs && (node prisma/growth-lifecycle.cjs &) && exec node server.js"]

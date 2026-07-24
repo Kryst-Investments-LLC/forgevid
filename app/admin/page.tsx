@@ -166,6 +166,7 @@ export default async function AdminOverviewPage() {
                 { href: '/admin/security/sso', label: 'SSO — per-organization sign-on' },
                 { href: '/api/admin/revenue', label: 'Revenue API — full JSON breakdown' },
                 { href: '/api/admin/product-insights', label: 'Product insights API' },
+                { href: '/admin/evidence', label: 'Hackathon evidence — users, activation, costs & revenue' },
               ].map((t) => (
                 <Link
                   key={t.href}

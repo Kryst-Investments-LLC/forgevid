@@ -92,3 +92,6 @@ next-env.d.ts
 /scripts/render-lawquest-batch.ts
 /scripts/render-lawquest-lesson.ts
 /scripts/voice-samples.ts
+
+# Outbound prospect data (business contacts — never commit)
+/outbound/

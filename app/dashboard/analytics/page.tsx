@@ -20,6 +20,12 @@ interface Analytics {
   }
   usage: { plan: string; thisMonth: number; videoLimit: number }
   monthly: { month: string; videos: number }[]
+  value: {
+    completedVideos: number
+    estimatedHoursSaved: number
+    estimatedCostSavedUsd: number
+    assumptions: { minutesPerTraditionalVideo: number; agencyCostPerVideoUsd: number; label: string }
+  }
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) {
@@ -125,6 +131,21 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Estimated business value</CardTitle>
+          <CardDescription>Illustrative savings based on completed videos—not guaranteed results.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-3">
+          <Stat label="Completed videos" value={data.value.completedVideos} />
+          <Stat label="Estimated hours saved" value={data.value.estimatedHoursSaved} />
+          <Stat label="Estimated production cost avoided" value={`$${data.value.estimatedCostSavedUsd.toLocaleString()}`} />
+          <p className="text-xs text-muted-foreground sm:col-span-3">
+            Assumption: {data.value.assumptions.minutesPerTraditionalVideo} minutes and ${data.value.assumptions.agencyCostPerVideoUsd} per conventional video. Adjust this comparison to your workflow.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

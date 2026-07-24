@@ -82,6 +82,12 @@ export type PricingPlan = keyof typeof PRICING_PLANS;
 // existing subscribers, so they require an active paid plan (enforced
 // server-side in the checkout-session route — never trust the client).
 export const CREDIT_PACKS = {
+  PILOT: {
+    id: 'pilot',
+    credits: 5,
+    price: 99,
+    stripePriceId: process.env.STRIPE_PILOT_PRICE_ID,
+  },
   SINGLE: {
     id: 'single',
     credits: 1,

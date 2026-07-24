@@ -24,6 +24,7 @@ import { prisma } from './prisma';
 
 export type CreditReason =
   | 'purchase_single'
+  | 'purchase_pilot'
   | 'purchase_topup10'
   | 'purchase_topup25'
   | 'consume_generation'
@@ -49,7 +50,7 @@ export async function getCreditBalance(userId: string): Promise<number> {
 export interface GrantCreditsArgs {
   userId: string;
   credits: number;
-  reason: Extract<CreditReason, 'purchase_single' | 'purchase_topup10' | 'purchase_topup25'>;
+  reason: Extract<CreditReason, 'purchase_single' | 'purchase_topup10' | 'purchase_topup25' | 'purchase_pilot'>;
   /** Stripe checkout session id — the idempotency key for this grant. */
   stripeSessionId: string;
 }

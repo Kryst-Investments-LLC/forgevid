@@ -1,0 +1,60 @@
+import { prisma } from './prisma'
+
+export const HACKATHON_START = new Date('2026-05-19T17:00:00.000Z')
+
+export async function getHackathonEvidence() {
+  const users = await prisma.user.findMany({
+    where: { createdAt: { gte: HACKATHON_START }, status: { not: 'DELETED' } },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true, email: true, name: true, createdAt: true,
+      videos: { select: { id: true, status: true, createdAt: true, exports: { where: { status: 'COMPLETED' }, select: { id: true } } } },
+      payments: { where: { status: 'SUCCEEDED', createdAt: { gte: HACKATHON_START } }, select: { amount: true, createdAt: true, description: true } },
+      usageRecords: { where: { timestamp: { gte: HACKATHON_START } }, select: { action: true, quantity: true, cost: true, metadata: true, timestamp: true } },
+      aiGenerations: { where: { createdAt: { gte: HACKATHON_START } }, select: { cost: true } },
+    },
+  })
+
+  const rows = users.map((user) => {
+    const completed = user.videos.filter((video) => video.status === 'COMPLETED').length
+    const exports = user.videos.reduce((sum, video) => sum + video.exports.length, 0)
+    const revenue = user.payments.reduce((sum, payment) => sum + Number(payment.amount), 0)
+    const aiCost = user.aiGenerations.reduce((sum, generation) => sum + Number(generation.cost || 0), 0)
+    const testimonial = user.usageRecords.find((event) => event.action === 'testimonial_submitted')
+    let publicTestimonial = false
+    try { publicTestimonial = JSON.parse(testimonial?.metadata || '{}').allowPublicUse === true } catch {}
+    return {
+      userId: user.id,
+      email: user.email,
+      name: user.name || '',
+      registeredAt: user.createdAt,
+      videos: user.videos.length,
+      completed,
+      exports,
+      activated: user.videos.length > 0,
+      repeatUser: user.videos.length > 1,
+      revenue,
+      aiCost,
+      testimonial: Boolean(testimonial),
+      publicTestimonial,
+    }
+  })
+
+  return {
+    generatedAt: new Date(),
+    start: HACKATHON_START,
+    rows,
+    summary: {
+      users: rows.length,
+      activatedUsers: rows.filter((row) => row.activated).length,
+      repeatUsers: rows.filter((row) => row.repeatUser).length,
+      videos: rows.reduce((sum, row) => sum + row.videos, 0),
+      completedVideos: rows.reduce((sum, row) => sum + row.completed, 0),
+      exports: rows.reduce((sum, row) => sum + row.exports, 0),
+      revenueUsd: rows.reduce((sum, row) => sum + row.revenue, 0),
+      aiCostUsd: rows.reduce((sum, row) => sum + row.aiCost, 0),
+      testimonials: rows.filter((row) => row.testimonial).length,
+      publicTestimonials: rows.filter((row) => row.publicTestimonial).length,
+    },
+  }
+}

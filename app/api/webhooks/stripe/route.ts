@@ -7,7 +7,8 @@ import { grantCredits } from '@/lib/credits';
 import type Stripe from 'stripe';
 
 /** Maps a Stripe checkout metadata `pack` id to the CreditLedger reason. */
-const CREDIT_PURCHASE_REASON: Record<string, 'purchase_single' | 'purchase_topup10' | 'purchase_topup25'> = {
+const CREDIT_PURCHASE_REASON: Record<string, 'purchase_single' | 'purchase_topup10' | 'purchase_topup25' | 'purchase_pilot'> = {
+  pilot: 'purchase_pilot',
   single: 'purchase_single',
   topup10: 'purchase_topup10',
   topup25: 'purchase_topup25',

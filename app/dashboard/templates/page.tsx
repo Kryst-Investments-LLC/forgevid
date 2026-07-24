@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Play, Heart, Download, Star, TrendingUp, Zap, Crown } from "lucide-react"
+import { Search, Play, Share2, Languages } from "lucide-react"
 import { VideoPlayerModal } from "@/components/video-player-modal"
 import { useState, useEffect } from "react"
 import { useSubscription } from "@/hooks/use-subscription-simple"
@@ -103,6 +103,45 @@ export default function TemplatesPage() {
     }
   };
 
+  const shareTemplate = async (template: any) => {
+    const url = `${window.location.origin}/samples/${encodeURIComponent(template.id)}`
+    try {
+      await navigator.clipboard.writeText(url)
+      alert("Shareable template link copied.")
+    } catch {
+      alert(url)
+    }
+  }
+
+  const generateBilingual = async (template: any) => {
+    if (!confirm(`Create English and Spanish variations of "${template.name}"? This uses two video credits. Nothing will be published automatically.`)) return
+    const prompt = `${template.name}: ${template.description ?? ''}`.trim()
+    const base = {
+      action: 'generate_video',
+      prompt,
+      style: 'modern',
+      duration: Math.min(60, Math.max(10, Number(template.duration) || 30)),
+      aspectRatio: template.aspectRatio || '9:16',
+      captionPreset: 'karaoke',
+    }
+    const responses = await Promise.all(
+      (['en', 'es'] as const).map((language) =>
+        fetch('/api/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...base, language }),
+        }),
+      ),
+    )
+    const results = await Promise.all(responses.map((response) => response.json().catch(() => ({}))))
+    const failure = responses.findIndex((response) => !response.ok)
+    if (failure >= 0) {
+      alert(results[failure]?.error || 'One of the bilingual variations could not be started.')
+      return
+    }
+    window.location.href = '/dashboard/videos'
+  }
+
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -199,6 +238,13 @@ export default function TemplatesPage() {
                       >
                         Generate with AI
                       </Button>
+                      <Button onClick={() => generateBilingual(template)} variant="outline" size="sm">
+                        <Languages className="h-4 w-4 mr-2" />
+                        EN + ES
+                      </Button>
+                      <Button onClick={() => shareTemplate(template)} variant="ghost" size="sm" aria-label={`Share ${template.name}`}>
+                        <Share2 className="h-4 w-4" />
+                      </Button>
                       <Button
                         onClick={() => handleUseTemplate(template)}
                         className="bg-gradient-to-r from-indigo-500 to-cyan-400 text-white font-semibold px-4 py-2 rounded-lg shadow hover:from-indigo-600 hover:to-cyan-500"
@@ -231,4 +277,3 @@ export default function TemplatesPage() {
     </div>
   );
 }
-

@@ -47,6 +47,7 @@ const bodySchema = z
     captionPreset: z.enum(['default', 'large', 'subtle', 'karaoke']).optional(),
     // Parse + count only; don't render or touch quota.
     preview: z.boolean().optional(),
+    approvedByUser: z.boolean().default(false),
   })
   .refine((b) => Boolean(b.feedUrl) !== Boolean(b.products), {
     message: 'Provide either `feedUrl` or `products`, not both',
@@ -105,6 +106,9 @@ export async function POST(req: NextRequest) {
       count: products.length,
       items: products.map((p) => ({ ref: p.ref, label: p.title, photos: p.photos.length })),
     });
+  }
+  if (!parsed.data.approvedByUser) {
+    return NextResponse.json({ error: 'Review the preview and explicitly approve generation first.' }, { status: 400 })
   }
 
   const resolvedVoiceId = await resolveVoiceIdForUser(userId, voiceId);

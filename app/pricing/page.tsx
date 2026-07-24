@@ -50,7 +50,7 @@ export default function PricingPage() {
   // One-time credit purchases (Single video / top-up packs) — same checkout
   // endpoint, `{type:'credits', pack}` body. Top-ups are subscriber-only and the
   // server enforces it (403); surface that nicely instead of a dead end.
-  const handleCreditPurchase = async (pack: 'single' | 'topup10' | 'topup25') => {
+  const handleCreditPurchase = async (pack: 'pilot' | 'single' | 'topup10' | 'topup25') => {
     if (!session) {
       router.push('/auth/signin');
       return;
@@ -125,6 +125,30 @@ export default function PricingPage() {
             Buy one video with no subscription, or pick a plan. Every video is yours to
             download and post anywhere — TikTok, Reels, Shorts, YouTube, your site.
           </p>
+        </div>
+
+        {/* ── Founding pilot: direct acquisition offer ───────────────────── */}
+        <div className="max-w-3xl mx-auto mb-8">
+          <div className="relative bg-gradient-to-r from-cyan-50 to-white rounded-2xl shadow-2xl p-8 ring-2 ring-cyan-400">
+            <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+              <span className="bg-cyan-600 text-white px-4 py-2 rounded-full text-sm font-semibold">Founding customer pilot</span>
+            </div>
+            <div className="md:flex items-center justify-between gap-8">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-1">5-Video Business Pilot</h3>
+                <div className="text-4xl font-bold text-gray-900 mb-2">${CREDIT_PACKS.PILOT.price}<span className="text-lg text-gray-500"> one-time</span></div>
+                <ul className="text-gray-700 space-y-1">
+                  <li className="flex items-start"><Check className="h-5 w-5 text-green-500 mr-2 mt-0.5" />5 finished videos with no subscription</li>
+                  <li className="flex items-start"><Check className="h-5 w-5 text-green-500 mr-2 mt-0.5" />Inventory-feed and English/Spanish workflows included</li>
+                  <li className="flex items-start"><Check className="h-5 w-5 text-green-500 mr-2 mt-0.5" />You review every result before sharing or publishing</li>
+                </ul>
+              </div>
+              <button onClick={() => handleCreditPurchase('pilot')} disabled={loading === 'pilot'}
+                className="mt-5 md:mt-0 w-full md:w-auto py-3 px-8 rounded-lg font-semibold bg-cyan-600 hover:bg-cyan-700 text-white disabled:opacity-50">
+                {loading === 'pilot' ? 'Processing…' : 'Start $99 pilot'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* ── Single video: the no-subscription wedge ─────────────────────── */}

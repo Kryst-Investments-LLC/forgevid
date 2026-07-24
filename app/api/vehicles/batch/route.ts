@@ -53,6 +53,7 @@ const bodySchema = z
     languages: z.array(z.enum(['en', 'es'])).min(1).max(2).default(['en']),
     // Parse + count only; don't render or touch quota.
     preview: z.boolean().optional(),
+    approvedByUser: z.boolean().default(false),
   })
   .refine((b) => Boolean(b.feedUrl) !== Boolean(b.vehicles), {
     message: 'Provide either `feedUrl` or `vehicles`, not both',
@@ -112,6 +113,9 @@ export async function POST(req: NextRequest) {
       count: vehicles.length,
       items: vehicles.map((v) => ({ ref: v.ref, label: v.title, photos: v.photos.length })),
     });
+  }
+  if (!parsed.data.approvedByUser) {
+    return NextResponse.json({ error: 'Review the preview and explicitly approve generation first.' }, { status: 400 })
   }
 
   const resolvedVoiceId = await resolveVoiceIdForUser(userId, voiceId);

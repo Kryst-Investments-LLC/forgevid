@@ -46,6 +46,8 @@ export async function GET() {
 
     const videoLimit = PLAN_QUOTAS[plan]?.videosPerMonth ?? PLAN_QUOTAS.free.videosPerMonth;
     const totalSeconds = durationAgg._sum.duration ?? 0;
+    const estimatedMinutesSaved = completed * 120;
+    const estimatedCostSavedUsd = completed * 500;
 
     return NextResponse.json({
       summary: {
@@ -59,6 +61,17 @@ export async function GET() {
         avgSeconds: Math.round(durationAgg._avg.duration ?? 0),
       },
       usage: { plan, thisMonth, videoLimit },
+      value: {
+        completedVideos: completed,
+        estimatedMinutesSaved,
+        estimatedHoursSaved: Math.round((estimatedMinutesSaved / 60) * 10) / 10,
+        estimatedCostSavedUsd,
+        assumptions: {
+          minutesPerTraditionalVideo: 120,
+          agencyCostPerVideoUsd: 500,
+          label: 'Illustrative estimate based on configurable workflow assumptions',
+        },
+      },
       monthly: monthRanges.map((r, i) => ({ month: r.label, videos: monthlyCounts[i] })),
     });
   } catch (error) {

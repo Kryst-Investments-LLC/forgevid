@@ -10,6 +10,7 @@ import { prisma } from './prisma'
 import { verifyMfaToken } from './mfa'
 import { getActiveSsoConfigurations, getGlobalSsoConfiguration } from './sso'
 import { isBetaAccessAllowed } from './beta-access'
+import { getOrCreateReferralCode } from './referral'
 
 type AnyProvider = ReturnType<typeof CredentialsProvider>
 
@@ -236,6 +237,9 @@ export const authOptions: NextAuthOptions = {
       user.id = provisionedUser.id
       user.role = provisionedUser.role
       ;(user as any).organizationId = provisionedUser.organizationId
+      getOrCreateReferralCode(provisionedUser.id).catch((error) =>
+        console.error('[Referral] Failed to provision SSO referral code:', error),
+      )
       return true
     },
     async jwt({ token, user, trigger, session }) {

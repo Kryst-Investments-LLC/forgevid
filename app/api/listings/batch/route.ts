@@ -61,6 +61,7 @@ const bodySchema = z
     captionPreset: z.enum(['default', 'large', 'subtle', 'karaoke']).optional(),
     // Parse + count only; don't render or touch quota.
     preview: z.boolean().optional(),
+    approvedByUser: z.boolean().default(false),
   })
   .refine(
     (b) => [b.csv, b.listings, b.feedUrl].filter(Boolean).length === 1,
@@ -135,6 +136,9 @@ export async function POST(req: NextRequest) {
       count: listings.length,
       items: listings.map((l) => ({ ref: l.ref, label: l.address, photos: l.photos.length })),
     });
+  }
+  if (!parsed.data.approvedByUser) {
+    return NextResponse.json({ error: 'Review the preview and explicitly approve generation first.' }, { status: 400 })
   }
 
   // Resolve the voice once — it is the same narrator for the whole batch.

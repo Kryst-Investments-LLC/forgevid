@@ -278,6 +278,8 @@ export interface GenerationOptions {
    * word-by-word highlight captions (Reels/TikTok style).
    */
   captionPreset?: CaptionPresetName;
+  /** Append a two-second "Created with ForgeVid" bookend. */
+  forgeVidEndCard?: boolean;
   /** Presenter picture-in-picture overlay (see AssembleOptions.pip). */
   pip?: { url: string; position?: LogoPosition; widthFraction?: number } | null;
   /**
@@ -1010,6 +1012,8 @@ export interface AssembleOptions {
    * audio via narrationAssetId). Plays once, then yields to the main picture.
    */
   pip?: { url: string; position?: LogoPosition; widthFraction?: number } | null;
+  /** Append a two-second "Created with ForgeVid" bookend. */
+  forgeVidEndCard?: boolean;
 }
 
 export interface AssembleResult {
@@ -1302,6 +1306,30 @@ export async function assembleVideo(
         trimmed.push(outro);
       } catch (error) {
         console.error('[Video Generator] Outro failed, skipping (non-fatal):', error);
+      }
+    }
+    if (options.forgeVidEndCard) {
+      try {
+        const endCard = path.join(tempDir, `forgevid_endcard_${Date.now()}.mp4`);
+        const fontSize = Math.max(28, Math.round(outW / 22));
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg()
+            .input(`color=c=0x0f172a:s=${outW}x${outH}:d=2:r=30`)
+            .inputFormat('lavfi')
+            .videoFilters([
+              `drawtext=text='Created with ForgeVid':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=(h-text_h)/2`,
+            ])
+            .outputOptions(['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-an'])
+            .output(endCard)
+            .on('end', () => resolve())
+            .on('error', (error: Error) => reject(error))
+            .run();
+        });
+        tempFiles.push(endCard);
+        trimmed.push(endCard);
+        outroDuration += 2;
+      } catch (error) {
+        console.error('[Video Generator] ForgeVid end card failed, skipping (non-fatal):', error);
       }
     }
 
@@ -1684,6 +1712,7 @@ export async function generateVideoWithScenes(
     voiceoverPath: options.voiceoverPath ?? null,
     lowerThird: options.lowerThird ?? null,
     pip: options.pip ?? null,
+    forgeVidEndCard: options.forgeVidEndCard,
     ...(options.captionPreset
       ? {
           captionStyle: CAPTION_PRESETS[options.captionPreset],

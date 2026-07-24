@@ -194,6 +194,8 @@ export interface GenerationInput {
   narrationAssetId?: string;
   /** Caption look; 'karaoke' = word-by-word highlight (Reels/TikTok style). */
   captionPreset?: import('./captions').CaptionPresetName;
+  /** Optional two-second ForgeVid bookend. Free watermark remains independent. */
+  forgeVidEndCard?: boolean;
   /**
    * Presenter picture-in-picture: a VIDEO MediaAsset id overlaid in a corner
    * over the whole video, muted (the voice belongs to the narration track).
@@ -412,6 +414,7 @@ export async function runGeneration(videoId: string, input: GenerationInput): Pr
       ctaNarration: input.ctaNarration,
       userMedia: await userMediaForVideo(videoId, input.mediaAssetIds),
       renderQuality: input.renderQuality,
+      forgeVidEndCard: input.forgeVidEndCard,
     });
     ledgerScenes = scenes;
 

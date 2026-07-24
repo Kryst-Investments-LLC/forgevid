@@ -89,6 +89,7 @@ const generateVideoSchema = z.object({
   musicAssetId: z.string().optional(),
   // Caption look; 'karaoke' = word-by-word highlight (Reels/TikTok style).
   captionPreset: z.enum(['default', 'large', 'subtle', 'karaoke']).optional(),
+  forgeVidEndCard: z.boolean().default(false),
   // Presenter picture-in-picture: a VIDEO MediaAsset overlaid in a corner,
   // muted — pair with narrationAssetId for the presenter's voice.
   pip: z
@@ -200,6 +201,7 @@ async function handleGenerateVideo(body: any, userId: string) {
             narrationAssetId: input.narrationAssetId,
             musicAssetId: input.musicAssetId,
             captionPreset: input.captionPreset,
+            forgeVidEndCard: input.forgeVidEndCard,
             pip: input.pip ?? null,
             mediaOnly: input.mediaOnly,
             lowerThird: input.lowerThird ?? null,
