@@ -141,7 +141,7 @@ export default function AIFeaturesPage() {
   const [pipName, setPipName] = useState<string>("")
   const [uploadingPip, setUploadingPip] = useState(false)
   const [pipPosition, setPipPosition] = useState<string>("bottom-right")
-  const [language, setLanguage] = useState<"en" | "es">("en")
+  const [language, setLanguage] = useState<"en" | "es" | "fr" | "de" | "it" | "pt">("en")
   // Voiceover + subtitles on by default: a marketing video is expected to talk
   // and caption, and this makes the narration voice picker visible immediately
   // (it lives under the AI Voiceover add-on) instead of hidden until ticked.
@@ -271,7 +271,7 @@ export default function AIFeaturesPage() {
     duration?: number
     addOns?: string[]
     mediaAssetIds?: string[]
-    language?: "en" | "es"
+    language?: "en" | "es" | "fr" | "de" | "it" | "pt"
   }) => {
     const effPrompt = overrides?.prompt ?? prompt
     const effStyle = overrides?.style ?? selectedStyle
@@ -546,29 +546,21 @@ export default function AIFeaturesPage() {
                     </div>
 
                     {/* Narration language — the spoken words + captions. The
-                        multilingual voices speak either language natively. */}
+                        multilingual voices speak all of these natively. */}
                     <div className="space-y-3">
                       <label className="text-sm font-medium">Narration language</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { id: "en" as const, name: "English", flag: "🇺🇸" },
-                          { id: "es" as const, name: "Español", flag: "🇪🇸" },
-                        ].map((lang) => (
-                          <Button
-                            key={lang.id}
-                            variant="outline"
-                            className={`h-auto p-3 flex items-center gap-2 transition-all ${
-                              language === lang.id
-                                ? 'border-cyan-400 bg-cyan-400/10 text-white'
-                                : 'border-gray-600 bg-gray-800/50 text-gray-300 hover:border-gray-500 hover:bg-gray-700/50'
-                            }`}
-                            onClick={() => setLanguage(lang.id)}
-                          >
-                            <span>{lang.flag}</span>
-                            <span className="font-medium">{lang.name}</span>
-                          </Button>
-                        ))}
-                      </div>
+                      <select
+                        value={language}
+                        onChange={(e) => setLanguage(e.target.value as typeof language)}
+                        className="w-full rounded-md border border-gray-600 bg-gray-800/50 p-2 text-sm text-gray-200"
+                      >
+                        <option value="en">🇺🇸 English</option>
+                        <option value="es">🇪🇸 Español (Spanish)</option>
+                        <option value="fr">🇫🇷 Français (French)</option>
+                        <option value="de">🇩🇪 Deutsch (German)</option>
+                        <option value="it">🇮🇹 Italiano (Italian)</option>
+                        <option value="pt">🇧🇷 Português (Portuguese)</option>
+                      </select>
                     </div>
 
                     {/* Your own footage/photos — they fill scenes in order */}

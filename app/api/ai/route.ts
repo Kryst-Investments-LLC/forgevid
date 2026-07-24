@@ -73,9 +73,10 @@ const generateVideoSchema = z.object({
   duration: z.number().int().min(3).max(600).default(60),
   addOns: z.array(z.string()).optional(),
   aspectRatio: z.enum(['16:9', '9:16', '1:1']).default('16:9'),
-  // Narration + caption language. 'es' writes the spoken text in Spanish; stock
-  // search stays English. The multilingual voices speak either natively.
-  language: z.enum(['en', 'es']).optional(),
+  // Narration + caption language (Latin-script set the caption font renders).
+  // Writes the spoken text in that language; stock search stays English. The
+  // multilingual voices speak all of these natively.
+  language: z.enum(['en', 'es', 'fr', 'de', 'it', 'pt']).optional(),
   voiceId: z.string().optional(),
   // The user's own MediaAsset ids, in scene order. Ownership is checked
   // server-side; urls are never accepted from the client.

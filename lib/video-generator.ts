@@ -231,7 +231,21 @@ function fitFilterFor(width: number, height: number): string {
  * search always stays English (libraries index English); only what is heard and
  * shown changes. Defaults to English.
  */
-export type NarrationLanguage = 'en' | 'es';
+// Latin-script languages only: the multilingual voices speak far more, but
+// burned-in captions use the DejaVu font, which lacks CJK/Devanagari glyphs —
+// so zh/ja/ko/hi would render captions as boxes. Those need a font pack (Noto)
+// before they can be offered end-to-end.
+export type NarrationLanguage = 'en' | 'es' | 'fr' | 'de' | 'it' | 'pt';
+
+/** Language names the scriptwriter is told to write narration in. */
+export const NARRATION_LANGUAGE_NAMES: Record<NarrationLanguage, string> = {
+  en: 'English',
+  es: 'Latin-American Spanish',
+  fr: 'French',
+  de: 'German',
+  it: 'Italian',
+  pt: 'Brazilian Portuguese',
+};
 
 export interface GenerationOptions {
   prompt: string;
@@ -672,8 +686,8 @@ export async function planScenes(
   // Only the spoken/shown text changes language. searchQuery + keywords stay
   // English because they are sent verbatim to a stock library that indexes it.
   const languageRule =
-    language === 'es'
-      ? `\n\nOUTPUT LANGUAGE — write EVERY "narration" value in natural, fluent Latin-American Spanish. Keep "searchQuery" and "keywords" in English (they are sent verbatim to a stock-footage library that indexes English). "description" may stay English; it is never shown or spoken.`
+    language !== 'en'
+      ? `\n\nOUTPUT LANGUAGE — write EVERY "narration" value in natural, fluent ${NARRATION_LANGUAGE_NAMES[language]}. Keep "searchQuery" and "keywords" in English (they are sent verbatim to a stock-footage library that indexes English). "description" may stay English; it is never shown or spoken.`
       : '';
 
   const withIds = (raw: any[]): PlannedScene[] =>
