@@ -95,3 +95,6 @@ next-env.d.ts
 
 # Outbound prospect data (business contacts — never commit)
 /outbound/
+
+# Daily marketing renders (personal posting queue, kept on disk, out of git)
+/marketing-out/
