@@ -44,7 +44,7 @@ const listingSchema = z.object({
   address: z.string().min(1).max(300),
   price: z.string().max(60).optional(),
   beds: z.number().int().min(0).max(50).optional(),
-  baths: z.number().int().min(0).max(50).optional(),
+  baths: z.number().min(0).max(50).optional(),
   highlights: z.string().max(1000).optional(),
   photos: z.array(z.string().min(4)).min(1).max(MAX_PHOTOS_PER_LISTING),
 });

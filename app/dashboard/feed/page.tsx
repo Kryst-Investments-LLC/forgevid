@@ -9,10 +9,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { VOICES, DEFAULT_VOICE_ID } from "@/lib/voice-catalog"
 import { VoicePreviewButton } from "@/components/voice-preview-button"
-import { Car, Home, ShoppingBag, Loader2, ArrowRight, CheckCircle2, AlertCircle, Rss, Eye, Clock } from "lucide-react"
+import { Car, Home, ShoppingBag, Loader2, ArrowRight, CheckCircle2, AlertCircle, Rss, Eye, Clock, Upload, FileImage } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type VerticalKey = "automotive" | "realestate" | "ecommerce"
+type ImportMode = "feed" | "single" | "screenshots"
 
 const SAMPLES: Record<VerticalKey, unknown[]> = {
   automotive: [
@@ -47,6 +48,34 @@ function realEstatePageHost(raw: string): string | null {
   }
 }
 
+function wordsFromSlug(raw: string): string {
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+    const useful = url.pathname.split("/").filter(Boolean)
+      .find((part) => /\d/.test(part) && /[-_]/.test(part))
+    if (!useful) return ""
+    return decodeURIComponent(useful)
+      .replace(/[-_]+/g, " ")
+      .replace(/\bM\d{5,}\b.*$/i, "")
+      .replace(/\b(unit|apt)\s+(\d+)/i, "Unit $2")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+  } catch {
+    return ""
+  }
+}
+
+function isProbablyItemPage(raw: string): boolean {
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+    return !/\.(json|xml|csv)(?:$|\?)/i.test(url.pathname) &&
+      !/(feed|api|inventory-feed|reso)/i.test(url.pathname)
+  } catch {
+    return false
+  }
+}
+
 interface PreviewItem { ref: string; label: string; photos: number }
 interface BatchResult { ref: string; label: string; language?: string; videoId?: string; photosUsed?: number; error?: string }
 interface BatchResponse { started: number; failed: number; message?: string; results: BatchResult[] }
@@ -54,9 +83,23 @@ interface JobStatus { status: string; percent: number; thumbnail?: string | null
 
 export default function FeedToVideosPage() {
   const [vertical, setVertical] = useState<VerticalKey>("automotive")
-  const [mode, setMode] = useState<"url" | "paste">("paste")
+  const [mode, setMode] = useState<ImportMode>("feed")
+  const [feedKind, setFeedKind] = useState<"url" | "paste">("url")
   const [feedUrl, setFeedUrl] = useState("")
   const [pasteText, setPasteText] = useState("")
+  const [sourceUrl, setSourceUrl] = useState("")
+  const [itemTitle, setItemTitle] = useState("")
+  const [price, setPrice] = useState("")
+  const [beds, setBeds] = useState("")
+  const [baths, setBaths] = useState("")
+  const [mileage, setMileage] = useState("")
+  const [highlights, setHighlights] = useState("")
+  const [contact, setContact] = useState("")
+  const [photoUrls, setPhotoUrls] = useState("")
+  const [uploadedUrls, setUploadedUrls] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [extracting, setExtracting] = useState(false)
+  const [inlineNotice, setInlineNotice] = useState<string | null>(null)
   const [aspect, setAspect] = useState("16:9")
   const [duration, setDuration] = useState(16)
   const [langEn, setLangEn] = useState(true)
@@ -79,13 +122,25 @@ export default function FeedToVideosPage() {
 
   function resetOutputs() { setPreview(null); setResult(null); setJobs({}); setError(null); if (pollRef.current) clearTimeout(pollRef.current) }
   function selectVertical(v: VerticalKey) { setVertical(v); setAspect(VERTICALS[v].defaultAspect); setPasteText(""); resetOutputs() }
-  function loadSample() { setMode("paste"); setPasteText(JSON.stringify(SAMPLES[vertical], null, 2)); setPreview(null) }
+  function loadSample() { setMode("feed"); setFeedKind("paste"); setPasteText(JSON.stringify(SAMPLES[vertical], null, 2)); setPreview(null) }
+
+  function singleItem() {
+    const photos = [...uploadedUrls, ...photoUrls.split(/\r?\n|,/).map((url) => url.trim()).filter(Boolean)]
+    if (!itemTitle.trim()) throw new Error(vertical === "realestate" ? "Enter the property address." : "Enter a title.")
+    if (photos.length === 0) throw new Error("Upload at least one authorized photo or add an authorized photo URL.")
+    const note = [highlights.trim(), contact.trim() && `Contact: ${contact.trim()}`, sourceUrl.trim() && `Source reference: ${sourceUrl.trim()}`].filter(Boolean).join("\n")
+    if (vertical === "realestate") return { ref: "manual-listing", address: itemTitle.trim(), price: price.trim() || undefined, beds: beds ? Number(beds) : undefined, baths: baths ? Number(baths) : undefined, highlights: note || undefined, photos }
+    if (vertical === "automotive") return { ref: "manual-vehicle", title: itemTitle.trim(), price: price.trim() || undefined, mileage: mileage.trim() || undefined, highlights: note || undefined, photos }
+    return { ref: "manual-product", title: itemTitle.trim(), price: price.trim() || undefined, description: note || undefined, photos }
+  }
 
   function collectBody(extra: Record<string, unknown>): Record<string, unknown> {
     const body: Record<string, unknown> = { duration, aspectRatio: aspect, voiceId, approvedByUser, ...extra }
     if (captionPreset !== "default") body.captionPreset = captionPreset
-    if (mode === "url") {
-      if (!feedUrl.trim()) throw new Error("Enter a feed URL, or switch to Paste data.")
+    if (mode === "single" || mode === "screenshots") {
+      body[cfg.arrayField] = [singleItem()]
+    } else if (feedKind === "url") {
+      if (!feedUrl.trim()) throw new Error("Enter an MLS/CRM feed URL, or switch to Paste data.")
       body.feedUrl = feedUrl.trim()
     } else {
       let arr: unknown
@@ -111,18 +166,69 @@ export default function FeedToVideosPage() {
   async function runPreview() {
     resetOutputs(); setPreviewing(true)
     try {
-      const propertyHost = mode === "url" ? realEstatePageHost(feedUrl) : null
-      if (propertyHost && vertical !== "realestate") {
-        setVertical("realestate")
-        setAspect(VERTICALS.realestate.defaultAspect)
-        throw new Error(`ForgeVid switched this property URL to Real estate. ${propertyHost} blocks automated page imports; use an authorized MLS feed or Paste data with property details and photo URLs.`)
-      }
-      if (propertyHost) {
-        throw new Error(`${propertyHost} blocks automated page imports. ForgeVid will not bypass its access controls. Use an authorized MLS/RESO feed or Paste data with property details and photo URLs.`)
-      }
       const data = await post(collectBody({ preview: true }))
       setPreview({ count: data.count ?? 0, items: data.items ?? [] })
     } catch (e) { setError(e instanceof Error ? e.message : "Something went wrong.") } finally { setPreviewing(false) }
+  }
+
+  async function uploadFiles(files: FileList | File[], extract = false) {
+    const selected = Array.from(files)
+    if (selected.length === 0) return
+    setError(null)
+    if (extract) {
+      setExtracting(true)
+      try {
+        const extractBody = new FormData()
+        extractBody.set("vertical", vertical)
+        selected.slice(0, 3).forEach((file) => extractBody.append("files", file))
+        const response = await fetch("/api/listings/extract-screenshot", { method: "POST", body: extractBody })
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data.error || "Could not read those screenshots.")
+        setItemTitle(data.address || data.title || itemTitle)
+        setPrice(data.price || "")
+        setBeds(data.beds == null ? "" : String(data.beds))
+        setBaths(data.baths == null ? "" : String(data.baths))
+        setMileage(data.mileage || "")
+        setHighlights(data.highlights || data.description || "")
+        setInlineNotice("AI extracted the visible details. Review every field before previewing; ForgeVid may be wrong.")
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not read those screenshots.")
+      } finally {
+        setExtracting(false)
+      }
+    }
+    setUploading(true)
+    try {
+      const body = new FormData()
+      selected.forEach((file) => body.append("files", file))
+      const response = await fetch("/api/media/upload", { method: "POST", body })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || "Photo upload failed.")
+      setUploadedUrls((current) => [...current, ...(data.assets || []).map((asset: { url: string }) => asset.url)])
+      setMode(extract ? "screenshots" : "single")
+      setPreview(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Photo upload failed.")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function handleFeedUrl(value: string) {
+    setFeedUrl(value)
+    const propertyHost = realEstatePageHost(value)
+    if (propertyHost) {
+      setVertical("realestate")
+      setAspect(VERTICALS.realestate.defaultAspect)
+    }
+    if (isProbablyItemPage(value)) {
+      const nextVertical = propertyHost ? "realestate" : vertical
+      setMode("single")
+      setSourceUrl(value)
+      setItemTitle(wordsFromSlug(value))
+      setInlineNotice(`${propertyHost || "This site"} does not provide an authorized inventory feed at that URL. We prefilled what can be read safely from the URL—add details and photos you are authorized to use.`)
+    }
+    setPreview(null)
   }
 
   async function runGenerate() {
@@ -184,40 +290,87 @@ export default function FeedToVideosPage() {
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-200">2. Your feed</label>
-              <div className="flex gap-2">
-                <button onClick={() => { setMode("url"); setPreview(null) }} className={toggle(mode === "url")}>Feed URL</button>
-                <button onClick={() => { setMode("paste"); setPreview(null) }} className={toggle(mode === "paste")}>Paste data</button>
-              </div>
+            <label className="text-sm font-medium text-gray-200">2. Choose how to import</label>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <button onClick={() => { setMode("feed"); setInlineNotice(null); setPreview(null) }} className={toggle(mode === "feed")}>MLS/CRM feed</button>
+              <button onClick={() => { setMode("single"); setInlineNotice(null); setPreview(null) }} className={toggle(mode === "single")}>
+                {vertical === "realestate" ? "Single listing" : vertical === "automotive" ? "Single vehicle" : "Single product"}
+              </button>
+              <button onClick={() => { setMode("screenshots"); setInlineNotice(null); setPreview(null) }} className={toggle(mode === "screenshots")}>Import screenshots</button>
             </div>
 
-            {mode === "url" ? (
-              <Input value={feedUrl} onChange={(e) => {
-                const value = e.target.value
-                setFeedUrl(value)
-                if (realEstatePageHost(value) && vertical !== "realestate") {
-                  setVertical("realestate")
-                  setAspect(VERTICALS.realestate.defaultAspect)
-                }
-                setPreview(null)
-              }}
-                placeholder="https://your-dms.com/inventory-feed.json"
-                className="bg-black/30 border-white/10 text-white placeholder:text-gray-500" />
-            ) : (
+            {mode === "feed" && (
               <div className="space-y-2">
-                <Textarea value={pasteText} onChange={(e) => { setPasteText(e.target.value); setPreview(null) }}
-                  placeholder='Paste a JSON array of items, or click "Load sample".' rows={7}
-                  className="bg-black/30 border-white/10 text-white placeholder:text-gray-500 font-mono text-xs" />
-                <Button variant="outline" size="sm" onClick={loadSample} className="border-white/15 text-gray-200">
-                  Load sample ({cfg.label.toLowerCase()})
-                </Button>
+                <div className="flex gap-2">
+                  <button onClick={() => setFeedKind("url")} className={toggle(feedKind === "url")}>Feed URL</button>
+                  <button onClick={() => setFeedKind("paste")} className={toggle(feedKind === "paste")}>Paste data</button>
+                </div>
+                {feedKind === "url" ? (
+                  <Input value={feedUrl} onChange={(e) => handleFeedUrl(e.target.value)}
+                    placeholder="https://your-mls-or-crm.com/authorized-feed.json"
+                    className="bg-black/30 border-white/10 text-white placeholder:text-gray-500" />
+                ) : (
+                  <>
+                    <Textarea value={pasteText} onChange={(e) => { setPasteText(e.target.value); setPreview(null) }}
+                      placeholder='Paste a JSON array of items, or click "Load sample".' rows={7}
+                      className="bg-black/30 border-white/10 text-white placeholder:text-gray-500 font-mono text-xs" />
+                    <Button variant="outline" size="sm" onClick={loadSample} className="border-white/15 text-gray-200">
+                      Load sample ({cfg.label.toLowerCase()})
+                    </Button>
+                  </>
+                )}
+                <p className="text-xs text-amber-400/80">For authorized JSON/XML/CSV inventory feeds—not public detail pages. Local and private-network URLs are blocked for security.</p>
+              </div>
+            )}
+
+            {(mode === "single" || mode === "screenshots") && (
+              <div className="space-y-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                {mode === "screenshots" && (
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-orange-400/50 bg-orange-500/5 p-6 text-center">
+                    {extracting ? <Loader2 className="mb-2 h-7 w-7 animate-spin text-orange-400" /> : <FileImage className="mb-2 h-7 w-7 text-orange-400" />}
+                    <span className="font-medium text-white">{extracting ? "Reading screenshots…" : "Upload screenshots or a property flyer"}</span>
+                    <span className="mt-1 text-xs text-gray-400">Up to 3 JPG, PNG, or WebP images. AI suggests fields; you review them.</span>
+                    <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" multiple
+                      disabled={extracting || uploading} onChange={(e) => e.target.files && uploadFiles(e.target.files, true)} />
+                  </label>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs text-gray-400">{vertical === "realestate" ? "Property address" : "Title"} *</label>
+                    <Input value={itemTitle} onChange={(e) => { setItemTitle(e.target.value); setPreview(null) }}
+                      placeholder={vertical === "realestate" ? "1925 Jadd St, Belton, TX 76513" : "2019 Chevrolet Silverado 1500"}
+                      className="bg-black/30 border-white/10 text-white" />
+                  </div>
+                  <div><label className="mb-1 block text-xs text-gray-400">Price</label><Input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="$425,000" className="bg-black/30 border-white/10 text-white" /></div>
+                  {vertical === "realestate" ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><label className="mb-1 block text-xs text-gray-400">Beds</label><Input type="number" min="0" value={beds} onChange={(e) => setBeds(e.target.value)} className="bg-black/30 border-white/10 text-white" /></div>
+                      <div><label className="mb-1 block text-xs text-gray-400">Baths</label><Input type="number" min="0" step="0.5" value={baths} onChange={(e) => setBaths(e.target.value)} className="bg-black/30 border-white/10 text-white" /></div>
+                    </div>
+                  ) : vertical === "automotive" ? (
+                    <div><label className="mb-1 block text-xs text-gray-400">Mileage</label><Input value={mileage} onChange={(e) => setMileage(e.target.value)} placeholder="62,000 mi" className="bg-black/30 border-white/10 text-white" /></div>
+                  ) : null}
+                  <div className="sm:col-span-2"><label className="mb-1 block text-xs text-gray-400">Description and highlights</label><Textarea rows={3} value={highlights} onChange={(e) => setHighlights(e.target.value)} className="bg-black/30 border-white/10 text-white" /></div>
+                  <div><label className="mb-1 block text-xs text-gray-400">Agent / seller contact</label><Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Name · phone · email" className="bg-black/30 border-white/10 text-white" /></div>
+                  <div><label className="mb-1 block text-xs text-gray-400">Original page (reference only)</label><Input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="https://…" className="bg-black/30 border-white/10 text-white" /></div>
+                  <div className="sm:col-span-2"><label className="mb-1 block text-xs text-gray-400">Authorized photo URLs (one per line)</label><Textarea rows={3} value={photoUrls} onChange={(e) => setPhotoUrls(e.target.value)} placeholder="https://your-cdn.com/photo-1.jpg" className="bg-black/30 border-white/10 text-white font-mono text-xs" /></div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="inline-flex cursor-pointer items-center rounded-lg border border-white/15 px-3 py-2 text-sm text-gray-200 hover:bg-white/10">
+                    {uploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                    Upload authorized photos
+                    <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple
+                      disabled={uploading} onChange={(e) => e.target.files && uploadFiles(e.target.files)} />
+                  </label>
+                  <span className="text-xs text-gray-400">{uploadedUrls.length} uploaded photo{uploadedUrls.length === 1 ? "" : "s"}</span>
+                </div>
+                {inlineNotice && <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-200">{inlineNotice}</div>}
+                <p className="text-xs text-gray-500">Only upload content you own or are authorized to use. The original URL is stored as a reference; ForgeVid does not scrape blocked platforms.</p>
               </div>
             )}
             <p className="text-xs text-gray-500">{cfg.hint}</p>
-            {mode === "url" && (
-              <p className="text-xs text-amber-400/80">Use a JSON/XML/CSV inventory feed URL. Public listing pages may block automated imports; ForgeVid never bypasses platform access controls. Local URLs are blocked for security.</p>
-            )}
           </div>
 
           <div className="flex flex-wrap gap-6">
