@@ -78,19 +78,37 @@ export interface CaptionWord {
  */
 export function normalizeSpokenUrls(cues: CaptionCue[]): void {
   const TEXT_RE = /(\S+?)[,.]?\s+(?:dot|punto)[,.]?\s+com\b/gi;
-  const BRAND_RE = /\bforge[\s-]?(?:vid|vids|bid|bit|beat|bead|bed|beed|feed|fit|vit)\b/gi;
+  // Kryst brands as Whisper mishears/splits them. Each entry fixes running
+  // text; two-word splits ("ring yield") also need their karaoke WORDS merged.
+  const BRAND_FIXES: Array<{ re: RegExp; to: string }> = [
+    { re: /\bforge[\s-]?(?:vid|vids|bid|bit|beat|bead|bed|beed|feed|fit|vit)\b/gi, to: 'ForgeVid' },
+    { re: /\bring[\s-]?(?:yield|yields|yielded|shield)\b/gi, to: 'RingYield' },
+    { re: /\bneuro[\s-]?(?:hires?|higher|hides)\b/gi, to: 'NeuroHires' },
+  ];
   const isDot = (w: string) => /^(dot|punto)[.,]?$/i.test(w);
   const isCom = (w: string) => /^com[.,!?]*$/i.test(w);
   const stripPunct = (w: string) => w.replace(/[.,!?]+$/, '');
+  const applyBrandFixes = (s: string) => BRAND_FIXES.reduce((v, b) => v.replace(b.re, b.to), s);
 
   for (const cue of cues) {
-    cue.text = cue.text.replace(TEXT_RE, '$1.com').replace(BRAND_RE, 'ForgeVid');
+    cue.text = applyBrandFixes(cue.text.replace(TEXT_RE, '$1.com'));
 
     if (cue.words) {
+      // Two-word brand splits: merge ("ring","yield") into one timed word so
+      // the karaoke highlight covers the whole name, then brand-fix spelling.
+      for (let i = 0; i < cue.words.length - 1; i++) {
+        const pair = `${stripPunct(cue.words[i].word)} ${cue.words[i + 1].word}`;
+        if (BRAND_FIXES.some((b) => { b.re.lastIndex = 0; return b.re.test(pair); })) {
+          cue.words[i].word = pair;
+          cue.words[i].end = cue.words[i + 1].end;
+          cue.words.splice(i + 1, 1);
+          i -= 1;
+        }
+      }
       // Brand-fix the words FIRST so the text-driven merge below compares
       // like-for-like (the text has already been brand-fixed).
       for (const w of cue.words) {
-        w.word = w.word.replace(BRAND_RE, 'ForgeVid');
+        w.word = applyBrandFixes(w.word);
       }
 
       for (let i = 0; i < cue.words.length - 1; i++) {
