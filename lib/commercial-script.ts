@@ -91,30 +91,61 @@ export async function writeCommercialScript(
   }
 
   const openai = createLlmClient();
-  const completion = await openai.chat.completions.create({
-    model: llmModel('fast'),
-    response_format: { type: 'json_object' },
-    temperature: 0.7,
-    max_tokens: 2048,
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You are a commercial copywriter. You write short, concrete video scripts ' +
-          'grounded strictly in the source material you are given. You never fabricate ' +
-          'product claims. You always reply with a single JSON object.',
-      },
-      { role: 'user', content: buildScriptPrompt(content, options.duration, options.tone) },
-    ],
-  });
 
-  const raw = completion.choices[0]?.message?.content;
-  if (!raw) throw new Error('The scriptwriter returned nothing');
-
+  // Gemini intermittently truncates or wraps its reply, so a single call that
+  // fails to parse must not sink the whole request (that surfaced as a 502 on
+  // /api/site-brief). Try up to 3 times; the 8k ceiling stops the JSON being
+  // cut off mid-object (the 2k default did, which is exactly "Unexpected end of
+  // JSON input"). The last raw reply is logged so a persistent failure is
+  // diagnosable instead of opaque.
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(extractJson(raw));
-  } catch {
+  let lastRaw = '';
+  let lastReason = '';
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let completion;
+    try {
+      completion = await openai.chat.completions.create({
+        model: llmModel('fast'),
+        response_format: { type: 'json_object' },
+        temperature: 0.7,
+        max_tokens: 8192,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a commercial copywriter. You write short, concrete video scripts ' +
+              'grounded strictly in the source material you are given. You never fabricate ' +
+              'product claims. You always reply with a single, COMPLETE, minified JSON object.',
+          },
+          { role: 'user', content: buildScriptPrompt(content, options.duration, options.tone) },
+        ],
+      });
+    } catch (error) {
+      lastReason = `LLM request failed: ${error instanceof Error ? error.message : 'unknown'}`;
+      continue;
+    }
+
+    const raw = completion.choices[0]?.message?.content ?? '';
+    lastRaw = raw;
+    if (!raw.trim()) {
+      lastReason = 'empty reply';
+      continue;
+    }
+    try {
+      parsed = JSON.parse(extractJson(raw));
+      break; // parsed OK — leave the retry loop
+    } catch {
+      lastReason = 'unparseable JSON';
+      parsed = undefined;
+    }
+  }
+
+  if (parsed === undefined) {
+    console.error(
+      `[commercial-script] no valid JSON after ${MAX_ATTEMPTS} attempts (${lastReason}). Raw head:`,
+      lastRaw.slice(0, 300),
+    );
     throw new Error('The scriptwriter returned malformed JSON');
   }
 

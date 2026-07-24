@@ -758,7 +758,9 @@ Be specific and focus on filmable, real-world visuals. Avoid abstract concepts.$
         },
         { role: 'user', content: `Parse this script into scenes:\n\n${script}` },
       ],
-      max_tokens: 2048,
+      // 8k so a multi-scene script's JSON isn't truncated mid-object (the 2k
+      // default was "Unexpected end of JSON input" -> fell back to 1 scene).
+      max_tokens: 8192,
       temperature: 0.3,
     });
 
