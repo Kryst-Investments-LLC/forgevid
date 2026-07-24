@@ -141,7 +141,11 @@ export default function AIFeaturesPage() {
   const [pipName, setPipName] = useState<string>("")
   const [uploadingPip, setUploadingPip] = useState(false)
   const [pipPosition, setPipPosition] = useState<string>("bottom-right")
-  const [selectedAddOns, setSelectedAddOns] = useState<string[]>([])
+  const [language, setLanguage] = useState<"en" | "es">("en")
+  // Voiceover + subtitles on by default: a marketing video is expected to talk
+  // and caption, and this makes the narration voice picker visible immediately
+  // (it lives under the AI Voiceover add-on) instead of hidden until ticked.
+  const [selectedAddOns, setSelectedAddOns] = useState<string[]>(["voiceover", "subtitles"])
   const [generatedVideo, setGeneratedVideo] = useState<string | null>(null)
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
   const [isVideoFullscreen, setIsVideoFullscreen] = useState(false)
@@ -267,12 +271,14 @@ export default function AIFeaturesPage() {
     duration?: number
     addOns?: string[]
     mediaAssetIds?: string[]
+    language?: "en" | "es"
   }) => {
     const effPrompt = overrides?.prompt ?? prompt
     const effStyle = overrides?.style ?? selectedStyle
     const effDuration = overrides?.duration ?? videoLength[0]
     const effAddOns = overrides?.addOns ?? selectedAddOns
     const effMediaIds = overrides?.mediaAssetIds ?? selectedMediaIds
+    const effLanguage = overrides?.language ?? language
     if (!effPrompt.trim()) {
       toast.error('Please enter a video description')
       return
@@ -294,6 +300,7 @@ export default function AIFeaturesPage() {
           duration: effDuration,
           addOns: effAddOns,
           aspectRatio: selectedAspectRatio,
+          ...(effLanguage !== "en" ? { language: effLanguage } : {}),
           ...(voiceMode === "ai" && selectedVoiceId ? { voiceId: selectedVoiceId } : {}),
           ...(voiceMode === "own" && narrationAssetId ? { narrationAssetId } : {}),
           ...(effAddOns.includes("music") && musicAssetId ? { musicAssetId } : {}),
@@ -533,6 +540,32 @@ export default function AIFeaturesPage() {
                           >
                             <div className="font-medium">{ratio.name}</div>
                             <div className="text-xs text-muted-foreground">{ratio.desc}</div>
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Narration language — the spoken words + captions. The
+                        multilingual voices speak either language natively. */}
+                    <div className="space-y-3">
+                      <label className="text-sm font-medium">Narration language</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { id: "en" as const, name: "English", flag: "🇺🇸" },
+                          { id: "es" as const, name: "Español", flag: "🇪🇸" },
+                        ].map((lang) => (
+                          <Button
+                            key={lang.id}
+                            variant="outline"
+                            className={`h-auto p-3 flex items-center gap-2 transition-all ${
+                              language === lang.id
+                                ? 'border-cyan-400 bg-cyan-400/10 text-white'
+                                : 'border-gray-600 bg-gray-800/50 text-gray-300 hover:border-gray-500 hover:bg-gray-700/50'
+                            }`}
+                            onClick={() => setLanguage(lang.id)}
+                          >
+                            <span>{lang.flag}</span>
+                            <span className="font-medium">{lang.name}</span>
                           </Button>
                         ))}
                       </div>
