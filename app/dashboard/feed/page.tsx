@@ -36,6 +36,16 @@ const VERTICALS: Record<VerticalKey, { label: string; icon: typeof Car; endpoint
 }
 
 const ASPECTS = ["16:9", "9:16", "1:1"]
+const REAL_ESTATE_HOSTS = ["homes.com", "zillow.com", "realtor.com", "redfin.com", "trulia.com"]
+
+function realEstatePageHost(raw: string): string | null {
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+    return REAL_ESTATE_HOSTS.find((host) => url.hostname === host || url.hostname.endsWith(`.${host}`)) ?? null
+  } catch {
+    return null
+  }
+}
 
 interface PreviewItem { ref: string; label: string; photos: number }
 interface BatchResult { ref: string; label: string; language?: string; videoId?: string; photosUsed?: number; error?: string }
@@ -101,6 +111,15 @@ export default function FeedToVideosPage() {
   async function runPreview() {
     resetOutputs(); setPreviewing(true)
     try {
+      const propertyHost = mode === "url" ? realEstatePageHost(feedUrl) : null
+      if (propertyHost && vertical !== "realestate") {
+        setVertical("realestate")
+        setAspect(VERTICALS.realestate.defaultAspect)
+        throw new Error(`ForgeVid switched this property URL to Real estate. ${propertyHost} blocks automated page imports; use an authorized MLS feed or Paste data with property details and photo URLs.`)
+      }
+      if (propertyHost) {
+        throw new Error(`${propertyHost} blocks automated page imports. ForgeVid will not bypass its access controls. Use an authorized MLS/RESO feed or Paste data with property details and photo URLs.`)
+      }
       const data = await post(collectBody({ preview: true }))
       setPreview({ count: data.count ?? 0, items: data.items ?? [] })
     } catch (e) { setError(e instanceof Error ? e.message : "Something went wrong.") } finally { setPreviewing(false) }
@@ -174,7 +193,15 @@ export default function FeedToVideosPage() {
             </div>
 
             {mode === "url" ? (
-              <Input value={feedUrl} onChange={(e) => { setFeedUrl(e.target.value); setPreview(null) }}
+              <Input value={feedUrl} onChange={(e) => {
+                const value = e.target.value
+                setFeedUrl(value)
+                if (realEstatePageHost(value) && vertical !== "realestate") {
+                  setVertical("realestate")
+                  setAspect(VERTICALS.realestate.defaultAspect)
+                }
+                setPreview(null)
+              }}
                 placeholder="https://your-dms.com/inventory-feed.json"
                 className="bg-black/30 border-white/10 text-white placeholder:text-gray-500" />
             ) : (
@@ -189,7 +216,7 @@ export default function FeedToVideosPage() {
             )}
             <p className="text-xs text-gray-500">{cfg.hint}</p>
             {mode === "url" && (
-              <p className="text-xs text-amber-400/80">Local URLs are blocked for security — to test locally, use <b>Paste data</b> → Load sample.</p>
+              <p className="text-xs text-amber-400/80">Use a JSON/XML/CSV inventory feed URL. Public listing pages may block automated imports; ForgeVid never bypasses platform access controls. Local URLs are blocked for security.</p>
             )}
           </div>
 

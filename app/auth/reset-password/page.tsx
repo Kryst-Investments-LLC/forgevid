@@ -114,6 +114,7 @@ function ResetPasswordForm() {
                   className="pl-10 pr-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                       id="password"
                       type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
                       placeholder="New password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -143,6 +144,7 @@ function ResetPasswordForm() {
                   className="pl-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                       id="confirm"
                       type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
                       placeholder="Re-enter new password"
                       value={confirm}
                       onChange={(e) => setConfirm(e.target.value)}

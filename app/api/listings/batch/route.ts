@@ -19,6 +19,7 @@ import {
 } from '@/lib/listing-brief';
 import { parseListingsFeed } from '@/lib/mls-feed';
 import { FetchLimitError, SsrfError, safeFetch, withDefaultScheme } from '@/lib/safe-fetch';
+import { decodeHtmlBody, parseSiteHtml } from '@/lib/site-extract';
 
 /**
  * POST /api/listings/batch — an estate agent's whole spreadsheet at once.
@@ -100,10 +101,24 @@ export async function POST(req: NextRequest) {
       const { body, contentType } = await safeFetch(withDefaultScheme(feedUrl), {
         maxBytes: 8 * 1024 * 1024,
         timeoutMs: 15_000,
-        acceptTypes: ['application/json', 'text/json', 'application/xml', 'text/xml', 'text'],
-        headers: { Accept: 'application/json, application/xml;q=0.9' },
+        acceptTypes: ['application/json', 'text/json', 'application/xml', 'text/xml', 'text', 'text/html', 'application/xhtml+xml'],
+        headers: { Accept: 'application/json, application/xml;q=0.9, text/html;q=0.8' },
       });
-      listings = parseListingsFeed(body.toString('utf8'), contentType);
+      if (contentType.toLowerCase().includes('html')) {
+        const sourceUrl = withDefaultScheme(feedUrl);
+        const page = parseSiteHtml(decodeHtmlBody(body, contentType), sourceUrl);
+        if (!page.title || page.images.length === 0) {
+          throw new ListingParseError('That page did not expose enough property details and photos. Use an authorized MLS feed or Paste data.');
+        }
+        listings = [{
+          ref: new URL(sourceUrl).pathname.split('/').filter(Boolean).pop() || 'listing-page',
+          address: page.title.replace(/\s*[-|]\s*(Homes\.com|Zillow|Realtor\.com|Redfin).*$/i, '').trim(),
+          highlights: page.description || page.paragraphs.slice(0, 2).join(' '),
+          photos: page.images.slice(0, MAX_PHOTOS_PER_LISTING),
+        }];
+      } else {
+        listings = parseListingsFeed(body.toString('utf8'), contentType);
+      }
     } else if (csv) {
       listings = parseListingsCsv(csv);
     } else {
@@ -117,7 +132,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     if (error instanceof FetchLimitError) {
-      return NextResponse.json({ error: `Could not read the feed: ${error.message}` }, { status: 422 });
+      const blocked = /\b(401|403|429)\b/.test(error.message);
+      return NextResponse.json({
+        error: blocked
+          ? 'The source platform blocked automated import. ForgeVid will not bypass its access controls. Use an authorized MLS/RESO feed or Paste data with property details and photo URLs.'
+          : `Could not read the feed: ${error.message}`,
+        code: blocked ? 'SOURCE_BLOCKED' : 'FEED_UNREADABLE',
+      }, { status: 422 });
     }
     console.error('[listings] feed fetch failed:', error);
     return NextResponse.json({ error: 'Could not read that feed' }, { status: 502 });

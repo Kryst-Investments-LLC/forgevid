@@ -34,8 +34,6 @@
     "scripts",
     "artillery",
     "load-testing",
-    "test-nextjs",
-    "test-forgevid",
     "coverage",
     "playwright-report",
     "test-results",
